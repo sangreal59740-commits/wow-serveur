@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
-    paths: [ 'overlay/**', 'sources.txt', '.github/workflows/**' ]
+    paths: [ 'overlay/**', 'modules/**', 'sources.txt', '.github/workflows/**' ]
 
 env:
   BUILD_TYPE: RelWithDebInfo
@@ -36,6 +36,14 @@ jobs:
           if [ -d projet/overlay ] && [ -n "$(ls -A projet/overlay)" ]; then
             cp -rv projet/overlay/. core/
           fi
+          # Modules custom (dossier modules/ du projet) : declares dans la liste des modules
+          # (inseres avant la ligne MODULES= et copies dans core/src/modules pour etre vus par Modules.cpp)
+          for m in projet/modules/*/; do
+            n=$(basename "$m"); N=$(echo $n | tr a-z A-Z)
+            sed -i "/^MODULES=/i $N=https://example.invalid/$n.git" vendor/modules/modules.conf
+            mkdir -p core/src/modules/$n && cp -r "$m". core/src/modules/$n/
+          done
+          cat vendor/modules/modules.conf
 
       - name: Installer Boost
         uses: MarkusJx/install-boost@v2.5.1
@@ -55,6 +63,10 @@ jobs:
           for m in ACHIEVEMENTS DUALSPEC HARDCORE IMMERSIVE TRANSMOG BOOST BARBER TRAININGDUMMIES; do
             l=$(echo $m | tr A-Z a-z)
             OPTS="$OPTS -DBUILD_MODULE_$m=ON -DFETCHCONTENT_SOURCE_DIR_$m=$W/vendor/$l"
+          done
+          for m in projet/modules/*/; do
+            n=$(basename "$m"); N=$(echo $n | tr a-z A-Z)
+            OPTS="$OPTS -DBUILD_MODULE_$N=ON -DFETCHCONTENT_SOURCE_DIR_$N=$W/projet/modules/$n"
           done
           OPTS="$OPTS -DFETCHCONTENT_SOURCE_DIR_MODULES=$W/vendor/modules -DFETCHCONTENT_SOURCE_DIR_PLAYERBOTS=$W/core/src/modules/PlayerBots"
           cmake $OPTS -B build -S core
