@@ -1,6 +1,6 @@
 # Classes custom, étape A : création des personnages.
 #   Nécromancien = classe 6 (Humain, Troll), base démoniste
-#   Sniper       = classe 10 (Nain, Orc), base chasseur, énergie
+#   Sniper       = classe 10 (Nain, Orc), base chasseur, mana
 #   Métamorphe   = classe 11 (remplace le druide) : Humain, Nain, Elfe de la nuit, Gnome, Orc, Troll, Tauren, Mort-vivant
 # Sorties : out/*.dbc (client et serveur), classes.sql (base world)
 import sys, struct, subprocess, os
@@ -40,7 +40,7 @@ def clone_class(cid, base, name, power):
         r[c] = 0
     r[14] = d.str(r[14])
     return r
-new_rows = [clone_class(NECRO, 9, NAMES[NECRO], 0), clone_class(SNIPER, 3, NAMES[SNIPER], 3)]
+new_rows = [clone_class(NECRO, 9, NAMES[NECRO], 0), clone_class(SNIPER, 3, NAMES[SNIPER], 0)]
 # Métamorphe : on renomme la ligne du druide (le texte est ajouté au bloc de chaînes)
 data = open(SRV + 'ChrClasses.dbc', 'rb').read()
 nrec, nf, rs, ss = struct.unpack('<4I', data[4:20])
