@@ -12,10 +12,17 @@
 #include "Log/Log.h"
 #include "Loot/LootMgr.h"
 #include "Maps/Map.h"
+#include "Mails/Mail.h"
+#include "Server/WorldPacket.h"
+#include "Entities/Item.h"
+#include "Server/WorldSession.h"
 #include "Util/Util.h"
 #include "World/World.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cstdlib>
+#include <functional>
 #include <cmath>
 
 namespace cmangos_module
@@ -58,6 +65,7 @@ namespace cmangos_module
     enum DonjonsActions
     {
         ACTION_INFO     = GOSSIP_ACTION_INFO_DEF + 1,
+        ACTION_CLASSEMENT = GOSSIP_ACTION_INFO_DEF + 2,
         ACTION_NORMAL   = GOSSIP_ACTION_INFO_DEF + 100,
         ACTION_NIV40    = GOSSIP_ACTION_INFO_DEF + 140,
         ACTION_NIV50    = GOSSIP_ACTION_INFO_DEF + 150,
@@ -94,6 +102,36 @@ namespace cmangos_module
         if (level >= 50) return "Niveau 50";
         if (level >= 40) return "Niveau 40";
         return "Normal";
+    }
+
+    static std::string Duree(uint32 s)
+    {
+        char buf[32];
+        if (s >= 3600)
+            snprintf(buf, sizeof(buf), "%u h %02u min %02u s", s / 3600, (s / 60) % 60, s % 60);
+        else
+            snprintf(buf, sizeof(buf), "%u min %02u s", s / 60, s % 60);
+        return buf;
+    }
+
+    static const char* NomDonjon(int32 idx)
+    {
+        for (uint32 i = 0; i < DONJONS_COUNT; ++i)
+            if (int32(DONJONS[i].index) == idx)
+                return DONJONS[i].nom;
+        return "Donjon";
+    }
+
+    static std::string NiveauM(int32 m)
+    {
+        return m == 0 ? std::string("M0") : "M+" + std::to_string(m);
+    }
+
+    static void EnvoyerATous(const std::string& text)
+    {
+        WorldPacket data;
+        ChatHandler::BuildChatPacket(data, CHAT_MSG_SYSTEM, text.c_str(), LANG_UNIVERSAL);
+        sWorld.SendGlobalMessage(data);
     }
 
     DonjonsModule::DonjonsModule() : Module("Donjons", nullptr)
@@ -144,6 +182,42 @@ namespace cmangos_module
             }
             while (result->NextRow());
         }
+        CharacterDatabase.Execute(
+            "CREATE TABLE IF NOT EXISTS `custom_mythic_record` ("
+            " `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,"
+            " `dungeon` INT NOT NULL,"
+            " `level` INT NOT NULL,"
+            " `seconds` INT UNSIGNED NOT NULL,"
+            " `names` VARCHAR(255) NOT NULL DEFAULT '',"
+            " `date` INT UNSIGNED NOT NULL DEFAULT 0,"
+            " PRIMARY KEY (`id`), KEY `dungeon` (`dungeon`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+        CharacterDatabase.Execute(
+            "CREATE TABLE IF NOT EXISTS `custom_mythic_reward` ("
+            " `guid` INT UNSIGNED NOT NULL, PRIMARY KEY (`guid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+        if (auto result = CharacterDatabase.Query(
+            "SELECT r.`dungeon`, r.`level`, r.`seconds`, r.`names` FROM `custom_mythic_record` r "
+            "ORDER BY r.`dungeon`, r.`level` DESC, r.`seconds` ASC"))
+        {
+            do
+            {
+                Field* fields = result->Fetch();
+                Record& rec = records[fields[0].GetInt32()];
+                if (rec.level >= 0)
+                    continue;           // le premier de chaque donjon est le meilleur
+                rec.level = fields[1].GetInt32();
+                rec.seconds = fields[2].GetUInt32();
+                rec.names = fields[3].GetCppString();
+            }
+            while (result->NextRow());
+        }
+        if (auto result = CharacterDatabase.Query("SELECT `guid` FROM `custom_mythic_reward`"))
+        {
+            do
+                rewarded.insert(result->Fetch()[0].GetUInt32());
+            while (result->NextRow());
+        }
+        sLog.outString("Donjons : %u record(s) mythique(s)", uint32(records.size()));
+
         if (auto result = WorldDatabase.Query("SELECT `entry` FROM `custom_mythic_boss`"))
         {
             do
@@ -395,6 +469,7 @@ namespace cmangos_module
             mode.dungeon = int32(creature->GetEntry() - DONJONS_NPC_BASE);
 
         GossipMenu& menu = player->GetPlayerMenu()->GetGossipMenu();
+        menu.AddMenuItem(GOSSIP_ICON_CHAT, "Classement mythique de ce donjon", GOSSIP_SENDER_MAIN, ACTION_CLASSEMENT, "", false);
         std::string info = "Mode actuel : " + NomMode(mode.level);
         if (mode.locked)
             info += " (verrouillé, le donjon est entamé)";
@@ -443,6 +518,12 @@ namespace cmangos_module
         if (!player || !creature || !IsGardien(creature->GetEntry()))
             return false;
         const bool myth = action >= ACTION_MYTH && action <= ACTION_MYTH + DONJONS_MYTHIC_MAX;
+        if (action == ACTION_CLASSEMENT)
+        {
+            player->GetPlayerMenu()->CloseGossip();
+            ShowDonjon(player, int32(creature->GetEntry() - DONJONS_NPC_BASE));
+            return true;
+        }
         if (action != ACTION_INFO && action != ACTION_NORMAL && action != ACTION_NIV40 && action != ACTION_NIV50 && !myth)
             return false;
 
@@ -488,6 +569,148 @@ namespace cmangos_module
         return true;
     }
 
+    void DonjonsModule::RecordRun(Map* map, const DonjonInfo* d, uint32 m, uint32 seconds)
+    {
+        std::string names;
+        std::vector<Player*> players;
+        for (auto const& ref : map->GetPlayers())
+        {
+            if (Player* player = ref.getSource())
+            {
+                players.push_back(player);
+                if (!names.empty())
+                    names += ", ";
+                names += player->GetName();
+            }
+        }
+        if (names.size() > 250)
+            names = names.substr(0, 250);
+        std::string esc = names;
+        CharacterDatabase.escape_string(esc);
+        CharacterDatabase.PExecute("INSERT INTO `custom_mythic_record` (`dungeon`, `level`, `seconds`, `names`, `date`) VALUES (%i, %u, %u, '%s', %u)",
+            int32(d->index), m, seconds, esc.c_str(), uint32(time(nullptr)));
+
+        Record& rec = records[int32(d->index)];
+        const bool nouveau = rec.level < int32(m) || (rec.level == int32(m) && seconds < rec.seconds);
+        if (!nouveau)
+            return;
+        rec.level = int32(m);
+        rec.seconds = seconds;
+        rec.names = names;
+        EnvoyerATous("|cffff8000Nouveau record mythique|r : |cffffd100" + std::string(d->nom) + "|r " + NiveauM(int32(m)) +
+            " en " + Duree(seconds) + " par " + names + " !");
+
+        // monture de record : une fois par personnage
+        for (Player* player : players)
+        {
+            if (rewarded.count(player->GetGUIDLow()))
+                continue;
+            rewarded.insert(player->GetGUIDLow());
+            CharacterDatabase.PExecute("REPLACE INTO `custom_mythic_reward` (`guid`) VALUES (%u)", player->GetGUIDLow());
+            if (Item* item = Item::CreateItem(DONJONS_RECORD_MOUNT, 1, player))
+            {
+                CharacterDatabase.BeginTransaction();
+                item->SaveToDB();
+                CharacterDatabase.CommitTransaction();
+                MailDraft("Record mythique", "Félicitations pour votre premier record mythique ! Voici votre monture.")
+                    .AddItem(item).SendMailTo(player, MailSender(MAIL_CREATURE, DONJONS_NPC_BASE + d->index), MAIL_CHECK_MASK_COPIED);
+                ChatHandler(player).SendSysMessage("Premier record mythique : une monture vous attend dans la boîte aux lettres.");
+            }
+        }
+    }
+
+    void DonjonsModule::ShowDonjon(Player* player, int32 dungeon)
+    {
+        ChatHandler ch(player);
+        ch.SendSysMessage(("|cffffd100Classement mythique : " + std::string(NomDonjon(dungeon)) + "|r").c_str());
+        uint32 rang = 0;
+        if (auto result = CharacterDatabase.PQuery(
+            "SELECT `level`, `seconds`, `names` FROM `custom_mythic_record` WHERE `dungeon` = %i ORDER BY `level` DESC, `seconds` ASC LIMIT 5", dungeon))
+        {
+            do
+            {
+                Field* f = result->Fetch();
+                ++rang;
+                ch.SendSysMessage((std::to_string(rang) + ". " + NiveauM(f[0].GetInt32()) + " en " + Duree(f[1].GetUInt32()) +
+                    " : " + f[2].GetCppString()).c_str());
+            }
+            while (result->NextRow());
+        }
+        if (!rang)
+            ch.SendSysMessage("Aucun passage mythique enregistré pour ce donjon.");
+        const int32 best = GetBest(player, dungeon);
+        ch.SendSysMessage(best < 0 ? "Votre meilleur niveau : aucun." : ("Votre meilleur niveau : " + NiveauM(best) + ".").c_str());
+    }
+
+    std::vector<ModuleChatCommand>* DonjonsModule::GetCommandTable()
+    {
+        static std::vector<ModuleChatCommand> commandTable =
+        {
+            { "classement", std::bind(&DonjonsModule::HandleClassement, this, std::placeholders::_1, std::placeholders::_2), SEC_PLAYER },
+            { "moi", std::bind(&DonjonsModule::HandleMoi, this, std::placeholders::_1, std::placeholders::_2), SEC_PLAYER },
+        };
+        return &commandTable;
+    }
+
+    bool DonjonsModule::HandleClassement(WorldSession* session, const std::string& args)
+    {
+        std::lock_guard<std::recursive_mutex> guard(lock);
+        Player* player = session ? session->GetPlayer() : nullptr;
+        if (!player)
+            return false;
+        // .myth classement <numéro> : top 5 d'un donjon
+        if (!args.empty() && std::isdigit(static_cast<unsigned char>(args[0])))
+        {
+            ShowDonjon(player, std::atoi(args.c_str()));
+            return true;
+        }
+        ChatHandler ch(player);
+        ch.SendSysMessage("|cffff8000Records mythiques|r (.myth classement <numéro> pour le top 5 d'un donjon)");
+        int32 last = -1;
+        for (uint32 i = 0; i < DONJONS_COUNT; ++i)
+        {
+            const int32 idx = int32(DONJONS[i].index);
+            if (idx == last)
+                continue;
+            last = idx;
+            auto it = records.find(idx);
+            std::string line = std::to_string(idx) + ". " + DONJONS[i].nom + " : ";
+            if (it == records.end() || it->second.level < 0)
+                line += "|cff808080aucun|r";
+            else
+                line += "|cff00ff00" + NiveauM(it->second.level) + "|r en " + Duree(it->second.seconds) + " (" + it->second.names + ")";
+            ch.SendSysMessage(line.c_str());
+        }
+        return true;
+    }
+
+    bool DonjonsModule::HandleMoi(WorldSession* session, const std::string& /*args*/)
+    {
+        std::lock_guard<std::recursive_mutex> guard(lock);
+        Player* player = session ? session->GetPlayer() : nullptr;
+        if (!player)
+            return false;
+        ChatHandler ch(player);
+        ch.SendSysMessage("|cffffd100Vos meilleurs niveaux mythiques|r");
+        int32 last = -1;
+        uint32 n = 0;
+        for (uint32 i = 0; i < DONJONS_COUNT; ++i)
+        {
+            const int32 idx = int32(DONJONS[i].index);
+            if (idx == last)
+                continue;
+            last = idx;
+            const int32 best = GetBest(player, idx);
+            if (best < 0)
+                continue;
+            ++n;
+            ch.SendSysMessage((std::string(DONJONS[i].nom) + " : " + NiveauM(best)).c_str());
+        }
+        if (!n)
+            ch.SendSysMessage("Aucun niveau mythique réussi pour l'instant.");
+        return true;
+    }
+
     void DonjonsModule::OnKill(Unit* unit, Unit* victim)
     {
         std::lock_guard<std::recursive_mutex> guard(lock);
@@ -503,6 +726,7 @@ namespace cmangos_module
         if (!mode.locked)
         {
             mode.locked = true;
+            mode.start = time(nullptr);
             SaveMode(map->GetInstanceId(), mode);
         }
 
@@ -519,10 +743,14 @@ namespace cmangos_module
                     if (GetBest(player, d->index) < m)
                         SetBest(player, d->index, m);
             }
-            std::string text = "|cffffd100" + std::string(d->nom) + "|r : " + NomMode(mode.level) + " réussi !";
+            const uint32 seconds = mode.start ? uint32(time(nullptr) - mode.start) : 0;
+            std::string text = "|cffffd100" + std::string(d->nom) + "|r : " + NomMode(mode.level) + " réussi";
+            text += seconds ? " en " + Duree(seconds) + " !" : " !";
             if (m < DONJONS_MYTHIC_MAX)
                 text += " " + NomMode(mode.level + 1) + " débloqué.";
             Announce(map, text);
+            if (seconds)
+                RecordRun(map, d, uint32(m), seconds);
             return;
         }
 

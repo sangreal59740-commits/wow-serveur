@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <string>
+#include <ctime>
 
 // Modes de donjon niveau 40 / 50 pour les 13 donjons de moins de 40.
 // Un PNJ a l'entree propose Normal / Niveau 40 / Niveau 50. Les monstres sont remontes au niveau
@@ -24,6 +26,7 @@ namespace cmangos_module
     #define DONJONS_CREDIT_BASE     990200      // + index*2 + (mode 50 ? 1 : 0)
     #define DONJONS_RARE_BASE       990400      // boss rare : 990400 + index du donjon ; butin +20 (mode 40), +40 (mode 50)
     #define DONJONS_RARE_LAST       990412
+    #define DONJONS_RECORD_MOUNT    13335       // Renes du destrier de la mort : 1er record d'un donjon
 
     struct DonjonInfo
     {
@@ -41,6 +44,7 @@ namespace cmangos_module
         int32 dungeon = -1;     // index dans la table, -1 si inconnu
         uint32 level = 0;       // 0 = normal, 40 ou 50, 100 + M = mythique
         bool locked = false;
+        time_t start = 0;       // debut du chrono mythique (premier monstre tue)
         std::unordered_map<uint64, uint32> origLevels;   // guid -> niveau d'origine
         std::unordered_map<uint64, float> appliedMult;   // guid -> multiplicateur PV / degats applique
     };
@@ -57,6 +61,8 @@ namespace cmangos_module
         void OnKill(Unit* unit, Unit* victim) override;
         bool OnGenerateMoneyLoot(Loot* loot, uint32& outMoney) override;
         bool OnFillLoot(Loot* loot, Player* owner) override;
+        const char* GetChatCommandPrefix() const override { return "myth"; }
+        std::vector<ModuleChatCommand>* GetCommandTable() override;
 
     private:
         const DonjonInfo* FindDonjon(uint32 mapId, float x, float y, float z) const;
@@ -71,6 +77,10 @@ namespace cmangos_module
         void QueueClones(Creature* creature, uint32 mythic);
         int32 GetBest(Player* player, int32 dungeon) const;
         void SetBest(Player* player, int32 dungeon, int32 best);
+        void RecordRun(Map* map, const DonjonInfo* d, uint32 m, uint32 seconds);
+        void ShowDonjon(Player* player, int32 dungeon);
+        bool HandleClassement(WorldSession* session, const std::string& args);
+        bool HandleMoi(WorldSession* session, const std::string& args);
         bool IsBoss(uint32 entry) const { return bossEntries.find(entry) != bossEntries.end(); }
 
         std::recursive_mutex lock;
@@ -78,6 +88,9 @@ namespace cmangos_module
         std::unordered_map<uint64, int32> bestLevels;           // (guid << 8 | donjon) -> meilleur niveau mythique
 
         std::unordered_map<uint32, InstanceMode> instances;     // instanceId -> mode
+        struct Record { int32 level = -1; uint32 seconds = 0; std::string names; };
+        std::unordered_map<int32, Record> records;              // donjon -> record (classement M+)
+        std::unordered_set<uint32> rewarded;                    // personnages deja recompenses (monture)
     };
 }
 #endif
