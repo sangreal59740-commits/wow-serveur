@@ -1,0 +1,12 @@
+# dossier                         dépôt                                              commit
+core                              https://github.com/celguar/mangos-classic          a4e22a918018b4a9b364e5985b8311acad98f5e4
+core/src/modules/PlayerBots       https://github.com/cmangos/playerbots              da4419afc44f97bb950ca2ebccc3f29a902a3fab
+vendor/achievements               https://github.com/flekz-games/cmangos-achievements 70efae53ed1766b6d29153cf3706c57b7d068fef
+vendor/barber                     https://github.com/celguar/cmangos-barber          5f214bebabfd147a150133986756b57540d5de0e
+vendor/boost                      https://github.com/celguar/cmangos-boost           1950c42156109df91e6c3d7b8f349652be600e73
+vendor/dualspec                   https://github.com/flekz-games/cmangos-dualspec    b211cbab0ee6767a065e0817507aaaa045550651
+vendor/hardcore                   https://github.com/flekz-games/cmangos-hardcore    fe5033afe516f10501bea515d1b8e8b4dd0933fa
+vendor/immersive                  https://github.com/flekz-games/cmangos-immersive   c5e450a9c6cadf152e39ace18149cd1bc66b066a
+vendor/modules                    https://github.com/davidonete/cmangos-modules      f917cf5338d4eae191cb45fa6928db6941154670
+vendor/trainingdummies            https://github.com/flekz-games/cmangos-trainingdummies d00323521680b76eebbe03d9c498c84ec85e7bbf
+vendor/transmog                   https://github.com/flekz-games/cmangos-transmog    0abf98b38e80724b5a2847b029ccf72e09d98ef2

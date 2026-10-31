@@ -1,0 +1,77 @@
+name: Compiler le serveur (Windows)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: [ 'overlay/**', 'sources.txt', '.github/workflows/**' ]
+
+env:
+  BUILD_TYPE: RelWithDebInfo
+  BOOST_VERSION: "1.86.0"
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: projet
+
+      - name: Recuperer les sources figees (sources.txt)
+        shell: bash
+        run: |
+          grep -v '^#' projet/sources.txt | while read dir url sha; do
+            [ -z "$dir" ] && continue
+            mkdir -p "$dir"
+            git -C "$dir" init -q
+            git -C "$dir" fetch -q --depth 1 "$url" "$sha"
+            git -C "$dir" checkout -q FETCH_HEAD
+            echo "$dir -> $(git -C "$dir" rev-parse --short HEAD)"
+          done
+
+      - name: Appliquer nos modifications (overlay)
+        shell: bash
+        run: |
+          if [ -d projet/overlay ] && [ -n "$(ls -A projet/overlay)" ]; then
+            cp -rv projet/overlay/. core/
+          fi
+
+      - name: Installer Boost
+        uses: MarkusJx/install-boost@v2.5.1
+        id: boost
+        with:
+          boost_version: ${{ env.BOOST_VERSION }}
+          platform_version: "2022"
+          toolset: msvc
+
+      - name: Configurer
+        shell: bash
+        env:
+          BOOST_ROOT: ${{ steps.boost.outputs.BOOST_ROOT }}
+        run: |
+          W="$(cygpath -m "$GITHUB_WORKSPACE")"
+          OPTS="-DBUILD_EXTRACTORS=OFF -DBUILD_LOGIN_SERVER=OFF -DBUILD_PLAYERBOTS=ON -DBUILD_AHBOT=ON -DBUILD_MODULES=ON"
+          for m in ACHIEVEMENTS DUALSPEC HARDCORE IMMERSIVE TRANSMOG BOOST BARBER TRAININGDUMMIES; do
+            l=$(echo $m | tr A-Z a-z)
+            OPTS="$OPTS -DBUILD_MODULE_$m=ON -DFETCHCONTENT_SOURCE_DIR_$m=$W/vendor/$l"
+          done
+          OPTS="$OPTS -DFETCHCONTENT_SOURCE_DIR_MODULES=$W/vendor/modules -DFETCHCONTENT_SOURCE_DIR_PLAYERBOTS=$W/core/src/modules/PlayerBots"
+          cmake $OPTS -B build -S core
+
+      - name: Compiler
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --target mangosd -- /m
+
+      - name: Archiver
+        shell: bash
+        run: |
+          mkdir out
+          cp build/bin/x64_${BUILD_TYPE}/mangosd.exe out/
+          cp build/bin/x64_${BUILD_TYPE}/mangosd.pdb out/ 2>/dev/null || true
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mangosd
+          path: out/
+          retention-days: 14
