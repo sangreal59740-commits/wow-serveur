@@ -10,6 +10,9 @@ env:
   BUILD_TYPE: RelWithDebInfo
   BOOST_VERSION: "1.86.0"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-2022
@@ -92,3 +95,14 @@ jobs:
           name: mangosd
           path: out/
           retention-days: 14
+
+      - name: Publier l'exe sur la branche binaires (recuperable par git)
+        shell: bash
+        run: |
+          mkdir pub && cp out/mangosd.exe pub/
+          cd pub
+          git init -q && git checkout -q -b binaires
+          git config user.name "build" && git config user.email "build@localhost"
+          echo "${{ github.sha }}" > source.txt
+          git add . && git commit -qm "mangosd ${{ github.sha }}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" binaires
