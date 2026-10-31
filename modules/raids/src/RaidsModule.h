@@ -55,6 +55,8 @@ namespace cmangos_module
         bool OnGossipSelect(Player* player, Creature* creature, uint32 sender, uint32 action, const std::string& code, uint32 gossipListId) override;
         void OnKill(Unit* unit, Unit* victim) override;
         bool OnFillLoot(Loot* loot, Player* owner) override;
+        void OnStoreItem(Player* player, Item* item) override;
+        void OnStoreItem(Player* player, Loot* loot, Item* item) override;
 
     private:
         const RaidInfo* GetRaid(uint32 mapId) const;

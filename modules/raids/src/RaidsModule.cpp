@@ -347,4 +347,30 @@ namespace cmangos_module
         tab->Process(*loot, owner, LootTemplates_Creature.IsRatesAllowed());
         return true;
     }
+
+    // Armes legendaires : effet visuel permanent (enchantement visuel pose quand l'arme arrive dans les sacs)
+    static const uint32 LEGENDAIRES_VISUEL[][2] = { { 999100, 3100 }, { 999102, 3101 }, { 999103, 3102 }, { 999104, 3101 }, { 999105, 3103 }, { 999106, 3103 }, { 999107, 3102 }, { 999108, 3102 }, { 999109, 3104 }, { 999110, 3104 }, { 999111, 3101 }, { 999112, 3101 }, { 999113, 3105 }, { 999114, 3106 }, { 999115, 3100 }, { 999116, 3107 }, { 999117, 3107 }, { 999119, 3100 }, { 999120, 3100 } };
+
+    void RaidsModule::OnStoreItem(Player* player, Item* item)
+    {
+        if (!player || !item)
+            return;
+        const uint32 entry = item->GetEntry();
+        for (auto const& lv : LEGENDAIRES_VISUEL)
+        {
+            if (lv[0] != entry)
+                continue;
+            if (!item->GetEnchantmentId(PERM_ENCHANTMENT_SLOT))
+            {
+                item->SetEnchantment(PERM_ENCHANTMENT_SLOT, lv[1], 0, 0);
+                item->SetState(ITEM_CHANGED, player);
+            }
+            return;
+        }
+    }
+
+    void RaidsModule::OnStoreItem(Player* player, Loot* /*loot*/, Item* item)
+    {
+        OnStoreItem(player, item);
+    }
 }
