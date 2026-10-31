@@ -11,7 +11,8 @@
 
 namespace cmangos_module
 {
-    #define DONJONS_NPC_ENTRY       990100      // Gardien des epreuves
+    #define DONJONS_NPC_BASE        990100      // Gardien des epreuves : 990100 + index du donjon (0 a 12)
+    #define DONJONS_NPC_LAST        990112
     #define DONJONS_CREDIT_BASE     990200      // + index*2 + (mode 50 ? 1 : 0)
 
     struct DonjonInfo

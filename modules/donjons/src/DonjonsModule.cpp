@@ -57,6 +57,11 @@ namespace cmangos_module
         return false;
     }
 
+    static bool IsGardien(uint32 entry)
+    {
+        return entry >= DONJONS_NPC_BASE && entry <= DONJONS_NPC_LAST;
+    }
+
     static std::string NomMode(uint32 level)
     {
         if (level >= 50) return "Niveau 50";
@@ -132,7 +137,7 @@ namespace cmangos_module
     {
         if (!creature || creature->IsPet() || creature->IsTotem())
             return false;
-        if (creature->GetEntry() == DONJONS_NPC_ENTRY)
+        if (IsGardien(creature->GetEntry()))
             return false;
         if (creature->GetOwnerGuid().IsPlayer() || creature->HasCharmer())
             return false;
@@ -229,7 +234,7 @@ namespace cmangos_module
 
     void DonjonsModule::OnGossipHello(Player* player, Creature* creature)
     {
-        if (!player || !creature || creature->GetEntry() != DONJONS_NPC_ENTRY)
+        if (!player || !creature || !IsGardien(creature->GetEntry()))
             return;
         Map* map = creature->GetMap();
         if (!map || !map->IsDungeon())
@@ -238,10 +243,7 @@ namespace cmangos_module
         InstanceMode& mode = instances[map->GetInstanceId()];
         mode.mapId = map->GetId();
         if (mode.dungeon < 0)
-        {
-            if (const DonjonInfo* d = FindDonjon(map->GetId(), creature->GetPositionX(), creature->GetPositionY(), creature->GetPositionZ()))
-                mode.dungeon = int32(d->index);
-        }
+            mode.dungeon = int32(creature->GetEntry() - DONJONS_NPC_BASE);
 
         GossipMenu& menu = player->GetPlayerMenu()->GetGossipMenu();
         std::string info = "Mode actuel : " + NomMode(mode.level);
@@ -269,7 +271,7 @@ namespace cmangos_module
 
     bool DonjonsModule::OnGossipSelect(Player* player, Creature* creature, uint32 sender, uint32 action, const std::string& code, uint32 gossipListId)
     {
-        if (!player || !creature || creature->GetEntry() != DONJONS_NPC_ENTRY)
+        if (!player || !creature || !IsGardien(creature->GetEntry()))
             return false;
         if (action != ACTION_INFO && action != ACTION_NORMAL && action != ACTION_NIV40 && action != ACTION_NIV50)
             return false;
@@ -295,10 +297,7 @@ namespace cmangos_module
         uint32 level = action == ACTION_NIV50 ? 50 : (action == ACTION_NIV40 ? 40 : 0);
         mode.mapId = map->GetId();
         if (mode.dungeon < 0)
-        {
-            if (const DonjonInfo* d = FindDonjon(map->GetId(), creature->GetPositionX(), creature->GetPositionY(), creature->GetPositionZ()))
-                mode.dungeon = int32(d->index);
-        }
+            mode.dungeon = int32(creature->GetEntry() - DONJONS_NPC_BASE);
         mode.level = level;
         ApplyToInstance(map, mode);
         SaveMode(map->GetInstanceId(), mode);
