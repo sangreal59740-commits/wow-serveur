@@ -16,7 +16,9 @@
 #include "playerbot/RandomPlayerbotFactory.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 
+#include <cstdlib>
 #include <functional>
+#include <map>
 #include <set>
 #include <sstream>
 
@@ -90,6 +92,25 @@ namespace cmangos_module
             " `xp_mult` FLOAT NOT NULL,"
             " `react_mult` FLOAT NOT NULL,"
             " PRIMARY KEY (`guid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+        CharacterDatabase.Execute("CREATE TABLE IF NOT EXISTS `custom_bot_wave_delete` (`vague` TINYINT UNSIGNED NOT NULL, PRIMARY KEY (`vague`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+
+        // Suppression des vagues demandees avec .bots supprimer (faite au demarrage, avant la connexion des bots)
+        if (auto del = CharacterDatabase.Query("SELECT p.`guid`, c.`account` FROM `custom_bot_profile` p JOIN `characters` c ON c.`guid` = p.`guid` "
+                                               "WHERE p.`vague` IN (SELECT `vague` FROM `custom_bot_wave_delete`)"))
+        {
+            uint32 n = 0;
+            do
+            {
+                Field* f = del->Fetch();
+                Player::DeleteFromDB(ObjectGuid(HIGHGUID_PLAYER, f[0].GetUInt32()), f[1].GetUInt32(), false, true);
+                ++n;
+            }
+            while (del->NextRow());
+            sLog.outString("Vagues : %u bot(s) supprime(s)", n);
+        }
+        CharacterDatabase.Execute("DELETE FROM `custom_bot_profile` WHERE `vague` IN (SELECT `vague` FROM `custom_bot_wave_delete`)");
+        CharacterDatabase.Execute("DELETE FROM `custom_bot_wave_delete`");
+        CharacterDatabase.Execute("DELETE FROM `ai_playerbot_random_bots` WHERE `bot` <> 0 AND `bot` NOT IN (SELECT `guid` FROM `characters`)");
         CharacterDatabase.Execute("DELETE FROM `custom_bot_profile` WHERE `guid` NOT IN (SELECT `guid` FROM `characters`)");
 
         if (auto result = CharacterDatabase.Query("SELECT `guid`, `vague`, `rythme`, `qualite`, `xp_mult`, `react_mult` FROM `custom_bot_profile`"))
@@ -117,6 +138,14 @@ namespace cmangos_module
         return n;
     }
 
+    uint32 VaguesModule::VaguesPresentes() const
+    {
+        std::set<uint32> v;
+        for (auto const& kv : profils)
+            v.insert(kv.second.vague);
+        return uint32(v.size());
+    }
+
     void VaguesModule::Message(WorldSession* session, const std::string& text)
     {
         if (session)
@@ -130,6 +159,7 @@ namespace cmangos_module
         {
             { "vague", std::bind(&VaguesModule::HandleVague, this, std::placeholders::_1, std::placeholders::_2), SEC_GAMEMASTER },
             { "info", std::bind(&VaguesModule::HandleInfo, this, std::placeholders::_1, std::placeholders::_2), SEC_PLAYER },
+            { "supprimer", std::bind(&VaguesModule::HandleSupprimer, this, std::placeholders::_1, std::placeholders::_2), SEC_GAMEMASTER },
         };
         return &commandTable;
     }
@@ -137,9 +167,9 @@ namespace cmangos_module
     bool VaguesModule::HandleVague(WorldSession* session, const std::string& args)
     {
         uint32 vague = NombreVagues() + 1;
-        if (vague > VAGUES_MAX)
+        if (VaguesPresentes() >= VAGUES_MAX)
         {
-            Message(session, "Les 5 vagues ont déjà été lancées.");
+            Message(session, "Il y a déjà 5 vagues. Supprime-en une avec .bots supprimer <numéro>.");
             return true;
         }
 
@@ -246,22 +276,37 @@ namespace cmangos_module
         return true;
     }
 
+    bool VaguesModule::HandleSupprimer(WorldSession* session, const std::string& args)
+    {
+        uint32 v = uint32(atoi(args.c_str()));
+        bool existe = false;
+        for (auto const& kv : profils)
+            if (kv.second.vague == v)
+                existe = true;
+        if (!v || !existe)
+        {
+            Message(session, "Usage : .bots supprimer <numéro de vague> (voir .bots info).");
+            return true;
+        }
+        CharacterDatabase.PExecute("REPLACE INTO `custom_bot_wave_delete` (`vague`) VALUES (%u)", v);
+        Message(session, "La vague " + std::to_string(v) + " sera supprimée au prochain redémarrage du serveur (.server shutdown 0 puis relance).");
+        return true;
+    }
+
     bool VaguesModule::HandleInfo(WorldSession* session, const std::string& args)
     {
-        uint32 parVague[VAGUES_MAX + 1] = { 0 };
+        std::map<uint32, uint32> parVague;
         uint32 rythmes[4] = { 0, 0, 0, 0 }, qualites[4] = { 0, 0, 0, 0 };
         for (auto const& kv : profils)
         {
-            if (kv.second.vague <= VAGUES_MAX)
-                ++parVague[kv.second.vague];
+            ++parVague[kv.second.vague];
             ++rythmes[kv.second.rythme & 3];
             ++qualites[kv.second.qualite & 3];
         }
         std::ostringstream out;
-        out << "Vagues lancées : " << NombreVagues() << " / " << VAGUES_MAX << ". Bots :";
-        for (uint32 v = 1; v <= VAGUES_MAX; ++v)
-            if (parVague[v])
-                out << " vague " << v << " = " << parVague[v] << ";";
+        out << "Vagues présentes : " << VaguesPresentes() << " / " << VAGUES_MAX << ". Bots :";
+        for (auto const& kv : parVague)
+            out << " vague " << kv.first << " = " << kv.second << ";";
         Message(session, out.str());
 
         std::ostringstream out2;

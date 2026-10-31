@@ -39,6 +39,8 @@ namespace cmangos_module
     private:
         bool HandleVague(WorldSession* session, const std::string& args);
         bool HandleInfo(WorldSession* session, const std::string& args);
+        bool HandleSupprimer(WorldSession* session, const std::string& args);
+        uint32 VaguesPresentes() const;
         void Message(WorldSession* session, const std::string& text);
         uint32 NombreVagues() const;
 
