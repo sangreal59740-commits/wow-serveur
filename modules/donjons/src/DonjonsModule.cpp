@@ -38,6 +38,20 @@ namespace cmangos_module
         { 10, 189,  1608.1f,  -318.9f,   18.7f, 40,  3975, "Monastère : Armurerie" },
         { 11, 189,   853.2f,  1319.2f,   18.7f, 42,  3977, "Monastère : Cathédrale" },
         { 12, 129,  2593.7f,  1111.2f,   51.0f, 41,  7358, "Souilles de Tranchebauge" },
+        // donjons de haut niveau : mode mythique seulement
+        { 13,  70,  -228.9f,    46.1f,  -46.0f, 47,  2748, "Uldaman" },
+        { 14, 209,  1212.7f,   842.0f,    8.9f, 48,  7267, "Zul'Farrak" },
+        { 15, 349,  1016.8f,  -458.5f,  -43.5f, 51, 12201, "Maraudon" },
+        { 15, 349,   755.1f,  -617.7f,  -32.9f, 51, 12201, "Maraudon" },
+        { 16, 109,  -315.9f,   100.2f, -131.8f, 55,  5709, "Temple englouti" },
+        { 17, 230,   456.9f,    34.1f,  -68.1f, 59,  9019, "Profondeurs de Rochenoire" },
+        { 18, 229,    78.4f,  -226.8f,   49.8f, 60,  9568, "Pic Rochenoire" },
+        { 19, 429,    47.5f,  -153.7f,   -2.7f, 58, 11492, "Hache-Tripes Est" },
+        { 20, 429,   -65.7f,   159.6f,   -3.5f, 61, 11486, "Hache-Tripes Ouest" },
+        { 21, 429,   254.9f,   -19.5f,   -2.6f, 62, 11501, "Hache-Tripes Nord" },
+        { 22, 329,  3392.9f, -3395.0f,  143.1f, 62, 10813, "Stratholme : quartier écarlate" },
+        { 23, 329,  3590.9f, -3643.2f,  138.5f, 62, 10440, "Stratholme : quartier mort-vivant" },
+        { 24, 289,   190.8f,   126.3f,  137.2f, 61,  1853, "Scholomance" },
     };
     static const uint32 DONJONS_COUNT = sizeof(DONJONS) / sizeof(DONJONS[0]);
 
@@ -47,7 +61,15 @@ namespace cmangos_module
         ACTION_NORMAL   = GOSSIP_ACTION_INFO_DEF + 100,
         ACTION_NIV40    = GOSSIP_ACTION_INFO_DEF + 140,
         ACTION_NIV50    = GOSSIP_ACTION_INFO_DEF + 150,
+        ACTION_MYTH     = GOSSIP_ACTION_INFO_DEF + 200,     // + niveau M (0 a 10)
     };
+
+    // mythique : nombre de monstres et multiplicateur PV / dégâts par niveau M
+    static const float MYTH_COUNT[DONJONS_MYTHIC_MAX + 1] = { 1.2f, 1.6f, 2.0f, 2.3f, 2.7f, 3.1f, 3.5f, 3.9f, 4.2f, 4.6f, 5.0f };
+    static const float MYTH_POWER[DONJONS_MYTHIC_MAX + 1] = { 1.2f, 1.58f, 1.96f, 2.34f, 2.72f, 3.10f, 3.48f, 3.86f, 4.24f, 4.62f, 5.0f };
+
+    static bool IsMythic(uint32 level) { return level >= DONJONS_MYTHIC; }
+    static uint32 MythicOf(uint32 level) { return std::min<uint32>(level - DONJONS_MYTHIC, DONJONS_MYTHIC_MAX); }
 
     static bool IsDonjonMap(uint32 mapId)
     {
@@ -64,6 +86,11 @@ namespace cmangos_module
 
     static std::string NomMode(uint32 level)
     {
+        if (IsMythic(level))
+        {
+            uint32 m = MythicOf(level);
+            return m == 0 ? std::string("Mythique M0") : "Mythique M+" + std::to_string(m);
+        }
         if (level >= 50) return "Niveau 50";
         if (level >= 40) return "Niveau 40";
         return "Normal";
@@ -101,6 +128,33 @@ namespace cmangos_module
             while (result->NextRow());
         }
         sLog.outString("Donjons : %u instance(s) avec un mode enregistre", count);
+
+        CharacterDatabase.Execute(
+            "CREATE TABLE IF NOT EXISTS `custom_mythic_best` ("
+            " `guid` INT UNSIGNED NOT NULL,"
+            " `dungeon` INT NOT NULL,"
+            " `best` INT NOT NULL DEFAULT -1,"
+            " PRIMARY KEY (`guid`, `dungeon`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+        if (auto result = CharacterDatabase.Query("SELECT `guid`, `dungeon`, `best` FROM `custom_mythic_best`"))
+        {
+            do
+            {
+                Field* fields = result->Fetch();
+                bestLevels[(uint64(fields[0].GetUInt32()) << 8) | uint64(fields[1].GetInt32() & 0xFF)] = fields[2].GetInt32();
+            }
+            while (result->NextRow());
+        }
+        if (auto result = WorldDatabase.Query("SELECT `entry` FROM `custom_mythic_boss`"))
+        {
+            do
+                bossEntries.insert(result->Fetch()[0].GetUInt32());
+            while (result->NextRow());
+        }
+        for (uint32 i = 0; i < DONJONS_COUNT; ++i)
+            bossEntries.insert(DONJONS[i].finalBoss);
+        for (uint32 e = DONJONS_RARE_BASE; e <= DONJONS_RARE_LAST; ++e)
+            bossEntries.insert(e);
+        sLog.outString("Donjons : %u boss pour le butin mythique", uint32(bossEntries.size()));
     }
 
     const DonjonInfo* DonjonsModule::FindDonjon(uint32 mapId, float x, float y, float z) const
@@ -170,17 +224,110 @@ namespace cmangos_module
         const DonjonInfo* d = GetDonjon(mode);
         if (mode.level == 0 || !d)
         {
-            if (creature->GetLevel() != orig)
+            auto am = mode.appliedMult.find(key);
+            if (creature->GetLevel() != orig || (am != mode.appliedMult.end() && am->second != 1.0f))
                 creature->SelectLevel(orig);
+            mode.appliedMult[key] = 1.0f;
             creature->SetCustomSpellMult(1.0f);
             return;
         }
 
-        int32 level = int32(orig) + int32(mode.level) + 1 - int32(d->refLevel);
-        level = std::max(1, std::min(63, level));
-        if (creature->GetLevel() != uint32(level))
+        int32 level;
+        float mult = 1.0f;
+        if (IsMythic(mode.level))
+        {
+            // tout au niveau 60 environ : monstres 58 a 60, boss 61 (62 au plus)
+            level = int32(orig) + 61 - int32(d->refLevel);
+            level = std::max(58, std::min(62, level));
+            mult = MYTH_POWER[MythicOf(mode.level)];
+        }
+        else
+        {
+            level = int32(orig) + int32(mode.level) + 1 - int32(d->refLevel);
+            level = std::max(1, std::min(63, level));
+        }
+
+        auto am = mode.appliedMult.find(key);
+        if (creature->GetLevel() != uint32(level) || am == mode.appliedMult.end() || am->second != mult)
+        {
             creature->SelectLevel(uint32(level));
-        creature->SetCustomSpellMult(DamageRatio(orig, uint32(level)));
+            if (mult != 1.0f)
+            {
+                creature->SetCreateHealth(uint32(creature->GetCreateHealth() * mult));
+                for (WeaponAttackType att : { BASE_ATTACK, OFF_ATTACK, RANGED_ATTACK })
+                {
+                    creature->SetBaseWeaponDamage(att, MINDAMAGE, creature->GetBaseWeaponDamage(att, MINDAMAGE) * mult);
+                    creature->SetBaseWeaponDamage(att, MAXDAMAGE, creature->GetBaseWeaponDamage(att, MAXDAMAGE) * mult);
+                }
+                creature->UpdateAllStats();
+                creature->SetHealth(creature->GetMaxHealth());
+            }
+            mode.appliedMult[key] = mult;
+        }
+        creature->SetCustomSpellMult(DamageRatio(orig, uint32(level)) * mult);
+
+        if (IsMythic(mode.level) && !creature->IsCustomCloned() && !creature->IsTemporarySummon() && CanClone(creature))
+        {
+            creature->SetCustomCloned(true);
+            QueueClones(creature, MythicOf(mode.level));
+        }
+    }
+
+    bool DonjonsModule::CanClone(Creature* creature) const
+    {
+        CreatureInfo const* info = creature->GetCreatureInfo();
+        if (!info || IsBoss(creature->GetEntry()) || info->Rank >= 2 || info->HealthMultiplier >= 4.0f)
+            return false;
+        if (!creature->GetScriptName().empty())
+            return false;
+        if (info->NpcFlags || info->CreatureType == CREATURE_TYPE_CRITTER || info->MaxLevel <= 5)
+            return false;
+        if (creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_UNINTERACTIBLE | UNIT_FLAG_SPAWNING))
+            return false;
+        if (creature->GetEntry() >= DONJONS_RARE_BASE && creature->GetEntry() <= DONJONS_RARE_LAST + 20)
+            return false;
+        return true;
+    }
+
+    // Clones : créés au prochain passage du thread de la carte (pas pendant le chargement de la grille)
+    void DonjonsModule::QueueClones(Creature* creature, uint32 mythic)
+    {
+        float total = MYTH_COUNT[mythic] - 1.0f;
+        uint32 count = uint32(total);
+        if (rand_norm_f() < total - float(count))
+            ++count;
+        if (!count)
+            return;
+        ObjectGuid guid = creature->GetObjectGuid();
+        creature->GetMap()->GetMessager().AddMessage([guid, count](Map* map)
+        {
+            Creature* src = map->GetCreature(guid);
+            if (!src || !src->IsAlive() || src->IsInCombat())
+                return;
+            for (uint32 i = 0; i < count; ++i)
+            {
+                float angle = rand_norm_f() * 6.2831853f;
+                float dist = 2.0f + rand_norm_f() * 1.5f;
+                float x = src->GetPositionX() + dist * std::cos(angle);
+                float y = src->GetPositionY() + dist * std::sin(angle);
+                float z = src->GetPositionZ();
+                src->UpdateAllowedPositionZ(x, y, z);
+                src->SummonCreature(src->GetEntry(), x, y, z, src->GetOrientation(), TEMPSPAWN_CORPSE_TIMED_DESPAWN, 300000);
+            }
+        });
+    }
+
+    int32 DonjonsModule::GetBest(Player* player, int32 dungeon) const
+    {
+        auto it = bestLevels.find((uint64(player->GetGUIDLow()) << 8) | uint64(dungeon & 0xFF));
+        return it == bestLevels.end() ? -1 : it->second;
+    }
+
+    void DonjonsModule::SetBest(Player* player, int32 dungeon, int32 value)
+    {
+        bestLevels[(uint64(player->GetGUIDLow()) << 8) | uint64(dungeon & 0xFF)] = value;
+        CharacterDatabase.PExecute("REPLACE INTO `custom_mythic_best` (`guid`, `dungeon`, `best`) VALUES (%u, %i, %i)",
+            player->GetGUIDLow(), dungeon, value);
     }
 
     void DonjonsModule::ApplyToInstance(Map* map, InstanceMode& mode)
@@ -213,6 +360,7 @@ namespace cmangos_module
 
     void DonjonsModule::OnAddToWorld(Creature* creature)
     {
+        std::lock_guard<std::recursive_mutex> guard(lock);
         if (!creature || !creature->IsInWorld())
             return;
         Map* map = creature->GetMap();
@@ -234,6 +382,7 @@ namespace cmangos_module
 
     void DonjonsModule::OnGossipHello(Player* player, Creature* creature)
     {
+        std::lock_guard<std::recursive_mutex> guard(lock);
         if (!player || !creature || !IsGardien(creature->GetEntry()))
             return;
         Map* map = creature->GetMap();
@@ -261,19 +410,40 @@ namespace cmangos_module
             return;
         }
 
+        const int32 idx = int32(creature->GetEntry() - DONJONS_NPC_BASE);
         if (mode.level != 0)
             menu.AddMenuItem(GOSSIP_ICON_BATTLE, "Mode normal", GOSSIP_SENDER_MAIN, ACTION_NORMAL, "", false);
-        if (mode.level != 40)
-            menu.AddMenuItem(GOSSIP_ICON_BATTLE, "Mode niveau 40 (monstres niveau 40, boss niveau 41)", GOSSIP_SENDER_MAIN, ACTION_NIV40, "Passer le donjon en mode niveau 40 ?", false);
-        if (mode.level != 50)
-            menu.AddMenuItem(GOSSIP_ICON_BATTLE, "Mode niveau 50 (monstres niveau 50, boss niveau 51)", GOSSIP_SENDER_MAIN, ACTION_NIV50, "Passer le donjon en mode niveau 50 ?", false);
+        if (idx < DONJONS_MODES_4050)
+        {
+            if (mode.level != 40)
+                menu.AddMenuItem(GOSSIP_ICON_BATTLE, "Mode niveau 40 (monstres niveau 40, boss niveau 41)", GOSSIP_SENDER_MAIN, ACTION_NIV40, "Passer le donjon en mode niveau 40 ?", false);
+            if (mode.level != 50)
+                menu.AddMenuItem(GOSSIP_ICON_BATTLE, "Mode niveau 50 (monstres niveau 50, boss niveau 51)", GOSSIP_SENDER_MAIN, ACTION_NIV50, "Passer le donjon en mode niveau 50 ?", false);
+        }
+        // mythique : jusqu'au meilleur niveau réussi par le chef + 1
+        const int32 bestLevel = GetBest(player, idx);
+        const int32 maxM = std::min<int32>(DONJONS_MYTHIC_MAX, bestLevel + 1);
+        menu.AddMenuItem(GOSSIP_ICON_CHAT, bestLevel < 0 ? std::string("Mythique : aucun niveau réussi") :
+            "Mythique : meilleur niveau réussi " + NomMode(DONJONS_MYTHIC + bestLevel).substr(9), GOSSIP_SENDER_MAIN, ACTION_INFO, "", false);
+        for (int32 m = 0; m <= maxM; ++m)
+        {
+            if (mode.level == uint32(DONJONS_MYTHIC + m))
+                continue;
+            char buf[160];
+            snprintf(buf, sizeof(buf), "%s (niveau 60, monstres x%.1f, PV et dégâts x%.2f)",
+                NomMode(DONJONS_MYTHIC + m).c_str(), MYTH_COUNT[m], MYTH_POWER[m]);
+            menu.AddMenuItem(GOSSIP_ICON_BATTLE, buf, GOSSIP_SENDER_MAIN, ACTION_MYTH + m,
+                "Passer le donjon en " + NomMode(DONJONS_MYTHIC + m) + " ?", false);
+        }
     }
 
     bool DonjonsModule::OnGossipSelect(Player* player, Creature* creature, uint32 sender, uint32 action, const std::string& code, uint32 gossipListId)
     {
+        std::lock_guard<std::recursive_mutex> guard(lock);
         if (!player || !creature || !IsGardien(creature->GetEntry()))
             return false;
-        if (action != ACTION_INFO && action != ACTION_NORMAL && action != ACTION_NIV40 && action != ACTION_NIV50)
+        const bool myth = action >= ACTION_MYTH && action <= ACTION_MYTH + DONJONS_MYTHIC_MAX;
+        if (action != ACTION_INFO && action != ACTION_NORMAL && action != ACTION_NIV40 && action != ACTION_NIV50 && !myth)
             return false;
 
         player->GetPlayerMenu()->CloseGossip();
@@ -295,6 +465,16 @@ namespace cmangos_module
             return true;
 
         uint32 level = action == ACTION_NIV50 ? 50 : (action == ACTION_NIV40 ? 40 : 0);
+        const int32 idx = int32(creature->GetEntry() - DONJONS_NPC_BASE);
+        if (myth)
+        {
+            int32 m = int32(action - ACTION_MYTH);
+            if (m > GetBest(player, idx) + 1)
+                return true;
+            level = DONJONS_MYTHIC + uint32(m);
+        }
+        else if (level && idx >= DONJONS_MODES_4050)
+            return true;
         mode.mapId = map->GetId();
         if (mode.dungeon < 0)
             mode.dungeon = int32(creature->GetEntry() - DONJONS_NPC_BASE);
@@ -310,6 +490,7 @@ namespace cmangos_module
 
     void DonjonsModule::OnKill(Unit* unit, Unit* victim)
     {
+        std::lock_guard<std::recursive_mutex> guard(lock);
         if (!victim || victim->GetTypeId() != TYPEID_UNIT)
             return;
         Creature* creature = static_cast<Creature*>(victim);
@@ -329,6 +510,22 @@ namespace cmangos_module
         if (!d || mode.level == 0 || creature->GetEntry() != d->finalBoss)
             return;
 
+        if (IsMythic(mode.level))
+        {
+            const int32 m = int32(MythicOf(mode.level));
+            for (auto const& ref : map->GetPlayers())
+            {
+                if (Player* player = ref.getSource())
+                    if (GetBest(player, d->index) < m)
+                        SetBest(player, d->index, m);
+            }
+            std::string text = "|cffffd100" + std::string(d->nom) + "|r : " + NomMode(mode.level) + " réussi !";
+            if (m < DONJONS_MYTHIC_MAX)
+                text += " " + NomMode(mode.level + 1) + " débloqué.";
+            Announce(map, text);
+            return;
+        }
+
         uint32 credit = DONJONS_CREDIT_BASE + d->index * 2 + (mode.level >= 50 ? 1 : 0);
         for (auto const& ref : map->GetPlayers())
         {
@@ -340,6 +537,7 @@ namespace cmangos_module
 
     bool DonjonsModule::OnGenerateMoneyLoot(Loot* loot, uint32& outMoney)
     {
+        std::lock_guard<std::recursive_mutex> guard(lock);
         if (!loot || !loot->GetLootTarget() || loot->GetLootTarget()->GetTypeId() != TYPEID_UNIT)
             return false;
         Creature* creature = const_cast<Creature*>(static_cast<Creature const*>(loot->GetLootTarget()));
@@ -370,17 +568,34 @@ namespace cmangos_module
     // Boss rares : en mode 40 / 50, butin du niveau du mode (épique du monde a ce niveau)
     bool DonjonsModule::OnFillLoot(Loot* loot, Player* owner)
     {
+        std::lock_guard<std::recursive_mutex> guard(lock);
         if (!loot || !owner || loot->GetLootType() != LOOT_CORPSE || !loot->GetLootTarget() || loot->GetLootTarget()->GetTypeId() != TYPEID_UNIT)
             return false;
         Creature const* creature = static_cast<Creature const*>(loot->GetLootTarget());
         const uint32 entry = creature->GetEntry();
-        if (entry < DONJONS_RARE_BASE || entry > DONJONS_RARE_LAST)
-            return false;
         Map* map = creature->GetMap();
-        if (!map)
+        if (!map || !map->IsDungeon())
             return false;
         auto it = instances.find(map->GetInstanceId());
         if (it == instances.end() || it->second.level == 0)
+            return false;
+
+        // mythique : butin mythique des boss (2 objets, 3 pour le boss final)
+        if (IsMythic(it->second.level))
+        {
+            if (!IsBoss(entry))
+                return false;
+            const DonjonInfo* d = GetDonjon(it->second);
+            const uint32 m = MythicOf(it->second.level);
+            const uint32 id = DONJONS_MYTHIC_LOOT + ((d && entry == d->finalBoss) ? 100 : 0) + m;
+            LootTemplate const* tab = LootTemplates_Creature.GetLootFor(id);
+            if (!tab)
+                return false;
+            tab->Process(*loot, owner, LootTemplates_Creature.IsRatesAllowed());
+            return true;
+        }
+
+        if (entry < DONJONS_RARE_BASE || entry > DONJONS_RARE_LAST)
             return false;
 
         const uint32 lootId = entry + (it->second.level >= 50 ? 40 : 20);

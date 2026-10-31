@@ -728,6 +728,8 @@ class Creature : public Unit
         // [custom donjons] multiplicateur des degats et soins des sorts (modes niveau 40/50)
         float GetCustomSpellMult() const { return m_customSpellMult; }
         void SetCustomSpellMult(float mult) { m_customSpellMult = mult; }
+        bool IsCustomCloned() const { return m_customCloned; }
+        void SetCustomCloned(bool on) { m_customCloned = on; }
 
         VendorItemData const* GetVendorItems() const;
         VendorItemData const* GetVendorTemplateItems() const;
@@ -1027,6 +1029,7 @@ class Creature : public Unit
         float m_baseAP;
         float m_baseRAP;
         float m_customSpellMult = 1.0f;
+        bool m_customCloned = false;
 
     private:
         GridReference<Creature> m_gridRef;
