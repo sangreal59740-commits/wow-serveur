@@ -366,4 +366,28 @@ namespace cmangos_module
         outMoney = uint32(base * ratio * sWorld.getConfig(CONFIG_FLOAT_RATE_DROP_MONEY));
         return true;
     }
+
+    // Boss rares : en mode 40 / 50, butin du niveau du mode (épique du monde a ce niveau)
+    bool DonjonsModule::OnFillLoot(Loot* loot, Player* owner)
+    {
+        if (!loot || !owner || loot->GetLootType() != LOOT_CORPSE || !loot->GetLootTarget() || loot->GetLootTarget()->GetTypeId() != TYPEID_UNIT)
+            return false;
+        Creature const* creature = static_cast<Creature const*>(loot->GetLootTarget());
+        const uint32 entry = creature->GetEntry();
+        if (entry < DONJONS_RARE_BASE || entry > DONJONS_RARE_LAST)
+            return false;
+        Map* map = creature->GetMap();
+        if (!map)
+            return false;
+        auto it = instances.find(map->GetInstanceId());
+        if (it == instances.end() || it->second.level == 0)
+            return false;
+
+        const uint32 lootId = entry + (it->second.level >= 50 ? 40 : 20);
+        LootTemplate const* tab = LootTemplates_Creature.GetLootFor(lootId);
+        if (!tab)
+            return false;
+        tab->Process(*loot, owner, LootTemplates_Creature.IsRatesAllowed());
+        return true;
+    }
 }

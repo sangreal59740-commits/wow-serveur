@@ -14,6 +14,8 @@ namespace cmangos_module
     #define DONJONS_NPC_BASE        990100      // Gardien des epreuves : 990100 + index du donjon (0 a 12)
     #define DONJONS_NPC_LAST        990112
     #define DONJONS_CREDIT_BASE     990200      // + index*2 + (mode 50 ? 1 : 0)
+    #define DONJONS_RARE_BASE       990400      // boss rare : 990400 + index du donjon ; butin +20 (mode 40), +40 (mode 50)
+    #define DONJONS_RARE_LAST       990412
 
     struct DonjonInfo
     {
@@ -45,6 +47,7 @@ namespace cmangos_module
         bool OnGossipSelect(Player* player, Creature* creature, uint32 sender, uint32 action, const std::string& code, uint32 gossipListId) override;
         void OnKill(Unit* unit, Unit* victim) override;
         bool OnGenerateMoneyLoot(Loot* loot, uint32& outMoney) override;
+        bool OnFillLoot(Loot* loot, Player* owner) override;
 
     private:
         const DonjonInfo* FindDonjon(uint32 mapId, float x, float y, float z) const;
