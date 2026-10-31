@@ -1,4 +1,4 @@
-# Armes légendaires (ilvl 120) : 7 fragments -> quête de l'Esprit des Sept (Hurlevent, Orgrimmar), 15 choix.
+# Armes légendaires (ilvl 140) : 7 fragments -> quête de l'Esprit des Sept (Hurlevent, Orgrimmar), 15 choix.
 # Sorties : legendaires.sql (base world) + legendaires_rows.json (lignes Spell.dbc / SpellItemEnchantment.dbc)
 import sys, json, math, subprocess
 sys.path.insert(0, '/home/claude/wow/fr')
@@ -22,6 +22,7 @@ CH = json.load(open('/home/claude/wow/stats/changes.json'))['spells']
 def s32(x): return x - (1 << 32) if x >= 1 << 31 else x
 SP = {}
 FAM = {'sp': 'Increase Spell Dam ', 'heal': 'Increase Healing ', 'ap': 'Attack Power ', 'crit': 'Increased Critical ',
+       'def': 'Increased Defense',
        'hit': 'Increased Hit Chance '}
 for r in spell.rows:
     n = spell.str(r[120])
@@ -39,10 +40,14 @@ for r in spell.rows:
         if v > 0:
             SP.setdefault(k, []).append((v, r[0]))
 def pick_split(fam, target, slots):
-    """1 ou 2 sorts pour atteindre la valeur (les plus gros sorts vanilla plafonnent)."""
-    top = max(v for v, _ in SP[fam])
-    n = 1 if target <= top * 1.05 or slots < 2 else 2
-    return [min(SP[fam], key=lambda x: (abs(x[0] - target / n), x[1]))[1] for _ in range(n)]
+    """1 ou 2 sorts pour approcher la valeur au mieux (les plus gros sorts vanilla plafonnent)."""
+    best = None
+    for n in range(1, min(2, slots) + 1):
+        v, i = min(SP[fam], key=lambda x: (abs(x[0] - target / n), x[1]))
+        err = abs(v * n - target)
+        if best is None or err < best[0] - 1e-6:
+            best = (err, [i] * n)
+    return best[1]
 
 NPC_SW, NPC_ORG = 990160, 990161
 QUEST1, QUEST2 = 999200, 999201
@@ -122,9 +127,9 @@ V_GOLD, V_SHADOW, V_FIRE, V_BLUE, V_POISON, V_BLOOD, V_ICE, V_ARCANE = 103, 1, 2
 
 # ---------------------------------------------------------------- armes
 STATID = {'agi': 3, 'str': 4, 'int': 5, 'spi': 6, 'sta': 7}
-COST = {'ap': 0.5, 'crit': 14, 'hit': 10}
+COST = {'ap': 0.5, 'crit': 14, 'hit': 10, 'def': 1.0}
 def stats_for(slotmod, dist):
-    P = (120 - 1.3) / 1.3 * slotmod * 1.25 * 1.5      # légendaire ilvl 120, +50 % compris
+    P = (140 - 1.3) / 1.3 * slotmod * 1.25 * 1.5      # légendaire ilvl 140, +50 % compris
     st, bonus = {}, {}
     for k, f in dist.items():
         if k in STATID:
@@ -132,38 +137,38 @@ def stats_for(slotmod, dist):
         else:
             bonus[k] = P * f / COST[k]
     return st, bonus
-D_TANK = {'sta': .45, 'str': .30, 'agi': .15, 'hit': .10}
-D_STR = {'str': .45, 'sta': .25, 'agi': .10, 'crit': .10, 'ap': .10}
-D_AGI = {'agi': .40, 'sta': .25, 'str': .10, 'crit': .10, 'ap': .15}
-D_RNG = {'agi': .50, 'sta': .25, 'crit': .10, 'ap': .15}
+D_TANK = {'sta': .40, 'str': .25, 'agi': .10, 'def': .15, 'hit': .10}
+D_STR = {'str': .40, 'sta': .20, 'agi': .10, 'crit': .10, 'ap': .20}
+D_AGI = {'agi': .35, 'sta': .20, 'str': .10, 'crit': .10, 'ap': .25}
+D_RNG = {'agi': .40, 'sta': .20, 'crit': .10, 'ap': .30}
 D_CAST = {'int': .45, 'sta': .35, 'spi': .20}
 D_HEAL = {'int': .40, 'spi': .30, 'sta': .30}
 
 # (clé, nom, objet modèle, type d'objet, vitesse ms, dps, répartition, part de stats, sorts [(id, déclencheur)],
 #  bonus fixe (famille, valeur), visuel)
 W = [
-    ('tank_epee', "Rempart de l'Aube", 19019, 13, 2400, 125, D_TANK, 0.42, [(S_THREAT, 1)], None, V_GOLD),
-    ('tank_bouclier', "Égide des Sept", 18168, 14, 0, 0, {'sta': .7, 'str': .3}, 0.56, [(S_AEGIS_P, 1)], None, None),
-    ('epee2m', "Lame des Sept Fragments", 22691, 17, 3600, 165, D_STR, 0.8, [(S_SHADOWFIRE, 2)], None, V_SHADOW),
-    ('hache2m', "Brise-Monde", 22815, 17, 3600, 165, D_STR, 0.8, [(S_EXTRA, 2)], None, V_BLUE),
-    ('masse2m', "Marteau du Crépuscule", 22798, 17, 3800, 165, D_STR, 0.8, [(S_WAVE, 2)], None, V_SHADOW),
-    ('dague1', "Croc Jumeau du Néant", 22802, 13, 1800, 125, D_AGI, 0.42, [(S_POISON, 2)], None, V_POISON),
-    ('dague2', "Croc Jumeau du Néant", 22802, 13, 1800, 125, D_AGI, 0.42, [(S_POISON, 2)], None, V_POISON),
-    ('epee1', "Lame de l'Éclipse", 23577, 13, 2600, 125, D_AGI, 0.42, [(S_HASTE, 2)], None, V_BLUE),
-    ('epee2', "Lame de l'Éclipse", 23577, 13, 2600, 125, D_AGI, 0.42, [(S_HASTE, 2)], None, V_BLUE),
-    ('hache1', "Fendeuse de Rage", 19363, 13, 2600, 125, D_AGI, 0.42, [(S_BLEED, 2)], None, V_BLOOD),
-    ('hache2', "Fendeuse de Rage", 19363, 13, 2600, 125, D_AGI, 0.42, [(S_BLEED, 2)], None, V_BLOOD),
-    ('griffe1', "Griffe du Dévoreur", 23242, 13, 2000, 125, D_AGI, 0.42, [(S_DRAIN, 2)], None, V_SHADOW),
-    ('griffe2', "Griffe du Dévoreur", 23242, 13, 2000, 125, D_AGI, 0.42, [(S_DRAIN, 2)], None, V_SHADOW),
-    ('fusil', "Le Dernier Mot", 17072, 26, 3000, 120, D_RNG, 0.3, [(S_EXPLO, 2)], None, V_FIRE),
-    ('arc', "Souffle des Sept Vents", 17069, 15, 3000, 120, D_RNG, 0.3, [(S_MULTI, 2)], None, V_ICE),
-    ('arbalete', "Carreau du Jugement", 19361, 26, 3400, 120, D_RNG, 0.3, [(S_PIERCE, 2)], None, V_GOLD),
-    ('baton_sorts', "Bâton des Sept Âmes", 22589, 17, 3000, 90, D_CAST, 0.8, [(S_SOULS_P, 1)], ('sp', 230), V_ARCANE),
-    ('dague_sorts', "Éclat d'Arcane", 22803, 13, 1800, 70, D_CAST, 0.42, [(S_ARC_P, 1)], ('sp', 140), V_ARCANE),
-    ('orbe', "Orbe des Fragments", 23049, 23, 0, 0, D_CAST, 0.42, [], ('sp', 60), None),
-    ('baton_soins', "Bâton de l'Aube éternelle", 22631, 17, 3000, 90, D_HEAL, 0.8, [(S_BOUNCE_P, 1)], ('heal', 440), V_GOLD),
-    ('masse_soins', "Marteau de la Lumière brisée", 23056, 13, 2400, 70, D_HEAL, 0.42, [(S_LUMEN_P, 1)], ('heal', 260), V_GOLD),
-    ('lumen', "Lumen", 23048, 23, 0, 0, D_HEAL, 0.42, [], ('heal', 110), None),
+    ('tank_epee', "Rempart de l'Aube", 19019, 13, 2400, 146, D_TANK, 0.42, [(S_THREAT, 1)], None, V_GOLD),
+    ('tank_bouclier', "Égide des Sept", 18168, 14, 0, 0, {'sta': .55, 'str': .20, 'def': .25}, 0.56, [(S_AEGIS_P, 1)], None, None),
+    ('epee2m', "Lame des Sept Fragments", 22691, 17, 3600, 195, D_STR, 0.8, [(S_SHADOWFIRE, 2)], None, V_SHADOW),
+    ('hache2m', "Brise-Monde", 22815, 17, 3600, 195, D_STR, 0.8, [(S_EXTRA, 2)], None, V_BLUE),
+    ('masse2m', "Marteau du Crépuscule", 22798, 17, 3800, 195, D_STR, 0.8, [(S_WAVE, 2)], None, V_SHADOW),
+    ('dague1', "Croc Jumeau du Néant", 22802, 13, 1800, 146, D_AGI, 0.42, [(S_POISON, 2)], None, V_POISON),
+    ('dague2', "Croc Jumeau du Néant", 22802, 13, 1800, 146, D_AGI, 0.42, [(S_POISON, 2)], None, V_POISON),
+    ('epee1', "Lame de l'Éclipse", 23577, 13, 2600, 146, D_AGI, 0.42, [(S_HASTE, 2)], None, V_BLUE),
+    ('epee2', "Lame de l'Éclipse", 23577, 13, 2600, 146, D_AGI, 0.42, [(S_HASTE, 2)], None, V_BLUE),
+    ('hache1', "Fendeuse de Rage", 19363, 13, 2600, 146, D_AGI, 0.42, [(S_BLEED, 2)], None, V_BLOOD),
+    ('hache2', "Fendeuse de Rage", 19363, 13, 2600, 146, D_AGI, 0.42, [(S_BLEED, 2)], None, V_BLOOD),
+    ('griffe1', "Griffe du Dévoreur", 23242, 13, 2000, 146, D_AGI, 0.42, [(S_DRAIN, 2)], None, V_SHADOW),
+    ('griffe2', "Griffe du Dévoreur", 23242, 13, 2000, 146, D_AGI, 0.42, [(S_DRAIN, 2)], None, V_SHADOW),
+    ('fusil', "Le Dernier Mot", 21272, 26, 3000, 140, D_RNG, 0.3, [(S_EXPLO, 2)], None, V_FIRE),
+    ('arc', "Souffle des Sept Vents", 18713, 15, 3000, 140, D_RNG, 0.3, [(S_MULTI, 2)], None, V_ICE),
+    ('arbalete', "Carreau du Jugement", 22812, 26, 3400, 140, D_RNG, 0.3, [(S_PIERCE, 2)], None, V_GOLD),
+    ('baton_sorts', "Bâton des Sept Âmes", 19356, 17, 3000, 105, D_CAST, 0.8, [(S_SOULS_P, 1)], ('sp', 340), V_ARCANE),
+    ('dague_sorts', "Éclat d'Arcane", 22803, 13, 1800, 82, D_CAST, 0.42, [(S_ARC_P, 1)], ('sp', 210), V_ARCANE),
+    ('orbe', "Orbe des Fragments", 23049, 23, 0, 0, D_CAST, 0.42, [], ('sp', 100), None),
+    ('baton_soins', "Bâton de l'Aube éternelle", 18608, 17, 3000, 105, D_HEAL, 0.8, [(S_BOUNCE_P, 1)], ('heal', 640), V_GOLD),
+    ('masse_soins', "Marteau de la Lumière brisée", 23056, 13, 2400, 82, D_HEAL, 0.42, [(S_LUMEN_P, 1)], ('heal', 380), V_GOLD),
+    ('lumen', "Lumen", 23048, 23, 0, 0, D_HEAL, 0.42, [], ('heal', 170), None),
 ]
 WID = {k: ITEM_BASE + i for i, (k, *_) in enumerate(W)}
 VISUAL_OF = {}
@@ -224,13 +229,13 @@ for i, (k, nom, src, inv, spd, dps, dist, sm, sps, fixe, vis) in enumerate(W):
     e = ITEM_BASE + i
     st, bonus = stats_for(sm, dist)
     sl = []
-    for fam, v in bonus.items():
-        sl += pick_split(fam, v, 1)
     if fixe:
         sl += pick_split(fixe[0], fixe[1] * 1.0, 2)
+    for fam, v in bonus.items():
+        sl += pick_split(fam, v, 1)
     allsp = [(sid, trg) for sid, trg in sps] + [(x, 1) for x in sl]
     allsp = allsp[:5]
-    sets = ["entry=%d" % e, "name='%s'" % esc(nom), "Quality=5", "ItemLevel=120", "RequiredLevel=60", "bonding=1",
+    sets = ["entry=%d" % e, "name='%s'" % esc(nom), "Quality=5", "ItemLevel=140", "RequiredLevel=60", "bonding=1",
             "InventoryType=%d" % inv, "AllowableClass=-1", "AllowableRace=-1", "RandomProperty=0", "itemset=0",
             "Flags=0", "maxcount=1", "description='Forgée avec les sept fragments.'", "SellPrice=250000", "BuyPrice=1000000",
             "RequiredReputationFaction=0", "RequiredReputationRank=0", "requiredhonorrank=0", "RequiredSkill=0",
@@ -247,7 +252,7 @@ for i, (k, nom, src, inv, spd, dps, dist, sm, sps, fixe, vis) in enumerate(W):
         for n in range(2, 6):
             sets += ["dmg_min%d=0" % n, "dmg_max%d=0" % n]
     if k == 'tank_bouclier':
-        sets += ["armor=6000", "block=150"]
+        sets += ["armor=7000", "block=200"]
     for n in range(5):
         sid, trg = allsp[n] if n < len(allsp) else (0, 0)
         sets += ["spellid_%d=%d" % (n + 1, sid), "spelltrigger_%d=%d" % (n + 1, trg), "spellppmRate_%d=0" % (n + 1),
@@ -259,7 +264,7 @@ w_("-- Coffrets (paires d'armes) et Cœur des Sept")
 for i, (k, nom, contenu) in enumerate(BOXES):
     e = BOX_BASE + i
     w_("INSERT INTO tmp_it SELECT * FROM item_template WHERE entry=20367;")
-    w_("UPDATE tmp_it SET entry=%d, name='%s', class=15, subclass=0, Quality=5, Flags=4, InventoryType=0, ItemLevel=120, "
+    w_("UPDATE tmp_it SET entry=%d, name='%s', class=15, subclass=0, Quality=5, Flags=4, InventoryType=0, ItemLevel=140, "
        "RequiredLevel=0, maxcount=1, stackable=1, bonding=1, description='Clic droit pour ouvrir.', BuyPrice=0, SellPrice=0, "
        "spellid_1=0, spelltrigger_1=0, startquest=0, lockid=0, ScriptName='' "
        "WHERE entry=20367;" % (e, esc(nom)))
