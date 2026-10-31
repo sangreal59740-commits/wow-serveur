@@ -7124,7 +7124,8 @@ uint32 Unit::SpellDamageBonusDone(Unit* victim, SpellSchoolMask schoolMask, Spel
     // Creature damage
     if (GetTypeId() == TYPEID_UNIT && !((Creature*)this)->IsPet())
     {
-        DoneTotalMod *= Creature::_GetSpellDamageMod(((Creature*)this)->GetCreatureInfo()->Rank);
+        if (GetLevel() > 15)    // custom : pas de bonus de configuration jusqu'au niveau 15
+            DoneTotalMod *= Creature::_GetSpellDamageMod(((Creature*)this)->GetCreatureInfo()->Rank);
         DoneTotalMod *= ((Creature*)this)->GetCustomSpellMult(); // [custom donjons]
     }
 
