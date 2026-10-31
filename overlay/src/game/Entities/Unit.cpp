@@ -12189,7 +12189,7 @@ float Unit::OCTRegenHPPerSpirit() const
     float regen = 0.0f;
 
     float Spirit = GetStat(STAT_SPIRIT);
-    uint8 Class = getClass();
+    uint8 Class = CustomBaseClass(getClass());   // [custom] classes custom : regen de leur classe de base
 
     switch (Class)
     {
@@ -12212,7 +12212,7 @@ float Unit::OCTRegenMPPerSpirit() const
     float addvalue = 0.0;
 
     float Spirit = GetStat(STAT_SPIRIT);
-    uint8 Class = getClass();
+    uint8 Class = CustomBaseClass(getClass());   // [custom] classes custom : regen de leur classe de base
 
     switch (Class)
     {

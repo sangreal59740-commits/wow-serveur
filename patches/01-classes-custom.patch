@@ -1,0 +1,214 @@
+diff --git a/src/game/Entities/Object.cpp b/src/game/Entities/Object.cpp
+index 832365b94..0762a5bb5 100644
+--- a/src/game/Entities/Object.cpp
++++ b/src/game/Entities/Object.cpp
+@@ -430,7 +430,7 @@ void Object::BuildValuesUpdate(uint8 updatetype, ByteBuffer* data, UpdateMask* u
+ 
+                         if (appendValue & UNIT_NPC_FLAG_STABLEMASTER)
+                         {
+-                            if (target->getClass() != CLASS_HUNTER)
++                            if (CustomBaseClass(target->getClass()) != CLASS_HUNTER)
+                                 appendValue &= ~UNIT_NPC_FLAG_STABLEMASTER;
+                         }
+ 
+diff --git a/src/game/Entities/Player.cpp b/src/game/Entities/Player.cpp
+index 223f2a960..2cc15afbc 100644
+--- a/src/game/Entities/Player.cpp
++++ b/src/game/Entities/Player.cpp
+@@ -1808,7 +1808,7 @@ bool Player::BuildEnumData(QueryResult* result, WorldPacket& p_data)
+         uint32 petFamily = 0;
+ 
+         // show pet at selection character in character list only for non-ghost character
+-        if (result && !(playerFlags & PLAYER_FLAGS_GHOST) && (pClass == CLASS_WARLOCK || pClass == CLASS_HUNTER))
++        if (result && !(playerFlags & PLAYER_FLAGS_GHOST) && (pClass == CLASS_WARLOCK || pClass == CLASS_HUNTER || pClass == CLASS_NECROMANCER || pClass == CLASS_SNIPER))
+         {
+             uint32 entry = fields[16].GetUInt32();
+             CreatureInfo const* cInfo = sCreatureStorage.LookupEntry<CreatureInfo>(entry);
+@@ -1912,7 +1912,7 @@ bool Player::BuildEnumData(PlayerCacheData const* cache, WorldPacket& p_data)
+         uint32 petFamily = 0;
+ 
+         // show pet at selection character in character list only for non-ghost character
+-        if (cache->petEntry && !(playerFlags & PLAYER_FLAGS_GHOST) && (pClass == CLASS_WARLOCK || pClass == CLASS_HUNTER))
++        if (cache->petEntry && !(playerFlags & PLAYER_FLAGS_GHOST) && (pClass == CLASS_WARLOCK || pClass == CLASS_HUNTER || pClass == CLASS_NECROMANCER || pClass == CLASS_SNIPER))
+         {
+             CreatureInfo const* cInfo = sCreatureStorage.LookupEntry<CreatureInfo>(cache->petEntry);
+             if (cInfo)
+@@ -2595,7 +2595,7 @@ Creature* Player::GetNPCIfCanInteractWith(ObjectGuid guid, uint32 npcflagmask)
+ 
+     if (npcflagmask == UNIT_NPC_FLAG_STABLEMASTER)
+     {
+-        if (getClass() != CLASS_HUNTER)
++        if (CustomBaseClass(getClass()) != CLASS_HUNTER)
+             return nullptr;
+     }
+ 
+@@ -5116,7 +5116,7 @@ float Player::GetMeleeCritFromAgility() const
+     float valLevel1 = 0.0f;
+     float valLevel60 = 0.0f;
+     // critical
+-    switch (getClass())
++    switch (CustomBaseClass(getClass()))
+     {
+         case CLASS_PALADIN:
+         case CLASS_SHAMAN:
+@@ -5160,7 +5160,7 @@ float Player::GetDodgeFromAgility(float amount) const
+     float valLevel1 = 0.0f;
+     float valLevel60 = 0.0f;
+     // critical
+-    switch (getClass())
++    switch (CustomBaseClass(getClass()))
+     {
+         case CLASS_PALADIN:
+         case CLASS_SHAMAN:
+@@ -5220,7 +5220,7 @@ float Player::GetSpellCritFromIntellect() const
+         {   0.0f,   0.0f,  10.0f  },                        //  3: hunter
+         {   0.0f,   0.0f,  10.0f  },                        //  4: rogue
+         {   2.97f, 10.03f,  0.82f },                        //  5: priest
+-        {   0.0f,   0.0f,  10.0f  },                        //  6: unused
++        {   3.18f, 11.30f,  0.82f },                        //  6: necromancien (demoniste)
+         {   3.54f, 11.51f,  0.80f },                        //  7: shaman
+         {   3.70f, 14.77f,  0.65f },                        //  8: mage
+         {   3.18f, 11.30f,  0.82f },                        //  9: warlock
+@@ -5228,7 +5228,7 @@ float Player::GetSpellCritFromIntellect() const
+         {   3.33f, 12.41f,  0.79f }                         // 11: druid
+     };
+     // FIXME: Add base value and scaling for hunters, fix the formula
+-    const uint32 pclass = getClass();
++    const uint32 pclass = CustomBaseClass(getClass());
+     if (pclass >= MAX_CLASSES)
+         return 0.0f;
+     const float crit_ratio = crit_data[pclass].rate0 + crit_data[pclass].rate1 * GetLevel();
+@@ -11932,7 +11932,7 @@ void Player::PrepareGossipMenu(WorldObject* pSource, uint32 menuId, bool forceQu
+                         hasMenuItem = false;
+                     break;
+                 case GOSSIP_OPTION_STABLEPET:
+-                    if (getClass() != CLASS_HUNTER)
++                    if (CustomBaseClass(getClass()) != CLASS_HUNTER)
+                         hasMenuItem = false;
+                     break;
+                 case GOSSIP_OPTION_SPIRITGUIDE:
+@@ -17507,6 +17507,8 @@ void Player::SetSpellClass(uint8 playerClass)
+         case CLASS_MAGE: name = SPELLFAMILY_MAGE; break;
+         case CLASS_WARLOCK: name = SPELLFAMILY_WARLOCK; break;
+         case CLASS_DRUID: name = SPELLFAMILY_DRUID; break;
++        case CLASS_NECROMANCER: name = SPELLFAMILY_WARLOCK; break;
++        case CLASS_SNIPER: name = SPELLFAMILY_HUNTER; break;
+     }
+     m_spellClassName = name;
+ }
+diff --git a/src/game/Entities/StatSystem.cpp b/src/game/Entities/StatSystem.cpp
+index 85630efd3..59ce41eab 100644
+--- a/src/game/Entities/StatSystem.cpp
++++ b/src/game/Entities/StatSystem.cpp
+@@ -232,7 +232,8 @@ void Player::UpdateAttackPowerAndDamage(bool ranged)
+ 
+         switch (getClass())
+         {
+-            case CLASS_HUNTER: val2 = level * 2.0f + GetStat(STAT_AGILITY) * 2.0f - 10.0f;    break;
++            case CLASS_HUNTER:
++            case CLASS_SNIPER: val2 = level * 2.0f + GetStat(STAT_AGILITY) * 2.0f - 10.0f;    break;
+             case CLASS_ROGUE:  val2 = level        + GetStat(STAT_AGILITY) - 10.0f;    break;
+             case CLASS_WARRIOR: val2 = level        + GetStat(STAT_AGILITY) - 10.0f;    break;
+             case CLASS_DRUID:
+@@ -256,7 +257,8 @@ void Player::UpdateAttackPowerAndDamage(bool ranged)
+             case CLASS_WARRIOR:      val2 = level * 3.0f + GetStat(STAT_STRENGTH) * 2.0f                    - 20.0f; break;
+             case CLASS_PALADIN:      val2 = level * 3.0f + GetStat(STAT_STRENGTH) * 2.0f                    - 20.0f; break;
+             case CLASS_ROGUE:        val2 = level * 2.0f + GetStat(STAT_STRENGTH) + GetStat(STAT_AGILITY)   - 20.0f; break;
+-            case CLASS_HUNTER:       val2 = level * 2.0f + GetStat(STAT_STRENGTH) + GetStat(STAT_AGILITY)   - 20.0f; break;
++            case CLASS_HUNTER:
++            case CLASS_SNIPER:       val2 = level * 2.0f + GetStat(STAT_STRENGTH) + GetStat(STAT_AGILITY)   - 20.0f; break;
+             case CLASS_SHAMAN:       val2 = level * 2.0f + GetStat(STAT_STRENGTH) * 2.0f                    - 20.0f; break;
+             case CLASS_DRUID:
+             {
+@@ -269,7 +271,8 @@ void Player::UpdateAttackPowerAndDamage(bool ranged)
+             }
+             case CLASS_MAGE:    val2 =              GetStat(STAT_STRENGTH)                         - 10.0f; break;
+             case CLASS_PRIEST:  val2 =              GetStat(STAT_STRENGTH)                         - 10.0f; break;
+-            case CLASS_WARLOCK: val2 =              GetStat(STAT_STRENGTH)                         - 10.0f; break;
++            case CLASS_WARLOCK:
++            case CLASS_NECROMANCER: val2 =              GetStat(STAT_STRENGTH)                         - 10.0f; break;
+         }
+     }
+ 
+@@ -489,11 +492,11 @@ static const float PLAYER_BASE_DODGE[MAX_CLASSES] =
+     0.64f, // [3]  Hunter
+     0.00f, // [4]  Rogue
+     3.00f, // [5]  Priest
+-    0.00f, // [6]  <Unused>
++    2.00f, // [6]  Necromancien (demoniste)
+     1.75f, // [7]  Shaman
+     3.25f, // [8]  Mage
+     2.00f, // [9]  Warlock
+-    0.00f, // [10] <Unused>
++    0.64f, // [10] Sniper (chasseur)
+     0.75f, // [11] Druid
+ };
+ 
+diff --git a/src/game/Globals/SharedDefines.h b/src/game/Globals/SharedDefines.h
+index 003a5b382..a505759a9 100644
+--- a/src/game/Globals/SharedDefines.h
++++ b/src/game/Globals/SharedDefines.h
+@@ -76,11 +76,11 @@ enum Classes
+     CLASS_HUNTER        = 3,
+     CLASS_ROGUE         = 4,
+     CLASS_PRIEST        = 5,
+-    // CLASS_DEATH_KNIGHT  = 6,                             // not listed in DBC, will be in 3.0
++    CLASS_NECROMANCER   = 6,                                // [custom] Necromancien (base demoniste)
+     CLASS_SHAMAN        = 7,
+     CLASS_MAGE          = 8,
+     CLASS_WARLOCK       = 9,
+-    // CLASS_MONK       = 10,                               // not listed in DBC, will be in 5.0
++    CLASS_SNIPER        = 10,                               // [custom] Sniper (base chasseur)
+     CLASS_DRUID         = 11,
+     // CLASS_DEMON_HUNTER = 12,                             // not listed in DBC, will be in 7.0
+ };
+@@ -92,9 +92,13 @@ constexpr uint32 const CLASSMASK_ALL_PLAYABLE = convertEnumToFlag
+ (
+     CLASS_WARRIOR, CLASS_PALADIN, CLASS_HUNTER,
+     CLASS_ROGUE,   CLASS_PRIEST,  CLASS_SHAMAN,
+-    CLASS_MAGE,    CLASS_WARLOCK, CLASS_DRUID
++    CLASS_MAGE,    CLASS_WARLOCK, CLASS_DRUID,
++    CLASS_NECROMANCER, CLASS_SNIPER
+ );
+ 
++// [custom] classe vanilla dont une classe custom reprend les formules (stats, regen, familier)
++inline uint8 CustomBaseClass(uint8 c) { return c == CLASS_NECROMANCER ? CLASS_WARLOCK : c == CLASS_SNIPER ? CLASS_HUNTER : c; }
++
+ constexpr uint32 const CLASSMASK_ALL_CREATURES = convertEnumToFlag(CLASS_WARRIOR, CLASS_PALADIN, CLASS_MAGE);
+ 
+ #define MAX_CREATURE_CLASS 3
+diff --git a/src/game/Spells/Spell.cpp b/src/game/Spells/Spell.cpp
+index cd4957b20..f0cdb3ede 100644
+--- a/src/game/Spells/Spell.cpp
++++ b/src/game/Spells/Spell.cpp
+@@ -5367,7 +5367,7 @@ SpellCastResult Spell::CheckCast(bool strict)
+                     return SPELL_FAILED_DONT_REPORT;
+                 }
+ 
+-                if (plrCaster->getClass() != CLASS_HUNTER && !gmmode)
++                if (CustomBaseClass(plrCaster->getClass()) != CLASS_HUNTER && !gmmode)
+                 {
+                     plrCaster->SendPetTameFailure(PETTAME_UNITSCANTTAME);
+                     return SPELL_FAILED_DONT_REPORT;
+@@ -5678,7 +5678,7 @@ SpellCastResult Spell::CheckCast(bool strict)
+                 if (m_caster->HasCharm())
+                     return SPELL_FAILED_ALREADY_HAVE_CHARM;
+ 
+-                uint32 plClass = m_caster->getClass();
++                uint32 plClass = CustomBaseClass(m_caster->getClass());
+                 if (plClass == CLASS_HUNTER)
+                 {
+                     if (Creature* pet = m_caster->GetPet())
+diff --git a/src/game/Spells/SpellEffects.cpp b/src/game/Spells/SpellEffects.cpp
+index de3376ca3..da04ebb5d 100644
+--- a/src/game/Spells/SpellEffects.cpp
++++ b/src/game/Spells/SpellEffects.cpp
+@@ -3243,7 +3243,7 @@ void Spell::EffectSummonPet(SpellEffectIndex eff_idx)
+     {
+         _player = static_cast<Player*>(m_caster);
+ 
+-        switch (m_caster->getClass())
++        switch (CustomBaseClass(m_caster->getClass()))
+         {
+             case CLASS_HUNTER:
+             {

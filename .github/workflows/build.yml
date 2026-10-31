@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
-    paths: [ 'overlay/**', 'modules/**', 'sources.txt', '.github/workflows/**' ]
+    paths: [ 'overlay/**', 'patches/**', 'modules/**', 'sources.txt', '.github/workflows/**' ]
 
 env:
   BUILD_TYPE: RelWithDebInfo
@@ -36,6 +36,11 @@ jobs:
           if [ -d projet/overlay ] && [ -n "$(ls -A projet/overlay)" ]; then
             cp -rv projet/overlay/. core/
           fi
+          # Correctifs du coeur (patches/*.patch, appliques apres l'overlay)
+          for p in projet/patches/*.patch; do
+            [ -f "$p" ] || continue
+            echo "patch $p"; git -C core apply --whitespace=nowarn "$GITHUB_WORKSPACE/$p"
+          done
           # Modules custom (dossier modules/ du projet) : declares dans la liste des modules
           # (inseres avant la ligne MODULES= et copies dans core/src/modules pour etre vus par Modules.cpp)
           for m in projet/modules/*/; do

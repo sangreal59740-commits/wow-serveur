@@ -998,7 +998,7 @@ bool Creature::IsTrainerOf(Player* pPlayer, bool msg) const
             }
             break;
         case TRAINER_TYPE_PETS:
-            if (pPlayer->getClass() != CLASS_HUNTER)
+            if (CustomBaseClass(pPlayer->getClass()) != CLASS_HUNTER)
             {
                 if (msg)
                 {
