@@ -387,7 +387,7 @@ namespace cmangos_module
             }
         }
         if (In(S_RECUL, S_RECUL_N, id))
-            player->KnockBackWithAngle(player->GetOrientation() + 3.14159265f, 9.0f, 4.0f);
+            player->KnockBackWithAngle(player->GetOrientation() + 3.14159265f, 20.5f, 7.0f);   // environ 15 m (temps de vol 2 x 7 / 19,3 = 0,73 s)
         else if (In(S_APPEL, S_APPEL_N, id))
         {
             std::vector<uint64> before;

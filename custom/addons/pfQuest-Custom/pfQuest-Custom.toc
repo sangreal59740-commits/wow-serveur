@@ -1,0 +1,5 @@
+## Interface: 11200
+## Title: pfQuest-Custom
+## Notes: Quetes ajoutees au serveur (tableaux de primes, donjons, raids) dans pfQuest
+## Dependencies: pfQuest
+pfQuest-Custom.lua
