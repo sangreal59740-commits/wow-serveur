@@ -9,9 +9,16 @@ if errorlevel 1 (
   exit /b
 )
 set "SPP=C:\SPP_Classics V2\SPP_Classics_V2\SPP_Server\Server\Database"
-for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VirtualBox|VMware|Tailscale|ZeroTier' -and $_.IPAddress -notlike '169.254*' -and $_.PrefixOrigin -in 'Dhcp','Manual' } | Select-Object -First 1).IPAddress"`) do set "IP=%%i"
-if "%IP%"=="" (
-  echo  ERREUR : adresse réseau introuvable. Envoie une capture a Claude.
+set "IP="
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "$c = Get-NetIPConfiguration | Where-Object { $_.IPv4DefaultGateway -ne $null -and $_.NetAdapter.Status -eq 'Up' } | Select-Object -First 1; if ($c) { $c.IPv4Address[0].IPAddress }"`) do set "IP=%%i"
+echo %IP%| findstr /r "^[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$" >nul
+if errorlevel 1 (
+  echo  Adresse réseau non trouvée automatiquement.
+  set /p "IP=Tape l'adresse IPv4 de ce PC (ipconfig), puis Entree : "
+)
+echo %IP%| findstr /r "^[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$" >nul
+if errorlevel 1 (
+  echo  ERREUR : adresse invalide, rien n'a ete modifie.
   goto fin
 )
 echo.
