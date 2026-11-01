@@ -329,8 +329,20 @@ namespace cmangos_module
     }
 
     // ------------------------------------------------------------------ Métamorphe
-    void ClassesModule::MetaCast(Player* player, uint32 id, Unit* /*victim*/)
+    void ClassesModule::MetaCast(Player* player, uint32 id, Unit* victim)
     {
+        // Massacre : 2e frappe à 150 %, avec l'arme en main gauche ou, avec un bouclier, l'arme principale
+        if (In(M_MASSACRE, M_MASSACRE_N, id))
+        {
+            if (victim && victim->IsAlive())
+            {
+                if (player->GetWeaponForAttack(OFF_ATTACK, true, true))
+                    player->CastSpell(victim, M_H2_MASSACRE_G, TRIGGERED_OLD_TRIGGERED);
+                else
+                    player->CastSpell(victim, M_H2_MASSACRE_B, TRIGGERED_OLD_TRIGGERED);
+            }
+            return;
+        }
         if (In(M_APPEL_TOT, M_APPEL_TOT_N, id))
         {
             const uint32_t* lists[] = { M_TOTEM_FEU, M_TOTEM_EAU, M_TOTEM_ROCHE, M_TOTEM_GIVRE };

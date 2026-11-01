@@ -112,7 +112,9 @@ namespace classes_data
     static const uint32_t M_H_VOIE = 63343;
     static const uint32_t M_H_VOIE_SOIN = 63344;
     static const uint32_t M_H_LUNAIRE = 63345;
-    static const uint32_t M_H_EGIDE = 63346;
+    static const uint32_t M_H_MASSACRE_G = 63346;
+    static const uint32_t M_H_MASSACRE_B = 63347;
+    static const uint32_t M_H_EGIDE = 63348;
     static const uint32_t M_APPEL_TOT[] = { 63128 };
     static const uint32_t M_APPEL_TOT_N = 1;
     static const uint32_t M_RENVOI_TOT[] = { 63129 };
@@ -191,7 +193,9 @@ namespace classes_data
     static const uint32_t M_H2_VOIE = 63343;
     static const uint32_t M_H2_VOIE_SOIN = 63344;
     static const uint32_t M_H2_LUNAIRE = 63345;
-    static const uint32_t M_H2_EGIDE = 63346;
+    static const uint32_t M_H2_EGIDE = 63348;
+    static const uint32_t M_H2_MASSACRE_G = 63346;
+    static const uint32_t M_H2_MASSACRE_B = 63347;
     static const uint32_t N_DUP_MOT[] = { 62430, 62431, 62432, 62433, 62434, 62435, 62436, 62437, 62438 };
     static const uint32_t N_DUP_MOT_N = 9;
     static const uint32_t N_DUP_CORRUPTION[] = { 62439, 62440, 62441, 62442, 62443, 62444, 62445, 62446 };
@@ -226,6 +230,8 @@ namespace classes_data
     static const uint32_t M_RECUP_N = 7;
     static const uint32_t M_LUNAIRE[] = { 63053, 63054, 63055, 63056, 63057, 63058, 63059 };
     static const uint32_t M_LUNAIRE_N = 7;
+    static const uint32_t M_MASSACRE[] = { 63103 };
+    static const uint32_t M_MASSACRE_N = 1;
     static const uint32_t C_ROBOT = 990516;
     static const uint32_t C_MEUTE = 990518;
     static const uint32_t BULLET_CAT = 1250;

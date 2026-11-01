@@ -508,8 +508,9 @@ M['pluie'] = mr('pluie', 'tot', 596, 46, 3, "Pluie de guérison", 20, 60000, 200
     "Rend %d à %d points de vie aux membres du groupe à moins de 20 mètres, puis %d en 5 s." % (rv(160, L), rv(175, L), rv(85, L) // 5 * 5),
     "Récupère."), icon_sid=10460)
 M['massacre'] = ms('massacre', 'dru', 78, 52, "Massacre",
-                   "Frappe avec une puissance terrible : 200 % des dégâts de l'arme.", 12000, 0, 8, icon_sid=12294,
-                   Effect1=31, EffectBasePoints1=199, EffectDieSides1=1, PowerType=0)
+                   "Frappe avec les deux armes : 150 % des dégâts de l'arme principale et 150 % de l'arme en main gauche. "
+                   "Avec un bouclier, la deuxième frappe se fait avec l'arme principale.", 12000, 0, 8, icon_sid=12294,
+                   Effect1=31, EffectBasePoints1=149, EffectDieSides1=1, PowerType=0)
 M['consecration'] = mr('consecration', 'ang', 20924, 56, 2, "Consécration", 12, 8000, 0, lambda L, k: (
     {'EffectBasePoints1': rv(384, L) // 8 - 1, 'EffectDieSides1': 1, 'Category': 0, 'CategoryRecoveryTime': 0},
     "Consacre le sol sous vous : %d points de dégâts du Sacré en 8 s aux ennemis qui s'y trouvent." % (rv(384, L) // 8 * 8), ''))
@@ -942,6 +943,9 @@ hm['voie_soin'] = cspell(MCX, 'voie', 8936, "Voie de la guérison", **merge({'Ef
                                                                             'EffectBonusCoefficient1': 0}, none(2), none(3)))
 hm['lunaire'] = cspell(MCX, 'fougue', 12042, "Fougue lunaire", DurationIndex=DUR[10000], StackAmount=3,
                        **merge(auraf(1, 138, 0, 5), none(2), none(3)))
+hm['massacre_g'] = cspell(MCX, 'massacre', 78, "Massacre", AttributesEx3=SPR[78][9] | 0x01000000,
+                         **merge(weapon(1, 150), none(2), none(3)))
+hm['massacre_b'] = cspell(MCX, 'massacre', 78, "Massacre", **merge(weapon(1, 150), none(2), none(3)))
 hm['egide'] = cspell(MCX, 'egide', 11426, "Égide angélique", DurationIndex=DUR[10000],
                      **merge({'EffectBasePoints1': 0, 'EffectDieSides1': 1, 'EffectMiscValue1': 127, 'EffectRealPointsPerLevel1': 0,
                               'EffectBonusCoefficient1': 0}))
@@ -1547,7 +1551,7 @@ for tname, cname in [("Étreinte de la tombe", "T_ETREINTE"), ("Chair putride", 
     arr(cname, TNAMES.get(tname, []))
 for k in ['meute', 'solitaire', 'piege', 'robot', 'blinde', 'cri']:
     one("S_H2_" + k.upper(), hs[k])
-for k in ['voie', 'voie_soin', 'lunaire', 'egide']:
+for k in ['voie', 'voie_soin', 'lunaire', 'egide', 'massacre_g', 'massacre_b']:
     one("M_H2_" + k.upper(), hm[k])
 for k, ids in DUPS.items():
     arr("N_DUP_" + k.upper(), ids)
@@ -1557,7 +1561,7 @@ for k in ['cri', 'bombe', 'dynamite']:
     arr("S_" + k.upper(), ranks(k, SG))
 for k in ['feu', 'eau', 'givre']:
     arr("S_BALLE2_" + k.upper(), ranks(k, SG))
-for k in ['recup', 'lunaire']:
+for k in ['recup', 'lunaire', 'massacre']:
     arr("M_" + k.upper(), ranks(k, MG))
 one("C_ROBOT", C_ROBOT); one("C_MEUTE", C_MEUTE); one("BULLET_CAT", BULLET_CAT)
 H.append("    // listes pour l'IA des bots")
