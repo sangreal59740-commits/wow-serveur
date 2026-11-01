@@ -11,6 +11,10 @@ if errorlevel 1 goto erreur
 if errorlevel 1 goto erreur
 "%SPP%\bin\mysql.exe" --defaults-extra-file="%SPP%\connection.cnf" --default-character-set=utf8mb4 --database=classicmangos < "%~dp0recolte.sql"
 if errorlevel 1 goto erreur
+if exist "%~dp0tableaux.sql" (
+  "%SPP%\bin\mysql.exe" --defaults-extra-file="%SPP%\connection.cnf" --default-character-set=utf8mb4 --database=classicmangos < "%~dp0tableaux.sql"
+  if errorlevel 1 goto erreur
+)
 if exist "%~dp0reset_talents.sql" (
   "%SPP%\bin\mysql.exe" --defaults-extra-file="%SPP%\connection.cnf" --default-character-set=utf8mb4 --database=classiccharacters < "%~dp0reset_talents.sql"
   if errorlevel 1 goto erreur
