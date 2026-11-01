@@ -50,12 +50,14 @@ def spawns(table, ids):
 
 # ------------------------------------------------------------ quêtes
 cols = ("entry, Title, Objectives, Details, QuestLevel, MinLevel, RequiredRaces, PrevQuestId, "
-        "ReqCreatureOrGOId1, ReqCreatureOrGOId2, ReqCreatureOrGOId3, ReqCreatureOrGOId4, ReqItemId1, ReqItemId2, ReqItemId3, ReqItemId4")
+        "ReqCreatureOrGOId1, ReqCreatureOrGOId2, ReqCreatureOrGOId3, ReqCreatureOrGOId4, ReqItemId1, ReqItemId2, ReqItemId3, ReqItemId4, "
+        "ReqCreatureOrGOCount1, ReqItemCount1")
 QUESTS = {}
 for r in q("SELECT %s FROM quest_template WHERE entry >= 990000" % cols):
     e = int(r[0])
     QUESTS[e] = dict(T=r[1], O=r[2], D=r[3], lvl=int(r[4]), min=int(r[5]), race=int(r[6]), pre=int(r[7]),
                      cgo=[int(v) for v in r[8:12] if int(v)], items=[int(v) for v in r[12:16] if int(v)],
+                     ccount=int(r[16]), icount=int(r[17]),
                      start={}, end={}, obj={})
 for table, side, kind in (('creature_questrelation', 'start', 'U'), ('gameobject_questrelation', 'start', 'O'),
                           ('creature_involvedrelation', 'end', 'U'), ('gameobject_involvedrelation', 'end', 'O')):
@@ -104,6 +106,10 @@ if new_items:
     for e, nm in q("SELECT entry, name FROM item_template WHERE entry IN (%s)" % ','.join(map(str, new_items))):
         INAME[int(e)] = nm
 
+# chefs de zone et alphas : copies d'un monstre de la zone (le nom en jeu vient du nom français de la source)
+_ms = open('/home/claude/wow-serveur/custom/monde.sql', encoding='utf-8').read()
+BOSS_SRC = {int(b): int(a) for a, b in re.findall(r"INSERT INTO tmp_ct SELECT \* FROM creature_template WHERE Entry=(\d+);\s*UPDATE tmp_ct SET Entry=(\d+),", _ms)}
+
 # ------------------------------------------------------------ écriture Lua (5.0)
 def s(v):
     return '"' + v.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '$B').replace('\r', '') + '"'
@@ -113,7 +119,9 @@ L = ['-- Généré par gen_pfquest.py : quêtes custom du serveur pour pfQuest. 
      'if not pfDB then return end',
      'local function ajout(dst, src) if dst then for k, v in pairs(src) do dst[k] = v end end end',
      '-- oublie les quêtes que pfQuest avait mémorisées comme inconnues (avant cet addon), pour qu\'il les reconnaisse',
-     'if pfQuest_questcache then for k, v in pairs(pfQuest_questcache) do if type(v) == "table" and type(v[1]) == "string" then pfQuest_questcache[k] = nil end end end',
+     'local function purge() if pfQuest_questcache then for k, v in pairs(pfQuest_questcache) do if type(v) == "table" and type(v[1]) == "string" then pfQuest_questcache[k] = nil end end end end',
+     'purge()',
+     'local f = CreateFrame("Frame") f:RegisterEvent("VARIABLES_LOADED") f:SetScript("OnEvent", function() purge() end)',
      'ajout(pfDB["quests"]["data"], {']
 for e in sorted(QUESTS):
     Q = QUESTS[e]
@@ -128,10 +136,45 @@ for e in sorted(QUESTS):
     L.append('  [%d] = { %s },' % (e, ', '.join(parts)))
 L.append('})')
 L.append('ajout(pfDB["quests"]["frFR"], {')
+PRIMES = []
 for e in sorted(QUESTS):
     Q = QUESTS[e]
+    if 991400 <= e <= 991999:
+        if Q['items']:
+            PRIMES.append('{ %d, "I", %d, %d }' % (e, Q['items'][0], Q['icount']))
+        elif Q['cgo']:
+            c = Q['cgo'][0]
+            if c in BOSS_SRC:
+                PRIMES.append('{ %d, "%s", %d, 1 }' % (e, 'C' if c < 992100 else 'A', BOSS_SRC[c]))
+            else:
+                PRIMES.append('{ %d, "U", %d, %d }' % (e, c, Q['ccount']))
+        continue
     L.append('  [%d] = { ["T"] = %s, ["O"] = %s, ["D"] = %s },' % (e, s(Q['T']), s(Q['O']), s(Q['D'])))
 L.append('})')
+# primes des tableaux : titres construits avec les noms français de pfQuest (ceux que le serveur affiche)
+L.append('local primes = {')
+L += ['  ' + p + ',' for p in PRIMES]
+L.append('}')
+L.append('''local function nomU(id, en) return (pfDB["units"]["frFR"] and pfDB["units"]["frFR"][id]) or (pfDB["units"]["enUS"] and pfDB["units"]["enUS"][id]) or en or "?" end
+local function nomI(id) return (pfDB["items"]["frFR"] and pfDB["items"]["frFR"][id]) or (pfDB["items"]["enUS"] and pfDB["items"]["enUS"][id]) or "?" end
+for i = 1, table.getn(primes) do
+  local q, genre, id, n = primes[i][1], primes[i][2], primes[i][3], primes[i][4]
+  local t, o, d
+  if genre == "I" then
+    local nom = nomI(id)
+    t = "Récolte : " .. nom
+    o = "Rapportez " .. n .. " x " .. nom .. "."
+  elseif genre == "U" then
+    local nom = nomU(id)
+    t = "Prime : " .. nom
+    o = "Tuez " .. n .. " x " .. nom .. "."
+  else
+    local nom = (genre == "C") and ("Chef " .. nomU(id)) or (nomU(id) .. " alpha")
+    t = "Avis de recherche : " .. nom
+    o = "Abattez " .. nom .. "."
+  end
+  pfDB["quests"]["frFR"][q] = { ["T"] = t, ["O"] = o, ["D"] = "Prime du tableau de la région." }
+end''')
 L.append('ajout(pfDB["units"]["data"], {')
 for u in new_units:
     c = ', '.join('{ %s, %s, %d, %d }' % sp for sp in USP.get(u, [])[:40])
@@ -140,9 +183,11 @@ for u in new_units:
 L.append('})')
 L.append('ajout(pfDB["units"]["frFR"], {')
 for u in new_units:
-    if u in UNAME:
+    if u in UNAME and u not in BOSS_SRC:
         L.append('  [%d] = %s,' % (u, s(UNAME[u])))
 L.append('})')
+L.append('local chefs = { ' + ', '.join('[%d] = %d' % (b, a) for b, a in sorted(BOSS_SRC.items())) + ' }')
+L.append('for b, src in pairs(chefs) do pfDB["units"]["frFR"][b] = (b < 992100) and ("Chef " .. nomU(src)) or (nomU(src) .. " alpha") end')
 L.append('ajout(pfDB["objects"]["data"], {')
 for o in new_objects:
     c = ', '.join('{ %s, %s, %d, %d }' % sp for sp in OSP.get(o, [])[:40])
