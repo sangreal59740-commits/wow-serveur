@@ -1284,6 +1284,37 @@ namespace cmangos_module
             if (u && u->AI() && !u->AI()->HasReactState(REACT_DEFENSIVE))
                 u->AI()->SetReactState(REACT_DEFENSIVE);
         }, CONTROLLED_GUARDIANS);
+        // formation : chaque invocation garde sa place derrière le joueur, au lieu de toutes se bousculer
+        // au même point (même angle et même distance par défaut), ce qui les fait avancer par à-coups
+        {
+            std::vector<Unit*> suiveurs;
+            player->CallForAllControlledUnits([&](Unit* u)
+            {
+                if (u && u->IsAlive() && u->GetTypeId() == TYPEID_UNIT && u->GetEntry() != 990514 && u->GetEntry() != 990515)
+                    suiveurs.push_back(u);
+            }, CONTROLLED_GUARDIANS);
+            std::sort(suiveurs.begin(), suiveurs.end(), [](Unit* a, Unit* b) { return a->GetObjectGuid() < b->GetObjectGuid(); });
+            for (size_t i = 0; i < suiveurs.size(); ++i)
+            {
+                Unit* u = suiveurs[i];
+                uint64 key = u->GetObjectGuid().GetRawValue();
+                bool suit = u->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE;
+                if (u->IsInCombat() || u->GetVictim() || !suit)
+                {
+                    formation.erase(key);
+                    continue;
+                }
+                uint32 slot = uint32(i) + 1;
+                if (formation[key] == slot)
+                    continue;
+                formation[key] = slot;
+                // arc derrière le joueur : 5 places par rang, rangs de plus en plus éloignés
+                float rang = float(i / 5), place = float(i % 5);
+                float angle = float(M_PI) + (place - 2.0f) * 0.55f;
+                float dist = 2.0f + rang * 1.8f;
+                u->GetMotionMaster()->MoveFollow(player, dist, angle);
+            }
+        }
         if (IsBot(player) && BotTab(player) >= 0)
             BotTalents(player);
         if (cls != C_NECRO && cls != C_SNIPER && cls != C_META)

@@ -73,6 +73,7 @@ namespace cmangos_module
         std::recursive_mutex lock;
         std::unordered_map<uint64, std::deque<ArmyEntry>> armies;   // joueur -> invocations permanentes (ordre d'arrivée)
         std::unordered_map<uint64, int32> forceValue;               // joueur -> Force donnée par Force de l'esprit
+        std::unordered_map<uint64, uint32> formation;              // invocation -> place dans la formation (0 = à replacer)
         std::unordered_map<uint64, time_t> egideTime;               // joueur -> dernier déclenchement d'Égide angélique
         std::unordered_set<uint64> runique;                          // Chamans sous Appel runique (soin à la fin)
         std::unordered_map<uint64, uint64> lienTarget;              // Mage -> allié sous Lien de vie
