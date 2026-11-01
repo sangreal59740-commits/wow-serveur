@@ -1,0 +1,44 @@
+name: symboles
+# Traduit des adresses de plantage (RVA) en fonctions et lignes, avec le pdb d'une compilation donnée.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Run de la compilation (build)"
+        required: true
+      rvas:
+        description: "Adresses relatives séparées par des espaces (0x...)"
+        required: true
+permissions:
+  contents: write
+  actions: read
+jobs:
+  symboles:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mangosd
+          path: bin
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Symboliser
+        shell: bash
+        run: |
+          ls -la bin
+          SYM="/c/Program Files/LLVM/bin/llvm-symbolizer.exe"
+          echo "run ${{ inputs.run_id }}" > symboles.txt
+          for a in ${{ inputs.rvas }}; do
+            echo "== $a" >> symboles.txt
+            "$SYM" --obj=bin/mangosd.exe --relative-address --inlining=true "$a" >> symboles.txt 2>&1 || true
+          done
+          cat symboles.txt
+      - name: Publier
+        shell: bash
+        run: |
+          mkdir pub && cp symboles.txt pub/
+          cd pub
+          git init -q && git checkout -q -b symboles
+          git config user.email "ci@local" && git config user.name "ci"
+          git add . && git commit -qm "symboles ${{ inputs.run_id }}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" symboles
