@@ -1446,6 +1446,25 @@ for _g in [NG, SG, MG] + [g for g, a, b in V4_GENS]:
                 st['Attributes'] = at & ~2
 
 # pas d'objet totem exigé (sorts clonés depuis des totems de Chaman) ; buffs permanents : icône seulement, pas d'effet sur le personnage
+import struct as _struct
+_SVD = open('/home/claude/wow/classes/dbc/SpellVisual.dbc', 'rb').read()
+_n, _f, _rs, _ss = _struct.unpack('<4I', _SVD[4:20])
+_SV = {}
+for _i in range(_n):
+    _r = list(_struct.unpack('<%di' % _f, _SVD[20 + _i * _rs:20 + (_i + 1) * _rs]))
+    _SV[_r[0]] = _r
+SV_NEW, _SV_CLONE = [], {}
+def visuel_sans_etat(v):
+    r = _SV.get(v)
+    if not r or (r[4] == 0 and r[5] == 0):
+        return v
+    if v not in _SV_CLONE:
+        c = list(r)
+        c[0] = 6000 + len(SV_NEW)
+        c[4] = c[5] = 0
+        SV_NEW.append(c)
+        _SV_CLONE[v] = c[0]
+    return _SV_CLONE[v]
 _PERMA = {DUR[-1], DUR[300000], DUR[600000], DUR[1800000], DUR[3600000], DUR[7200000]}
 for _g in [NG, SG, MG, TALG, T4G] + [g for g, a, b in V4_GENS]:
     for _sp in _g.spells:
@@ -1455,7 +1474,11 @@ for _g in [NG, SG, MG, TALG, T4G] + [g for g, a, b in V4_GENS]:
         st['Totem2'] = 0
         effs = [st.get('Effect%d' % n, base[_dc('Effect%d' % n)]) for n in (1, 2, 3)]
         if any(e in (6, 35) for e in effs) and 56 not in effs and st.get('DurationIndex', base[_dc('DurationIndex')]) in _PERMA:
-            st['SpellVisual'] = 0
+            # buff permanent : animation d'incantation et d'impact gardées, effet continu sur le personnage retiré
+            # (copie du visuel sans « StateKit » ; les passifs n'ont aucun visuel)
+            _v = st.get('SpellVisual', base[_dc('SpellVisual')])
+            _passif = st.get('Attributes', base[_ATTR]) & 0x40
+            st['SpellVisual'] = 0 if _passif else visuel_sans_etat(_v)
 
 # ======================================================================== sorties
 def all_ids(d):
@@ -1690,7 +1713,7 @@ json.dump(DUMMY_TALENTS, open(OUT + 'talents_a_coder.json', 'w', encoding='utf-8
 
 json.dump({'talenttab_new': tab_new, 'talenttab_meta': {str(k): v for k, v in META_TABS.items()},
            'spell': NG.dbc_rows() + SG.dbc_rows() + MG.dbc_rows() + TG.dbc_rows() + TALG.dbc_rows() + sum((_g.dbc_rows() for _g, _a, _b in V4_GENS), []) + T4G.dbc_rows() + SPG.dbc_rows(),
-           'spell_patch': SPELL_PATCH, 'form_patch': {str(k): v for k, v in globals().get('FORM_PATCH', {}).items()}, 'sla': SLA_ROWS, 'skilllines': sk_new, 'rename_skill': RENAME_SKILL,
+           'spell_patch': SPELL_PATCH, 'spellvisual_new': SV_NEW, 'form_patch': {str(k): v for k, v in globals().get('FORM_PATCH', {}).items()}, 'sla': SLA_ROWS, 'skilllines': sk_new, 'rename_skill': RENAME_SKILL,
            'masks': {'necro': NG.masks, 'sniper': SG.masks, 'meta': MG.masks}, 'ids': {'necro': N, 'sniper': S, 'meta': M}},
           open(OUT + 'sorts_rows.json', 'w', encoding='utf-8'), ensure_ascii=False)
 open(OUT + 'sorts.sql', 'w', encoding='utf-8').write("\n".join(L) + "\n")
