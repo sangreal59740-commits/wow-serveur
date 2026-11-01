@@ -868,6 +868,87 @@ for _sp in MG.spells:
         _sp['sets']['EffectRealPointsPerLevel1'] = 0
 MODULE['meta'] = dict(hidden=hm, totems=['totem_feu', 'totem_eau', 'totem_roche', 'totem_givre'])
 
+# ======================================================================== talents gérés par le module (sorts cachés et sorts actifs)
+h['tombe'] = cspell(NC, 'k_tombe', 12042, "Étreinte de la tombe", DurationIndex=DUR[-1],
+                    **merge(auraf(1, 137, 2, 1), auraf(2, 79, 1, 1), none(3)))
+h['maitre'] = cspell(NC, 'k_maitre', 12042, "Maître nécromancien", DurationIndex=DUR[-1],
+                     **merge(auraf(1, 79, 127, 1), auraf(2, 87, 127, -1), none(3)))
+h['lien'] = cspell(NC, 'k_lien', 12042, "Lien des morts", DurationIndex=DUR[-1],
+                   **merge(auraf(1, 81, 127, 20, target=21), none(2), none(3)))
+h['crepuscule'] = cspell(NC, 'k_crep', 12042, "Crépuscule", DurationIndex=DUR[10000], ProcCharges=1,
+                         **merge(auraf(1, 108, 10, -100), none(2), none(3)))
+h['fleau'] = cspell(NC, 'k_fleau', 116, "Fléau rampant", DurationIndex=DUR[10000], **merge(auraf(1, 33, 0, -30, target=6), none(2)))
+h['morsure'] = cspell(NC, 'k_morsure', 116, "Morsure du froid", DurationIndex=DUR[3000], **merge(auraf(1, 33, 0, -20, target=6), none(2)))
+h['synergie'] = cspell(NC, 'k_syn', 12042, "Synergie givrée", DurationIndex=DUR[10000], ProcCharges=1,
+                       **merge(auraf(1, 108, 0, 15), none(2), none(3)))
+h['pyro'] = cspell(NC, 'k_pyro', 853, "Pyroclasme", DurationIndex=DUR[3000])
+ISB = [cspell(NC, 'k_isb', 17800, "Vulnérabilité à l'ombre", EffectBasePoints1=4 * r - 1, EffectDieSides1=1, DurationIndex=DUR[12000])
+       for r in range(1, 6)]
+# Fléau double : copies des DoT (autre identifiant, donc cumulables avec l'original)
+NDUP = Ctx(NG, 62430, NSKILL, 9, NECRO)
+DUPS = {}
+for k in ['mot', 'corruption', 'vol', 'malediction', 'peste', 'maudit']:
+    DUPS[k] = []
+    for sp in [x for x in NG.spells if x.get('key') == k and x['id'] not in TRIGGERED]:
+        d = NG.add(NDUP.nid(), sp['base'], sp['name'], sp['desc'], sp['rank'], tooltip=sp['tooltip'], key=k, sets=dict(sp['sets']))
+        TRIGGERED.add(d)
+        DUPS[k].append(d)
+N['reanimation'] = NCX.single('reanimation', 'inv', 12042, 20, "Réanimation rapide",
+                              "Votre prochaine invocation dans les 15 s est instantanée.", 300000, 0, 5, icon_sid=688,
+                              tooltip="Prochaine invocation instantanée.",
+                              **merge(auraf(1, 108, 10, -100), none(2), none(3), {'ProcCharges': 1, 'DurationIndex': DUR[15000]}))
+N['amplification'] = NCX.single('amplification', 'mal', 12042, 20, "Amplification",
+                                "Votre prochaine DoT inflige 50 % de dégâts en plus.", 180000, 0, 5, icon_sid=18288,
+                                tooltip="Prochaine DoT amplifiée.",
+                                **merge(auraf(1, 108, 22, 50), none(2), none(3), {'ProcCharges': 1, 'DurationIndex': DUR[30000]}))
+NOTEACH.update([N['reanimation'], N['amplification']])
+AFFECT += [(h['crepuscule'], 0, NG.mask('trait')), (h['synergie'], 0, NG.mask('eclair')),
+           (N['reanimation'], 0, NG.mask('invocation')),
+           (N['amplification'], 0, NG.mask('mot') | NG.mask('corruption') | NG.mask('vol') | NG.mask('malediction') | NG.mask('peste') | NG.mask('maudit'))]
+
+# Sniper : griffon, compagnons de meute, tir à bout portant, sorts cachés
+C_GRIFFON, C_MEUTE = 990517, 990518
+b['gr_aile'] = cspell(SCX, 'gr_aile', 11976, "Coup d'aile", DurationIndex=DUR[5000], **merge(weapon(1, 100), per(2, 20)))
+b['gr_attraper'] = cspell(SCX, 'gr_attraper', 18265, "Attraper", DurationIndex=DUR[10000], School=0,
+                          **merge(per(1, 30, aura=53), none(2), none(3)))
+b['me_morsure'] = cspell(SCX, 'me_morsure', 11976, "Morsure", **merge(weapon(1, 100), none(2)))
+creature(C_GRIFFON, "Griffon", 1149, 0.8, 1, 0.6, 0.7, 1.0, 1, [(b['gr_aile'], 1, 500, 1500), (b['gr_attraper'], 1, 1000, 10000)])
+creature(C_MEUTE, "Compagnon de meute", 604, 0.9, 1, 0.3, 0.3, 1.0, 1, [(b['me_morsure'], 1, 1000, 3000)])
+S['inv_griffon'] = SC.single('inv_griffon', 'bes', 12740, 40, "Griffon",
+                             "Invoque un griffon de votre niveau pendant 10 s : Coup d'aile et Attraper, qui draine la vie de la cible. Recharge partagée de 60 s entre les bêtes.",
+                             0, 0, 8, icon_sid=883, EffectMiscValue1=C_GRIFFON, DurationIndex=DUR[10000], EffectBasePoints1=0,
+                             EffectDieSides1=1, EffectImplicitTargetA1=1, Category=BEAST_CAT, CategoryRecoveryTime=60000)
+NOTEACH.add(S['inv_griffon'])
+MODULE['sniper']['beasts'].append(S['inv_griffon'])
+MODULE['sniper']['beast_hidden'].append(cspell(SCX, 'appel', 12740, "Griffon", EffectMiscValue1=C_GRIFFON, DurationIndex=DUR[10000],
+                                               EffectBasePoints1=0, EffectDieSides1=1, EffectImplicitTargetA1=1, CastingTimeIndex=1))
+S['contact'] = SC.single('contact', 'bes', 3044, 15, "Tir à bout portant",
+                         "Un tir à bout portant, utilisable au corps à corps : 100 % des dégâts de l'arme.", 4000, 0, 5,
+                         icon_sid=19503, **merge(weapon(1, 100), {'RangeIndex': RANGE[10], 'School': 0, 'EffectBonusCoefficientFromAP1': 0}))
+NOTEACH.add(S['contact'])
+hs['meute'] = cspell(SCX, 'meute', 12740, "Compagnon de meute", EffectMiscValue1=C_MEUTE, DurationIndex=DUR[-1], EffectBasePoints1=0,
+                     EffectDieSides1=1, EffectImplicitTargetA1=1, CastingTimeIndex=1)
+hs['solitaire'] = cspell(SCX, 'solitaire', 12042, "Tireur solitaire", DurationIndex=DUR[-1], **merge(auraf(1, 79, 1, 1), none(2), none(3)))
+hs['piege'] = cspell(SCX, 'piege', 853, "Piégeage", DurationIndex=DUR[4000], **merge(auraf(1, 26, 0, 1, target=6)))
+hs['robot'] = cspell(SCX, 'robot', 12042, "Robots améliorés", DurationIndex=DUR[-1], **merge(auraf(1, 133, 0, 1), auraf(2, 79, 127, 1), none(3)))
+hs['blinde'] = cspell(SCX, 'blinde', 12042, "Familier blindé", DurationIndex=DUR[-1], **merge(auraf(1, 10, 127, 1), auraf(2, 101, 1, 1), none(3)))
+hs['cri'] = cspell(SCX, 'cri_plus', 116, "Cri bestial amélioré", DurationIndex=DUR[6000], **merge(auraf(1, 101, 1, -3, target=6), none(2)))
+
+# Métamorphe : Voie de la guérison, Fougue lunaire, Égide angélique, Guérison ancestrale
+hm['voie'] = cspell(MCX, 'voie', 12042, "Voie de la guérison", DurationIndex=DUR[15000], StackAmount=3,
+                    **merge(auraf(1, 4, 0, 1, target=21), none(2), none(3)))
+hm['voie_soin'] = cspell(MCX, 'voie', 8936, "Voie de la guérison", **merge({'Effect1': 10, 'EffectBasePoints1': 0, 'EffectDieSides1': 1,
+                                                                            'EffectImplicitTargetA1': 21, 'EffectRealPointsPerLevel1': 0,
+                                                                            'EffectBonusCoefficient1': 0}, none(2), none(3)))
+hm['lunaire'] = cspell(MCX, 'fougue', 12042, "Fougue lunaire", DurationIndex=DUR[10000], StackAmount=3,
+                       **merge(auraf(1, 138, 0, 5), none(2), none(3)))
+hm['egide'] = cspell(MCX, 'egide', 11426, "Égide angélique", DurationIndex=DUR[10000],
+                     **merge({'EffectBasePoints1': 0, 'EffectDieSides1': 1, 'EffectMiscValue1': 127, 'EffectRealPointsPerLevel1': 0,
+                              'EffectBonusCoefficient1': 0}))
+ANCESTRAL = [cspell(MCX, 'k_ancestral', 16177, "Guérison ancestrale", EffectBasePoints1=8 * r - 1, EffectDieSides1=1)
+             for r in range(1, 4)]
+TAL_PROC = []         # (sort de talent, famille, masque, procFlags, procEx)
+
 # ======================================================================== talents (étape 6)
 
 # sorts débloqués par talent
@@ -933,10 +1014,12 @@ def talent_spell(gen, name, rk, nranks, effects, desc, icon_sid):
             _, aura, misc, v = e
             sets.update({'Effect%d' % n: 6, 'EffectApplyAuraName%d' % n: aura, 'EffectMiscValue%d' % n: misc,
                          'EffectBasePoints%d' % n: int(v) - 1})
-        elif e[0] == 'proc':       # ('proc', sort déclenché, chance, flags)
-            _, trig, chance, flags = e
+        elif e[0] == 'proc':       # ('proc', sort déclenché, chance, flags[, famille, masque, procEx])
+            trig, chance, flags = e[1], e[2], e[3]
             sets.update({'Effect%d' % n: 6, 'EffectApplyAuraName%d' % n: 42, 'EffectTriggerSpell%d' % n: trig,
                          'ProcFlags': flags, 'ProcChance': chance})
+            if len(e) > 4:
+                TAL_PROC.append((sid, e[4], e[5], flags, e[6]))
         elif e[0] == 'dummy':
             sets.update({'Effect%d' % n: 6, 'EffectApplyAuraName%d' % n: 4})
     TALG.add(sid, PASSIVE_BASE, name, desc, "Rang %d" % (rk + 1) if nranks > 1 else "", family=False, sets=sets)
@@ -992,7 +1075,7 @@ tree(NG, 400, "Invocateur", CM_N, 0, "WarlockSummoning", 688, [
     (2, "Chair putride", 5, 18731, D, lambda r: "Augmente l'Endurance de vos invocations de %d %%." % (3 * r)),
     (3, "Maîtrise de l'invocation", 1, 18708, D, "Vous permet de porter toutes les armes."),
     (3, "Abomination améliorée", 3, 18754, ('fx', mod(0, True, ['k_abo'], 10)), lambda r: "Augmente l'armure et les dégâts du Vomi de l'abomination de %d %%." % (10 * r)),
-    (3, "Réanimation rapide", 1, 18708, D, "Votre prochaine invocation dans les 15 s est instantanée. Recharge 5 min."),
+    (3, "Réanimation rapide", 1, 18708, ('spell', N['reanimation']), "Votre prochaine invocation dans les 15 s est instantanée. Recharge 5 min."),
     (4, "Armée des morts", 1, 18709, D, "Vous donne 1 point d'invocation supplémentaire.", "Horde grandissante"),
     (4, "Pouvoir impie", 5, 18769, ('fx', mod(0, True, ['k_sq', 'k_goule', 'k_abo', 'k_givre', 'k_chien', 'k_ck', 'k_wyrm'], 3)), lambda r: "Augmente les dégâts de vos invocations de %d %%." % (3 * r)),
     (4, "Maître invocateur", 2, 18709, ('fx', lambda r: [('mod', 10, False, ['invocation'], -2000 * r), ('mod', 14, True, ['invocation'], -20 * r)]),
@@ -1015,7 +1098,7 @@ tree(NG, 401, "Malédiction", CM_N, 1, "WarlockCurses", 172, [
     (2, "Récolte d'âme", 2, 18213, D, lambda r: "Tuer une cible affectée par une de vos DoT vous rend %d %% de votre mana maximum." % (5 * r)),
     (3, "Malédiction améliorée", 3, 980, ('fx', mod(22, True, ['malediction'], 5)), lambda r: "Augmente les dégâts de Malédiction de %d %%." % (5 * r)),
     (3, "Concentration funeste", 4, 18182, ('fx', mod(10, False, ['mort'], -500)), lambda r: "Réduit le temps d'incantation de Trait de la mort de %.1f s." % (0.5 * r)),
-    (3, "Amplification", 1, 18288, D, "Votre prochaine DoT inflige 50 % de dégâts en plus. Recharge 3 min."),
+    (3, "Amplification", 1, 18288, ('spell', N['amplification']), "Votre prochaine DoT inflige 50 % de dégâts en plus. Recharge 3 min."),
     (4, "Portée sinistre", 1, 18218, ('fx', mod(5, True, N_DOTS, 10)), "Augmente la portée de vos DoT de 10 %."),
     (4, "Crépuscule", 4, 18094, D, lambda r: "Chaque tick de Corruption ou Mot de l'ombre a %d %% de chance de rendre instantané votre prochain Trait d'ombre." % (2 * r)),
     (4, "Peste améliorée", 2, 2944, ('fx', mod(22, True, ['peste'], 7)), lambda r: "Augmente les dégâts de Peste de %d %%." % (7 * r)),
@@ -1028,7 +1111,7 @@ tree(NG, 401, "Malédiction", CM_N, 1, "WarlockCurses", 172, [
     (7, "Maléfice amélioré", 2, 18220, ('fx', mod(11, False, ['malefice'], -30000)), lambda r: "Réduit la recharge de Maléfice de %d s." % (30 * r)),
 ])
 tree(NG, 402, "Magicien", CM_N, 2, "WarlockDestruction", 686, [
-    (1, "Trait d'ombre amélioré", 5, 17793, D, lambda r: "Un critique de Trait d'ombre ou Tir d'ombre augmente de %d %% les dégâts d'Ombre subis par la cible pour 4 sorts." % (4 * r)),
+    (1, "Trait d'ombre amélioré", 5, 17793, ('fx', lambda r: [('proc', ISB[r - 1], 100, 0x10000, 5, NG.mask('trait') | NG.mask('tirombre'), 2)]), lambda r: "Un critique de Trait d'ombre ou Tir d'ombre augmente de %d %% les dégâts d'Ombre subis par la cible pour 4 sorts." % (4 * r)),
     (1, "Cataclysme", 5, 17778, ('fx', mod(14, True, N_MAG, -2)), lambda r: "Réduit le coût en mana de vos sorts Magicien de %d %%." % (2 * r)),
     (2, "Fléau", 5, 17788, ('fx', lambda r: [('mod', 10, False, ['trait', 'eclair', 'boule'], -100 * r), ('mod', 10, False, ['tirombre'], -200 * r)]),
      lambda r: "Réduit le temps d'incantation de Trait d'ombre, Éclair de givre et Boule de feu de %.1f s, et de Tir d'ombre de %.1f s." % (0.1 * r, 0.2 * r)),
@@ -1056,8 +1139,8 @@ tree(SG, 403, "Bestial", CM_S, 0, "HunterBeastMastery", 1515, [
      lambda r: "Vos tirs ont %d %% de chance d'augmenter votre vitesse de tir de 30 %% pendant 12 s." % r),
     (2, "Cuir épais", 3, 19609, ('vanilla', [19609, 19610, 19612]), ""),
     (2, "Meute", 1, 19621, D, "Vous donne un familier permanent supplémentaire, à 30 % des caractéristiques du familier principal."),
-    (2, "Tir au contact", 1, 19503, D, "Supprime la zone morte de 8 m : vous pouvez tirer au corps à corps."),
-    (2, "Balle d'eau maîtrisée", 1, 10497, D, "Balle d'eau a sa propre recharge de 15 s et sa DoT passe à 10 % de la PA."),
+    (2, "Tir au contact", 1, 19503, ('spell', S['contact']), ""),
+    (2, "Balle d'eau maîtrisée", 1, 10497, ('fx', mod(22, True, ['eau_dot'], 50)), "Balle d'eau a sa propre recharge de 15 s et sa DoT passe à 10 % de la PA."),
     (3, "Fureur déchaînée", 5, 19616, ('vanilla', [19616, 19617, 19618, 19619, 19620]), ""),
     (3, "Tir bestial amélioré", 2, 19574, ('fx', lambda r: [('mod', 11, False, ['bestial'], -1000 * r), ('mod', 0, True, ['bestial'], 14 * r)]),
      lambda r: "Tir bestial inflige %d %% de dégâts en plus et sa recharge est réduite de %d s." % (14 * r, r)),
@@ -1070,14 +1153,14 @@ tree(SG, 403, "Bestial", CM_S, 0, "HunterBeastMastery", 1515, [
     (6, "Frénésie", 5, 19621, ('vanilla', [19621, 19622, 19623, 19624, 19625]), ""),
     (6, "Grande meute", 1, 19621, D, "Vous donne un deuxième familier permanent supplémentaire.", "Meute"),
     (6, "Combattant sauvage", 3, 19574, ('fx', aura(79, 1, 1)), lambda r: "Augmente vos dégâts physiques de %d %%." % r),
-    (7, "Invocation : Griffon", 1, 19574, D, "Débloque le Griffon."),
+    (7, "Invocation : Griffon", 1, 19574, ('spell', S['inv_griffon']), "Débloque le Griffon."),
     (7, "Ordre amélioré", 2, 19574, ('fx', mod(11, False, ['ordre'], -60000)), lambda r: "Réduit la recharge d'Ordre de %d s." % (60 * r)),
 ])
 tree(SG, 404, "Tireur d'élite", CM_S, 1, "HunterMarksmanship", 19434, [
     (1, "Efficacité", 5, 19416, ('fx', mod(14, True, S_SHOTS, -2)), lambda r: "Réduit le coût de vos tirs de %d %%." % (2 * r)),
     (1, "Marque améliorée", 5, 19421, ('fx', mod(8, True, ['marque'], 3)), lambda r: "Augmente le bonus de Marque de %d %%." % (3 * r)),
     (2, "Tirs létaux", 5, 19426, ('vanilla', [19426, 19427, 19429, 19430, 19431]), ""),
-    (2, "Balle de feu maîtrisée", 1, 13795, D, "Balle de feu a sa propre recharge de 20 s et sa DoT passe à 10 % de la PA."),
+    (2, "Balle de feu maîtrisée", 1, 13795, ('fx', mod(22, True, ['feu_dot'], 50)), "Balle de feu a sa propre recharge de 20 s et sa DoT passe à 10 % de la PA."),
     (2, "Tir des arcanes amélioré", 2, 3044, ('fx', mod(11, False, ['arcanes'], -500)), lambda r: "Réduit la recharge de Tir des arcanes de %.1f s." % (0.5 * r)),
     (3, "Œil de faucon", 3, 19498, ('fx', mod(5, False, S_SHOTS, 4)), lambda r: "Augmente la portée de vos tirs de %d m." % (4 * r)),
     (3, "Tir saignant amélioré", 5, 1978, ('fx', mod(22, True, ['saignant'], 5)), lambda r: "Augmente les dégâts sur la durée de Tir saignant de %d %%." % (5 * r)),
@@ -1095,7 +1178,7 @@ tree(SG, 405, "Mécanisme", CM_S, 2, "HunterSurvival", 12749, [
     (1, "Pièges ingénieux", 3, 19239, ('fx', mod(1, False, ['glace'], 500)), lambda r: "Augmente la durée de Piège de glace de %.1f s." % (0.5 * r)),
     (1, "Mécanique de précision", 5, 12749, ('fx', mod(0, True, ['tourelle', 'canon', 'tirmeca'], 3)), lambda r: "Augmente les dégâts de vos invocations méca de %d %%." % (3 * r)),
     (2, "Piégeage", 5, 19184, D, lambda r: "Bombe méca et Dynamite ont %d %% de chance d'immobiliser les cibles pendant 4 s." % (5 * r)),
-    (2, "Balle de givre maîtrisée", 1, 116, D, "Balle de givre a sa propre recharge de 15 s et sa DoT passe à 10 % de la PA."),
+    (2, "Balle de givre maîtrisée", 1, 116, ('fx', mod(22, True, ['givre_dot'], 50)), "Balle de givre a sa propre recharge de 15 s et sa DoT passe à 10 % de la PA."),
     (2, "Survivant", 5, 19255, ('fx', aura(133, 0, 2)), lambda r: "Augmente vos points de vie maximum de %d %%." % (2 * r)),
     (3, "Mécanique avancée", 3, 12749, ('fx', mod(11, False, ['tourelle'], -10000)), lambda r: "Réduit la recharge de Tourelle de %d s." % (10 * r)),
     (3, "Dissuasion", 1, 19263, ('spell', 19263), ""),
@@ -1117,7 +1200,7 @@ tree(MG, 283, "Totémique", CM_M, 0, "ShamanRestoration", 10497, [
     (1, "Esprit guérisseur", 1, 774, D, "Soins et absorptions x2,5 et recharges des soins -50 %, si ni Renforcement ni Armure massive n'est actif."),
     (1, "Salve améliorée", 5, 1064, ('fx', mod(10, False, ['salve'], -200)), lambda r: "Réduit le temps d'incantation de Salve de guérison de %.1f s." % (0.2 * r)),
     (1, "Concentration des marées", 5, 16179, ('fx', mod(14, True, _heals, -1)), lambda r: "Réduit le coût de vos soins de %d %%." % r),
-    (2, "Guérison ancestrale", 3, 16176, D, lambda r: "Après un soin critique, l'armure de la cible est augmentée de %d %% pendant 15 s." % (8 * r)),
+    (2, "Guérison ancestrale", 3, 16176, ('fx', lambda r: [('proc', ANCESTRAL[r - 1], 100, 0x4000, 0, 0, 2)]), lambda r: "Après un soin critique, l'armure de la cible est augmentée de %d %% pendant 15 s." % (8 * r)),
     (2, "Focalisation totémique", 5, 16173, ('fx', mod(14, True, M_TOTEMS, -5)), lambda r: "Réduit le coût de vos totems de %d %%." % (5 * r)),
     (2, "Remous amélioré", 2, 774, ('fx', mod(22, True, ['remous'], 5)), lambda r: "Augmente les soins de Remous de %d %%." % (5 * r)),
     (3, "Focalisation des soins", 5, 16181, ('fx', mod(9, True, _heals, 14)), lambda r: "Réduit de %d %% le recul de vos soins quand vous subissez des dégâts." % (14 * r)),
@@ -1138,8 +1221,8 @@ tree(MG, 281, "Druidique", CM_M, 1, "DruidFeralCombat", 5487, [
     (2, "Totems de guerre", 2, 8190, ('fx', mod(0, True, ['totem_feu_dmg', 'totem_givre_dmg'], 12.5)), lambda r: "Augmente les dégâts des totems de feu et de givre de %.1f %%." % (12.5 * r)),
     (2, "Fougue lunaire", 3, 8921, D, lambda r: "Augmente la hâte par cumul d'Éclair lunaire de %d %%." % r),
     (3, "Force de l'esprit", 3, 16294, D, lambda r: "Convertit %d %% de votre Intelligence en Force." % (33 * r if r < 3 else 100)),
-    (3, "Totems renforçants", 2, 8075, D, lambda r: "Augmente le bonus de Force du Totem de roche de %d %%." % (15 * r)),
-    (3, "Spécialisation ambidextre", 5, 674, D, lambda r: "Augmente les dégâts de votre main gauche de %d %%." % (5 * r)),
+    (3, "Totems renforçants", 2, 8075, ('fx', mod(8, True, ['totem_roche_p'], 15)), lambda r: "Augmente le bonus de Force du Totem de roche de %d %%." % (15 * r)),
+    (3, "Spécialisation ambidextre", 5, 674, ('fx', aura(122, 0, 5)), lambda r: "Augmente les dégâts de votre main gauche de %d %%." % (5 * r)),
     (4, "Rafale", 5, 12319, ('vanilla', [12319, 12971, 12972, 12973, 12974]), ""),
     (4, "Robustesse", 5, 16252, ('fx', aura(142, 1, 2)), lambda r: "Augmente votre armure de %d %%." % (2 * r)),
     (5, "Massacre amélioré", 1, 12294, ('fx', mod(0, True, ['massacre'], 25)), "Massacre inflige 25 % de dégâts en plus."),
@@ -1335,6 +1418,10 @@ for gid, (gname, ids) in zip((900, 901, 902), [('Sniper balles', GROUPS.get('bal
     for sid in ids:
         L.append("INSERT INTO spell_group_spell (Id, SpellId) VALUES (%d, %d);" % (gid, sid))
 L.append("DELETE FROM spell_affect WHERE entry BETWEEN 62000 AND 64499;")
+L.append("DELETE FROM spell_proc_event WHERE entry BETWEEN 62000 AND 64499;")
+for sid, fam, m, flags, pex in TAL_PROC:
+    L.append("INSERT INTO spell_proc_event (entry, SchoolMask, SpellFamilyName, SpellFamilyMask0, SpellFamilyMask1, SpellFamilyMask2, procFlags, procEx, ppmRate, CustomChance, Cooldown) "
+             "VALUES (%d, 0, %d, %d, %d, %d, %d, %d, 0, 0, 0);" % (sid, fam, m, m, m, flags, pex))
 for sid, e, m in AFFECT_N + AFFECT + TAL_AFFECT:
     L.append("INSERT INTO spell_affect (entry, effectId, SpellFamilyMask) VALUES (%d, %d, %d);" % (sid, e, m))
 
@@ -1448,6 +1535,31 @@ for k, v in md['hidden'].items():
     one("M_H_" + k.upper(), v)
 for k in ['appel_tot', 'renvoi_tot', 'jugement', 'renfo', 'massive', 'beau'] + md['totems']:
     arr("M_" + k.upper(), ranks(k, MG))
+H.append("    // talents gérés par le module")
+for tname, cname in [("Étreinte de la tombe", "T_ETREINTE"), ("Chair putride", "T_CHAIR"), ("Maître nécromancien", "T_MAITRE"),
+                     ("Lien des morts", "T_LIEN"), ("Crépuscule", "T_CREPUSCULE"), ("Contagion", "T_CONTAGION"),
+                     ("Fléau double", "T_DOUBLE"), ("Morsure du froid", "T_MORSURE"), ("Synergie givrée", "T_SYNERGIE"),
+                     ("Pyroclasme", "T_PYRO"), ("Meute", "T_MEUTE"), ("Grande meute", "T_GRANDE_MEUTE"),
+                     ("Cri bestial amélioré", "T_CRI"), ("Balle d'eau maîtrisée", "T_B_EAU"), ("Balle de feu maîtrisée", "T_B_FEU"),
+                     ("Balle de givre maîtrisée", "T_B_GIVRE"), ("Tireur solitaire", "T_SOLITAIRE"), ("Piégeage", "T_PIEGE"),
+                     ("Robots améliorés", "T_ROBOTS"), ("Familier blindé", "T_BLINDE"), ("Voie de la guérison", "T_VOIE"),
+                     ("Fougue lunaire", "T_FOUGUE"), ("Jugement du gardien", "T_JUG_GARDIEN"), ("Égide angélique", "T_EGIDE")]:
+    arr(cname, TNAMES.get(tname, []))
+for k in ['meute', 'solitaire', 'piege', 'robot', 'blinde', 'cri']:
+    one("S_H2_" + k.upper(), hs[k])
+for k in ['voie', 'voie_soin', 'lunaire', 'egide']:
+    one("M_H2_" + k.upper(), hm[k])
+for k, ids in DUPS.items():
+    arr("N_DUP_" + k.upper(), ids)
+for k in ['meteorite', 'javelot', 'eclair']:
+    arr("N_" + k.upper(), ranks(k, NG))
+for k in ['cri', 'bombe', 'dynamite']:
+    arr("S_" + k.upper(), ranks(k, SG))
+for k in ['feu', 'eau', 'givre']:
+    arr("S_BALLE2_" + k.upper(), ranks(k, SG))
+for k in ['recup', 'lunaire']:
+    arr("M_" + k.upper(), ranks(k, MG))
+one("C_ROBOT", C_ROBOT); one("C_MEUTE", C_MEUTE); one("BULLET_CAT", BULLET_CAT)
 H.append("    // listes pour l'IA des bots")
 for k in ['armure', 'trait', 'eclair', 'boule', 'tirombre', 'javelot', 'mot', 'corruption', 'vol', 'malediction', 'peste', 'maudit']:
     arr("BN_" + k.upper(), ranks(k, NG))

@@ -6,6 +6,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <vector>
+#include <ctime>
 
 // Classes custom : mécaniques qui ne peuvent pas être décrites par les seules données de sorts.
 //  - Nécromancien : points d'invocation, armée (Explosion de peste, Berserk, Rénovation, Sang enflammé, Annihilation...),
@@ -40,6 +41,8 @@ namespace cmangos_module
         void OnUpdate(uint32 elapsed) override;
 
         void BotThink(Player* bot);
+        void Upkeep(Player* player);
+        void OnDealDamage(Unit* unit, Unit* victim, uint32 health, uint32 damage) override;
 
     private:
         // Nécromancien
@@ -59,6 +62,7 @@ namespace cmangos_module
         std::recursive_mutex lock;
         std::unordered_map<uint64, std::deque<ArmyEntry>> armies;   // joueur -> invocations permanentes (ordre d'arrivée)
         std::unordered_map<uint64, int32> forceValue;               // joueur -> Force donnée par Force de l'esprit
+        std::unordered_map<uint64, time_t> egideTime;               // joueur -> dernier déclenchement d'Égide angélique
         uint32 botTimer = 0;
     };
 }

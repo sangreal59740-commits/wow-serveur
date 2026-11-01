@@ -61,6 +61,35 @@ namespace cmangos_module
         return best;
     }
 
+    static uint32 TRank(Player* player, const uint32_t* arr, uint32 n)
+    {
+        return TalentRank(player, arr, n, n ? n : 1);
+    }
+
+    static bool Roll(float pct)
+    {
+        return pct > 0.0f && frand(0.0f, 100.0f) < pct;
+    }
+
+    // remplace l'aura cachée si sa valeur a changé (bp0 sur l'effet 1, bp1 sur l'effet 2)
+    static void SetHiddenAura(Unit* u, uint32 spellId, int32 bp0, int32 bp1, Unit* source = nullptr)
+    {
+        int32 current = INT32_MIN;
+        if (Aura* a = u->GetAura(spellId, EFFECT_INDEX_0))
+            current = a->GetModifier()->m_amount;
+        if (bp0 == 0 && bp1 == 0)
+        {
+            if (current != INT32_MIN)
+                u->RemoveAurasDueToSpell(spellId);
+            return;
+        }
+        if (current == bp0)
+            return;
+        u->RemoveAurasDueToSpell(spellId);
+        u->CastCustomSpell(u, spellId, &bp0, &bp1, nullptr, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr,
+                           source ? source->GetObjectGuid() : ObjectGuid());
+    }
+
     static bool IsBot(Player* player)
     {
         return player->GetSession() && player->GetSession()->GetRemoteAddress() == "disconnected/bot";
@@ -243,9 +272,21 @@ namespace cmangos_module
                 return;
             const uint32_t* lists[] = { N_DOT_MOT, N_DOT_CORRUPTION, N_DOT_VOL, N_DOT_MALEDICTION, N_DOT_PESTE, N_DOT_MAUDIT };
             const uint32 sizes[] = { N_DOT_MOT_N, N_DOT_CORRUPTION_N, N_DOT_VOL_N, N_DOT_MALEDICTION_N, N_DOT_PESTE_N, N_DOT_MAUDIT_N };
+            const uint32_t* dups[] = { N_DUP_MOT, N_DUP_CORRUPTION, N_DUP_VOL, N_DUP_MALEDICTION, N_DUP_PESTE, N_DUP_MAUDIT };
+            const uint32 dsizes[] = { N_DUP_MOT_N, N_DUP_CORRUPTION_N, N_DUP_VOL_N, N_DUP_MALEDICTION_N, N_DUP_PESTE_N, N_DUP_MAUDIT_N };
+            bool doubled = T_DOUBLE[0] && player->HasSpell(T_DOUBLE[0]);
             for (uint32 i = 0; i < 6; ++i)
-                if (uint32 r = Best(player, lists[i], sizes[i]))
-                    player->CastSpell(victim, r, TRIGGERED_OLD_TRIGGERED);
+            {
+                uint32 r = Best(player, lists[i], sizes[i]);
+                if (!r)
+                    continue;
+                // Fléau double : la copie (autre identifiant) se cumule avec la DoT d'origine
+                if (doubled)
+                    for (uint32 j = 0; j < sizes[i] && j < dsizes[i]; ++j)
+                        if (lists[i][j] == r)
+                            r = dups[i][j];
+                player->CastSpell(victim, r, TRIGGERED_OLD_TRIGGERED);
+            }
         }
         else if (In(N_CAMOUFLAGE, N_CAMOUFLAGE_N, id))
             ForArmy(player, true, [&](Unit* u) { u->CastSpell(u, N_H_CAMOU, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid()); });
@@ -254,6 +295,20 @@ namespace cmangos_module
     // ------------------------------------------------------------------ Sniper
     void ClassesModule::SniperCast(Player* player, uint32 id, Unit* /*victim*/)
     {
+        // balles maîtrisées : recharge propre, hors recharge partagée
+        struct Maitrise { const uint32_t* ranks; uint32 n; const uint32_t* talent; uint32 cd; };
+        const Maitrise maitrises[] = { { S_BALLE2_FEU, S_BALLE2_FEU_N, T_B_FEU, 20000 }, { S_BALLE2_EAU, S_BALLE2_EAU_N, T_B_EAU, 15000 },
+                                       { S_BALLE2_GIVRE, S_BALLE2_GIVRE_N, T_B_GIVRE, 15000 } };
+        for (auto const& m : maitrises)
+        {
+            if (In(m.ranks, m.n, id) && m.talent[0] && player->HasSpell(m.talent[0]))
+            {
+                player->RemoveSpellCategoryCooldown(BULLET_CAT, true);
+                if (SpellEntry const* info = sSpellTemplate.LookupEntry<SpellEntry>(id))
+                    player->AddCooldown(*info, nullptr, false, m.cd, true);
+                return;
+            }
+        }
         if (In(S_RECUL, S_RECUL_N, id))
             player->KnockBackWithAngle(player->GetOrientation() + 3.14159265f, 9.0f, 4.0f);
         else if (In(S_APPEL, S_APPEL_N, id))
@@ -362,6 +417,58 @@ namespace cmangos_module
         Player* player = static_cast<Player*>(caster);
         SpellEntry const* info = spell->m_spellInfo;
         uint32 id = info->Id;
+        if (player->getClass() == C_NECRO && victim->IsAlive())
+        {
+            if ((In(N_DOT_PESTE, N_DOT_PESTE_N, id) || In(N_DUP_PESTE, N_DUP_PESTE_N, id)) && T_FLEAU[0] && player->HasSpell(T_FLEAU[0]))
+                player->CastSpell(victim, N_H_FLEAU, TRIGGERED_OLD_TRIGGERED);
+            if (In(N_ECLAIR, N_ECLAIR_N, id))
+                if (uint32 r = TRank(player, T_MORSURE, T_MORSURE_N))
+                {
+                    int32 bp = -int32(20 + 4 * r);
+                    player->CastCustomSpell(victim, N_H_MORSURE, &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
+            if (In(N_JAVELOT, N_JAVELOT_N, id))
+                if (uint32 r = TRank(player, T_SYNERGIE, T_SYNERGIE_N))
+                {
+                    int32 bp = int32(15 * r);
+                    player->CastCustomSpell(player, N_H_SYNERGIE, &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
+            return;
+        }
+        if (player->getClass() == C_SNIPER && victim->IsAlive())
+        {
+            if (In(S_CRI, S_CRI_N, id))
+                if (uint32 r = TRank(player, T_CRI, T_CRI_N))
+                {
+                    int32 bp = -int32(3 * r);
+                    player->CastCustomSpell(victim, S_H2_CRI, &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
+            if (In(S_BOMBE, S_BOMBE_N, id) || In(S_DYNAMITE, S_DYNAMITE_N, id))
+                if (uint32 r = TRank(player, T_PIEGE, T_PIEGE_N))
+                    if (Roll(5.0f * r))
+                        player->CastSpell(victim, S_H2_PIEGE, TRIGGERED_OLD_TRIGGERED);
+        }
+        if (player->getClass() == C_META)
+        {
+            // Voie de la guérison : chaque Récupération renforce les suivantes sur la même cible
+            if (In(M_RECUP, M_RECUP_N, id))
+                if (uint32 r = TRank(player, T_VOIE, T_VOIE_N))
+                {
+                    uint32 stacks = 0;
+                    if (SpellAuraHolder* hold = victim->GetSpellAuraHolder(M_H2_VOIE, player->GetObjectGuid()))
+                        stacks = hold->GetStackAmount();
+                    int32 extra = int32(SpellValue(info) * 0.06f * r * stacks);
+                    if (extra > 0)
+                        player->CastCustomSpell(victim, M_H2_VOIE_SOIN, &extra, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                    player->CastSpell(victim, M_H2_VOIE, TRIGGERED_OLD_TRIGGERED);
+                }
+            // Éclair lunaire : hâte cumulable (5 %, +1 % par rang de Fougue lunaire)
+            if (In(M_LUNAIRE, M_LUNAIRE_N, id))
+            {
+                int32 bp = 5 + int32(TRank(player, T_FOUGUE, T_FOUGUE_N));
+                player->CastCustomSpell(player, M_H2_LUNAIRE, &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+            }
+        }
         if (player->getClass() == C_SNIPER)
         {
             // Balle magique : chaque tir applique les 4 balles
@@ -388,7 +495,12 @@ namespace cmangos_module
             else if (M_RENFO[0] && player->HasAura(M_RENFO[0]))
                 player->CastSpell(victim, M_H_JUG_FEU, TRIGGERED_OLD_TRIGGERED);
             else if (M_MASSIVE[0] && player->HasAura(M_MASSIVE[0]))
-                player->CastSpell(player, M_H_JUG_ANG, TRIGGERED_OLD_TRIGGERED);
+            {
+                // soin sur la durée : 30 par seconde au niveau 60, +25 % par rang de Jugement du gardien
+                float lvl = std::min(60.0f, float(player->GetLevel()));
+                int32 bp = std::max(1, int32(30.0f * (0.05f + 0.95f * lvl / 60.0f) * (1.0f + 0.25f * TRank(player, T_JUG_GARDIEN, T_JUG_GARDIEN_N))));
+                player->CastCustomSpell(player, M_H_JUG_ANG, &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+            }
         }
     }
 
@@ -401,11 +513,32 @@ namespace cmangos_module
         Unit* target = aura->GetTarget();
         if (!caster || !target || caster->GetTypeId() != TYPEID_PLAYER || !target->IsAlive())
             return false;
+        uint32 id = aura->GetSpellProto()->Id;
+        Player* pc = static_cast<Player*>(caster);
+        if (pc->getClass() == C_NECRO)
+        {
+            if (In(N_DOT_MOT, N_DOT_MOT_N, id) || In(N_DOT_CORRUPTION, N_DOT_CORRUPTION_N, id) ||
+                In(N_DUP_MOT, N_DUP_MOT_N, id) || In(N_DUP_CORRUPTION, N_DUP_CORRUPTION_N, id))
+                if (uint32 r = TRank(pc, T_CREPUSCULE, T_CREPUSCULE_N))
+                    if (Roll(2.0f * r))
+                    {
+                        DepthGuard depth;
+                        caster->CastSpell(caster, N_H_CREPUSCULE, TRIGGERED_OLD_TRIGGERED);
+                    }
+            if (In(N_METEORITE, N_METEORITE_N, id))
+                if (uint32 r = TRank(pc, T_PYRO, T_PYRO_N))
+                    if (Roll(13.0f * r))
+                    {
+                        DepthGuard depth;
+                        caster->CastSpell(target, N_H_PYRO, TRIGGERED_OLD_TRIGGERED);
+                    }
+        }
         if (!caster->HasAura(N_MALEFICE[0]))
             return false;
-        uint32 id = aura->GetSpellProto()->Id;
         if (In(N_DOT_MOT, N_DOT_MOT_N, id) || In(N_DOT_CORRUPTION, N_DOT_CORRUPTION_N, id) || In(N_DOT_VOL, N_DOT_VOL_N, id) ||
-            In(N_DOT_MALEDICTION, N_DOT_MALEDICTION_N, id) || In(N_DOT_PESTE, N_DOT_PESTE_N, id) || In(N_DOT_MAUDIT, N_DOT_MAUDIT_N, id))
+            In(N_DOT_MALEDICTION, N_DOT_MALEDICTION_N, id) || In(N_DOT_PESTE, N_DOT_PESTE_N, id) || In(N_DOT_MAUDIT, N_DOT_MAUDIT_N, id) ||
+            In(N_DUP_MOT, N_DUP_MOT_N, id) || In(N_DUP_CORRUPTION, N_DUP_CORRUPTION_N, id) || In(N_DUP_VOL, N_DUP_VOL_N, id) ||
+            In(N_DUP_MALEDICTION, N_DUP_MALEDICTION_N, id) || In(N_DUP_PESTE, N_DUP_PESTE_N, id) || In(N_DUP_MAUDIT, N_DUP_MAUDIT_N, id))
         {
             int32 amount = std::max(1, aura->GetModifier()->m_amount);
             DepthGuard depth;
@@ -422,18 +555,54 @@ namespace cmangos_module
         Player* player = static_cast<Player*>(unit);
         if (player->getClass() != C_NECRO)
             return;
-        uint32 rank = TalentRank(player, T_RECOLTE, T_RECOLTE_N, 2);
-        if (!rank)
-            return;
-        const uint32_t* lists[] = { N_DOT_MOT, N_DOT_CORRUPTION, N_DOT_VOL, N_DOT_MALEDICTION, N_DOT_PESTE, N_DOT_MAUDIT };
-        const uint32 sizes[] = { N_DOT_MOT_N, N_DOT_CORRUPTION_N, N_DOT_VOL_N, N_DOT_MALEDICTION_N, N_DOT_PESTE_N, N_DOT_MAUDIT_N };
-        for (uint32 i = 0; i < 6; ++i)
+        const uint32_t* lists[] = { N_DOT_MOT, N_DOT_CORRUPTION, N_DOT_VOL, N_DOT_MALEDICTION, N_DOT_PESTE, N_DOT_MAUDIT,
+                                    N_DUP_MOT, N_DUP_CORRUPTION, N_DUP_VOL, N_DUP_MALEDICTION, N_DUP_PESTE, N_DUP_MAUDIT };
+        const uint32 sizes[] = { N_DOT_MOT_N, N_DOT_CORRUPTION_N, N_DOT_VOL_N, N_DOT_MALEDICTION_N, N_DOT_PESTE_N, N_DOT_MAUDIT_N,
+                                 N_DUP_MOT_N, N_DUP_CORRUPTION_N, N_DUP_VOL_N, N_DUP_MALEDICTION_N, N_DUP_PESTE_N, N_DUP_MAUDIT_N };
+        std::vector<uint32> dots;
+        for (uint32 i = 0; i < 12; ++i)
             for (uint32 j = 0; j < sizes[i]; ++j)
-                if (victim->HasAura(lists[i][j]))
-                {
-                    player->ModifyPower(POWER_MANA, int32(player->GetMaxPower(POWER_MANA) * 5 * rank / 100));
-                    return;
-                }
+                if (victim->GetSpellAuraHolder(lists[i][j], player->GetObjectGuid()))
+                    dots.push_back(lists[i][j]);
+        if (dots.empty())
+            return;
+        std::lock_guard<std::recursive_mutex> guard(lock);
+        DepthGuard depth;
+        // Récolte d'âme : mana
+        if (uint32 rank = TalentRank(player, T_RECOLTE, T_RECOLTE_N, 2))
+            player->ModifyPower(POWER_MANA, int32(player->GetMaxPower(POWER_MANA) * 5 * rank / 100));
+        // Contagion : les DoT passent à un ennemi proche
+        if (uint32 r = TRank(player, T_CONTAGION, T_CONTAGION_N))
+            if (Roll(25.0f * r))
+                if (Unit* next = player->SelectRandomUnfriendlyTarget(victim, 20.0f))
+                    if (next->IsAlive() && next != victim)
+                        for (uint32 d : dots)
+                            player->CastSpell(next, d, TRIGGERED_OLD_TRIGGERED);
+    }
+
+    void ClassesModule::OnDealDamage(Unit* /*unit*/, Unit* victim, uint32 health, uint32 damage)
+    {
+        if (!victim || victim->GetTypeId() != TYPEID_PLAYER || !victim->IsAlive() || damage >= health)
+            return;
+        Player* player = static_cast<Player*>(victim);
+        if (player->getClass() != C_META || s_depth > 0)
+            return;
+        uint32 r = TRank(player, T_EGIDE, T_EGIDE_N);
+        if (!r)
+            return;
+        uint32 seuil = player->GetMaxHealth() * 35 / 100;
+        if (health - damage >= seuil || health < seuil)
+            return;
+        std::lock_guard<std::recursive_mutex> guard(lock);
+        time_t now = time(nullptr);
+        time_t& last = egideTime[player->GetObjectGuid().GetRawValue()];
+        if (now - last < 60)
+            return;
+        last = now;
+        static const int32 pct[] = { 3, 6, 10 };
+        int32 bp = int32(player->GetMaxHealth()) * pct[std::min<uint32>(r, 3) - 1] / 100;
+        DepthGuard depth;
+        player->CastCustomSpell(player, M_H2_EGIDE, &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
     }
 
     void ClassesModule::OnLearnTalent(Player* player, uint32 spellId)
@@ -472,7 +641,7 @@ namespace cmangos_module
                 if (!p || !p->IsInWorld() || !p->IsAlive())
                     continue;
                 uint8 cls = p->getClass();
-                if ((cls != C_NECRO && cls != C_SNIPER && cls != C_META) || !IsBot(p))
+                if (cls != C_NECRO && cls != C_SNIPER && cls != C_META)
                     continue;
                 if (Map* map = p->GetMap())
                     todo.emplace_back(map, p->GetObjectGuid());
@@ -483,11 +652,98 @@ namespace cmangos_module
             ObjectGuid guid = t.second;
             t.first->GetMessager().AddMessage([guid](Map* map)
             {
-                if (Player* bot = map->GetPlayer(guid))
-                    if (instance)
-                        instance->BotThink(bot);
+                if (Player* p = map->GetPlayer(guid))
+                    if (instance && p->IsInWorld() && p->IsAlive())
+                    {
+                        instance->Upkeep(p);
+                        if (IsBot(p))
+                            instance->BotThink(p);
+                    }
             });
         }
+    }
+
+    // effets permanents qui dépendent de l'armée, du familier ou des talents (toutes les secondes)
+    void ClassesModule::Upkeep(Player* player)
+    {
+        std::lock_guard<std::recursive_mutex> guard(lock);
+        DepthGuard depth;
+        uint8 cls = player->getClass();
+        if (cls == C_NECRO)
+        {
+            CleanArmy(player);
+            auto& dq = armies[player->GetObjectGuid().GetRawValue()];
+            Map* map = player->GetMap();
+            std::vector<Unit*> army;
+            for (auto const& e : dq)
+                if (Pet* pet = map->GetPet(ObjectGuid(e.guid)))
+                    army.push_back(pet);
+            // Étreinte de la tombe + Chair putride : endurance et dégâts des invocations
+            uint32 rE = TRank(player, T_ETREINTE, T_ETREINTE_N), rC = TRank(player, T_CHAIR, T_CHAIR_N);
+            int32 sta = int32(2 * rE + 3 * rC), dmg = int32(rE * 3 / 2);
+            for (Unit* u : army)
+                if (!u->HasAura(N_H_TOMBE) && (sta || dmg))
+                    u->CastCustomSpell(u, N_H_TOMBE, &sta, &dmg, nullptr, TRIGGERED_OLD_TRIGGERED);
+            // Maître nécromancien : par type d'invocation différent
+            uint32 rM = TRank(player, T_MAITRE, T_MAITRE_N);
+            std::vector<uint32> types;
+            for (Unit* u : army)
+                if (std::find(types.begin(), types.end(), u->GetEntry()) == types.end())
+                    types.push_back(u->GetEntry());
+            int32 pct = int32(types.size() * 0.3f * rM + 0.5f);
+            SetHiddenAura(player, N_H_MAITRE, pct, -pct);
+            for (Unit* u : army)
+                SetHiddenAura(u, N_H_MAITRE, pct, -pct);
+            // Lien des morts : 20 % des dégâts subis vont à l'invocation principale
+            bool lien = T_LIEN[0] && player->HasSpell(T_LIEN[0]) && !army.empty();
+            SpellAuraHolder* held = player->GetSpellAuraHolder(N_H_LIEN);
+            if (!lien && held)
+                player->RemoveAurasDueToSpell(N_H_LIEN);
+            else if (lien && (!held || held->GetCasterGuid() != army.front()->GetObjectGuid()))
+            {
+                player->RemoveAurasDueToSpell(N_H_LIEN);
+                army.front()->CastSpell(player, N_H_LIEN, TRIGGERED_OLD_TRIGGERED);
+            }
+        }
+        else if (cls == C_SNIPER)
+        {
+            Pet* pet = player->GetPet();
+            bool petOk = pet && pet->IsAlive();
+            // Meute / Grande meute : compagnons tant que le familier est là
+            uint32 wanted = petOk ? ((T_MEUTE[0] && player->HasSpell(T_MEUTE[0])) ? 1 : 0) + ((T_GRANDE_MEUTE[0] && player->HasSpell(T_GRANDE_MEUTE[0])) ? 1 : 0) : 0;
+            std::vector<Pet*> pack, robots;
+            ForArmy(player, false, [&](Unit* u)
+            {
+                if (u->GetEntry() == C_MEUTE) pack.push_back(static_cast<Pet*>(u));
+                if (u->GetEntry() == C_ROBOT) robots.push_back(static_cast<Pet*>(u));
+            });
+            while (pack.size() > wanted)
+            {
+                pack.back()->Unsummon(PET_SAVE_AS_DELETED, player);
+                pack.pop_back();
+            }
+            for (size_t i = pack.size(); i < wanted; ++i)
+                player->CastSpell(player, S_H2_MEUTE, TRIGGERED_OLD_TRIGGERED);
+            // Tireur solitaire : sans familier permanent
+            uint32 rS = TRank(player, T_SOLITAIRE, T_SOLITAIRE_N);
+            SetHiddenAura(player, S_H2_SOLITAIRE, (rS && !petOk) ? int32(4 * rS) : 0, 0);
+            // Robots améliorés
+            if (uint32 rR = TRank(player, T_ROBOTS, T_ROBOTS_N))
+            {
+                int32 v = int32(5 * rR);
+                for (Pet* r : robots)
+                    if (!r->HasAura(S_H2_ROBOT))
+                        r->CastCustomSpell(r, S_H2_ROBOT, &v, &v, nullptr, TRIGGERED_OLD_TRIGGERED);
+            }
+            // Familier blindé
+            if (petOk)
+            {
+                uint32 rB = TRank(player, T_BLINDE, T_BLINDE_N);
+                SetHiddenAura(pet, S_H2_BLINDE, int32(10 * rB), int32(10 * rB));
+            }
+        }
+        else if (cls == C_META)
+            MetaPassives(player);
     }
 
     bool ClassesModule::TryCast(Player* bot, Unit* target, uint32 spellId)
