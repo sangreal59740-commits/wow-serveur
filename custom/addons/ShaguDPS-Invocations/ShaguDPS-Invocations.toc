@@ -1,0 +1,5 @@
+## Interface: 11200
+## Title: ShaguDPS-Invocations
+## Notes: Compte les degats et soins des invocations des classes custom (Necromancien, Sniper, Metamorphe, Voleur Fantome, Pretre Corrompu) pour leur invocateur
+## Dependencies: ShaguDPS
+ShaguDPS-Invocations.lua
