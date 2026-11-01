@@ -397,6 +397,35 @@ namespace cmangos_module
         }
     }
 
+    // ------------------------------------------------------------------ 4e spé des classes vanilla
+    void ClassesModule::Spe4Cast(Player* player, uint32 id, Unit* /*victim*/)
+    {
+        uint8 cls = player->getClass();
+        if (cls == CLASS_PALADIN)
+        {
+            // Sceau du soleil : le Jugement ne le consomme pas (on le remet après le retrait fait par le script du Jugement)
+            if (In(P4_JUG_SOLEIL, P4_JUG_SOLEIL_N, id))
+                player->CastSpell(player, P4_SCEAU[0], TRIGGERED_OLD_TRIGGERED);
+            // Appel du Soleil : puissance des sorts du Sacré +25 %
+            else if (In(P4_APPEL, P4_APPEL_N, id) && !player->HasAura(P4_APPEL_SP[0]))
+            {
+                int32 bp = player->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_HOLY) / 4;
+                if (bp > 0)
+                    player->CastCustomSpell(player, P4_APPEL_SP[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+            }
+        }
+    }
+
+    void ClassesModule::Spe4Upkeep(Player* player)
+    {
+        uint8 cls = player->getClass();
+        if (cls == CLASS_PALADIN)
+        {
+            if (!player->HasAura(P4_APPEL[0]) && player->HasAura(P4_APPEL_SP[0]))
+                player->RemoveAurasDueToSpell(P4_APPEL_SP[0]);
+        }
+    }
+
     // ------------------------------------------------------------------ crochets
     void ClassesModule::OnCast(Spell* spell, Unit* caster, Unit* victim)
     {
@@ -405,7 +434,15 @@ namespace cmangos_module
         Player* player = static_cast<Player*>(caster);
         uint8 cls = player->getClass();
         if (cls != C_NECRO && cls != C_SNIPER && cls != C_META)
+        {
+            if (s_depth == 0)
+            {
+                std::lock_guard<std::recursive_mutex> guard(lock);
+                DepthGuard depth;
+                Spe4Cast(player, spell->m_spellInfo->Id, victim);
+            }
             return;
+        }
         if (s_depth > 0)
             return;
         std::lock_guard<std::recursive_mutex> guard(lock);
@@ -653,7 +690,8 @@ namespace cmangos_module
                 if (!p || !p->IsInWorld() || !p->IsAlive())
                     continue;
                 uint8 cls = p->getClass();
-                if (cls != C_NECRO && cls != C_SNIPER && cls != C_META)
+                // classes vanilla : seulement les vrais joueurs (4e spé) ; les bots ne la prennent pas
+                if (cls != C_NECRO && cls != C_SNIPER && cls != C_META && IsBot(p))
                     continue;
                 if (Map* map = p->GetMap())
                     todo.emplace_back(map, p->GetObjectGuid());
@@ -681,6 +719,11 @@ namespace cmangos_module
         std::lock_guard<std::recursive_mutex> guard(lock);
         DepthGuard depth;
         uint8 cls = player->getClass();
+        if (cls != C_NECRO && cls != C_SNIPER && cls != C_META)
+        {
+            Spe4Upkeep(player);
+            return;
+        }
         if (cls == C_NECRO)
         {
             CleanArmy(player);

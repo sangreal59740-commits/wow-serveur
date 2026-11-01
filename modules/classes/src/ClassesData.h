@@ -300,4 +300,13 @@ namespace classes_data
     static const uint32_t BM_SALVE_N = 5;
     static const uint32_t BM_LIEN[] = { 63018, 63019, 63020, 63021, 63022, 63023, 63024, 63025, 63026 };
     static const uint32_t BM_LIEN_N = 9;
+    // 4e spé des classes vanilla
+    static const uint32_t P4_JUG_SOLEIL[] = { 55006 };
+    static const uint32_t P4_JUG_SOLEIL_N = 1;
+    static const uint32_t P4_SCEAU[] = { 55007 };
+    static const uint32_t P4_SCEAU_N = 1;
+    static const uint32_t P4_APPEL[] = { 55010 };
+    static const uint32_t P4_APPEL_N = 1;
+    static const uint32_t P4_APPEL_SP[] = { 55011 };
+    static const uint32_t P4_APPEL_SP_N = 1;
 }

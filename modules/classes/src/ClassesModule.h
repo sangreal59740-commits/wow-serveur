@@ -56,6 +56,9 @@ namespace cmangos_module
         // Métamorphe
         void MetaCast(Player* player, uint32 spellId, Unit* victim);
         void MetaPassives(Player* player);
+        // 4e spé des classes vanilla
+        void Spe4Cast(Player* player, uint32 spellId, Unit* victim);
+        void Spe4Upkeep(Player* player);
         // bots
         bool TryCast(Player* bot, Unit* target, uint32 spellId);
 
