@@ -1316,7 +1316,8 @@ TRAINERS = [
     (900, 990173, "Vol'kesh", "Maître nécromancien", 3324, 0, 0),                    # Orgrimmar, la Faille de l'ombre
     (900, 990190, "Morbius Fielgrise", "Maître nécromancien", 4563, 0, 0),         # Fossoyeuse, quartier des Magiciens
     (900, 990191, "Lucrèce Sombretombe", "Maître nécromancien", 2126, 0, 0),       # Clairière de Tirisfal (Deathknell)
-    (901, 990174, "Thordin Visée-Sûre", "Maître sniper", 1231, 0, 0),               # Val d'Est-Gel (Coldridge)
+    (901, 990174, "Thordin Visée-Sûre", "Maître sniper", 1231, 0, 0),               # Kharanos
+    (901, 990192, "Brokk Poudre-Fine", "Maître sniper", 895, 0, 0),                # Val d'Est-Gel, Anvilmar (camp de départ)
     (901, 990175, "Dagna Poudrenoire", "Maître sniper", 5117, 0, 0),                # Forgefer, salle des Armes
     (901, 990176, "Grok Œil-de-Fer", "Maître sniper", 3154, 0, 0),                  # Vallée des Épreuves
     (901, 990177, "Mazgar Longuevue", "Maître sniper", 3352, 0, 0),                 # Orgrimmar, vallée de l'Honneur
@@ -1373,6 +1374,18 @@ for _i, (_sid, _icon) in enumerate(zip(SPEC_SPELLS, (776, 1553, 1575))):
                                 'CastingTimeIndex': 6, 'Category': 0, 'RecoveryTime': 0, 'CategoryRecoveryTime': 0,
                                 'Attributes': SPR[8690][dc_attr] | 0x10000000, 'SpellIconID': _icon, 'SpellLevel': 0, 'BaseLevel': 0})
 
+# ======================================================================== icônes (demandées par Alexis le 01/11)
+ICON_FIX = {N['inv_squelette']: 61, N['inv_goule']: 108, N['inv_abo']: 313, N['inv_givre']: 94, N['inv_chien']: 1614,
+            N['inv_chevalier']: 1241, N['inv_wyrm']: 56,
+            S['inv_sanglier']: 1578, S['inv_tigre']: 916, S['inv_ours']: 1559, S['inv_dino']: 1584, S['inv_griffon']: 1583}
+for _sid in S['dynamite']:
+    ICON_FIX[_sid] = 355
+for _g in [NG, SG, MG, TG]:
+    for _sp in _g.spells:
+        _k = _sp['id'] if _g is not TG else _sp['sets'].get('EffectTriggerSpell1')
+        if _k in ICON_FIX:
+            _sp['sets']['SpellIconID'] = ICON_FIX[_k]
+
 # ======================================================================== corrections générales des sorts clonés
 from spellgen import dbc_col as _dc
 _ATTR, _ATTRX = _dc('Attributes'), _dc('AttributesEx')
@@ -1381,6 +1394,15 @@ for _g in [NG, SG, MG] + [g for g, a, b in V4_GENS]:
         st = _sp['sets']
         base = SPR[_sp['base']]
         # bit « renvoie le familier » (sorts clonés depuis Invocation d'un diablotin) : seulement pour les vraies invocations de familier
+        # « se brise aux dégâts » hérité du sort modèle (ex. Flèche de dispersion pour Tir saignant) : seulement pour l'invisibilité
+        _aif = st.get('AuraInterruptFlags', base[_dc('AuraInterruptFlags')])
+        _auras = [st.get('EffectApplyAuraName%d' % _e, base[_dc('EffectApplyAuraName%d' % _e)]) for _e in (1, 2, 3)]
+        if _aif & 2 and not any(a in (16, 18) for a in _auras):
+            st['AuraInterruptFlags'] = _aif & ~2
+        # « arrête l'attaque automatique » hérité du modèle : seulement pour l'invisibilité
+        _at = st.get('Attributes', base[_ATTR])
+        if _at & 0x100000 and not any(a in (16, 18) for a in _auras):
+            st['Attributes'] = _at & ~0x100000
         ax = st.get('AttributesEx', base[_ATTRX])
         if ax & 1 and st.get('Effect1', base[_dc('Effect1')]) != 56:
             st['AttributesEx'] = ax & ~1
