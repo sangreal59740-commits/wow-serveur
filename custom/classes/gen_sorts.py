@@ -103,7 +103,7 @@ N['armure'] = n_single('armure', 'inv', 687, 1, "Armure", "Augmente votre armure
                        icon_sid=706, tooltip="Armure augmentée de 20 %.",
                        Effect1=6, EffectApplyAuraName1=101, EffectMiscValue1=1, EffectBasePoints1=19, EffectDieSides1=1,
                        Effect2=0, EffectApplyAuraName2=0, DurationIndex=DUR[-1])
-N['trait'] = n_direct('trait', 'mag', 686, 1, 9, "Trait d'ombre", 5, 300, 340, 0.57, 2000, 2000, 17)
+N['trait'] = n_direct('trait', 'mag', 686, 1, 9, "Trait d'ombre", 5, 300, 340, 0.57, 2000, 0, 10)   # recharge retirée, mana -40 % (Alexis, 01/11)
 N['mot'] = n_dot('mot', 'mal', 172, 2, 9, "Mot de l'ombre", 5, 470, 10000, 0.67, 1000, 14, icon_sid=589)
 N['corruption'] = n_dot('corruption', 'mal', 172, 10, 8, "Corruption", 5, 460, 10000, 0.67, 1000, 14,
                         extra=lambda L: {'CastingTimeIndex': CAST[0]})
