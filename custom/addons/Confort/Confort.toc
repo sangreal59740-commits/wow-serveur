@@ -1,5 +1,5 @@
 ## Interface: 11200
 ## Title: Confort
-## Notes: Fenetres deplacables (Maj + glisser), barres d'action verrouillees (Maj + glisser pour bouger un sort), progression des quetes dans l'infobulle des monstres. /fenetres, /verrou
+## Notes: 20 quetes suivies, fenetres deplacables (Maj + glisser), barres d'action verrouillees (Maj + glisser pour bouger un sort), progression des quetes dans l'infobulle des monstres. /fenetres, /verrou
 ## SavedVariables: Confort_Pos, Confort_Verrou
 Confort.lua

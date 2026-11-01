@@ -179,6 +179,23 @@ GameTooltip.SetUnit = function(self, unite)
 	if ajoute then self:Show() end
 end
 
+-- Suivi des quetes : 20 quetes suivies au lieu de 5 (pfQuest s'appuie sur ce suivi) ---------
+MAX_WATCHABLE_QUESTS = 20
+do
+	local avant = MAX_QUESTWATCH_LINES or 30
+	if QuestWatchFrame and getglobal("QuestWatchLine" .. avant) then
+		for i = avant + 1, 160 do
+			if not getglobal("QuestWatchLine" .. i) then
+				local l = QuestWatchFrame:CreateFontString("QuestWatchLine" .. i, "ARTWORK", "GameFontNormalSmall")
+				l:SetPoint("TOPLEFT", getglobal("QuestWatchLine" .. (i - 1)), "BOTTOMLEFT", 0, -2)
+				l:SetJustifyH("LEFT")
+				l:Hide()
+			end
+		end
+		MAX_QUESTWATCH_LINES = 160
+	end
+end
+
 -- Evenements ---------------------------------------------------------------
 local f = CreateFrame("Frame")
 f:RegisterEvent("VARIABLES_LOADED")

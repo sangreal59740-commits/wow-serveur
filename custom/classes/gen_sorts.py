@@ -217,7 +217,7 @@ S['marque'] = SC.ranked('marque', 'tir', 1130, 2, 9, "Marque", 4, 1000, 0, lambd
     {'EffectBasePoints2': rv(110, L) - 1, 'EffectDieSides2': 1, 'DurationIndex': DUR[120000]},
     "Marque la cible pendant 2 min : les attaques à distance contre elle gagnent %d points de puissance d'attaque." % rv(110, L),
     "Marqué."), icon_sid=1130)
-S['saignant'] = SC.ranked('saignant', 'tir', 19503, 4, 8, "Tir saignant", 5, 6000, 0, lambda L, k: (
+S['saignant'] = SC.ranked('saignant', 'tir', 1978, 4, 8, "Tir saignant", 5, 6000, 0, lambda L, k: (
     dict(RANGED, EffectBasePoints1=49, EffectApplyAuraName2=3, School=0, EffectBasePoints2=rv(180, L) // 5 - 1, EffectDieSides2=1,
          EffectAmplitude2=1000, DurationIndex=DUR[5000], EffectMechanic2=15, Mechanic=0, EffectBonusCoefficientFromAP2=0.01),
     "Inflige 50 %% des dégâts de l'arme et fait saigner la cible : %d points de dégâts en 5 s." % (rv(180, L) // 5 * 5),
@@ -315,7 +315,7 @@ S['precision'] = SC.ranked('precision', 'tir', 19434, 42, 4, "Tir de précision"
          EffectAmplitude2=1000, DurationIndex=DUR[5000], EffectMechanic2=15, School=0, EffectBonusCoefficientFromAP2=0.01),
     "Un tir précis : 140 %% des dégâts de l'arme et %d points de dégâts de saignement en 5 s." % (rv(200, L) // 5 * 5),
     "Saigne."), icon_sid=19434)
-S['bestial'] = SC.ranked('bestial', 'bes', 19503, 46, 3, "Tir bestial", 7, 5000, 0, lambda L, k: (
+S['bestial'] = SC.ranked('bestial', 'bes', 1978, 46, 3, "Tir bestial", 7, 5000, 0, lambda L, k: (
     dict(RANGED, EffectBasePoints1=69, EffectApplyAuraName2=3, School=3, EffectBasePoints2=rv(60, L) // 5 - 1,
          EffectDieSides2=1, EffectAmplitude2=1000, DurationIndex=DUR[5000], StackAmount=3, Mechanic=0, EffectMechanic2=0,
          EffectBonusCoefficientFromAP2=0.01),
@@ -741,7 +741,7 @@ S['tirmeca'] = SC.ranked('tirmeca', 'mec', 2643, 48, 3, "Tir méca", 11, 20000, 
            'EffectApplyAuraName3': 0}, {'DurationIndex': DUR[10000], 'School': 0}),
     "Inflige 60 %% des dégâts de l'arme plus %d à %d, et 3 robots de votre niveau surgissent pendant 10 s." % (rv(80, L), rv(100, L)), ''),
     icon_sid=12749)
-S['recul'] = SC.single('recul', 'tir', 688, 6, "Recul", "Vous fait bondir de 5 mètres en arrière.", 3000, 0, 3, icon_sid=781,
+S['recul'] = SC.single('recul', 'tir', 688, 6, "Recul", "Vous fait bondir de 15 mètres en arrière.", 3000, 0, 3, icon_sid=781,
                        **merge({'Effect1': 3, 'EffectImplicitTargetA1': 1}, none(2), none(3), {'DurationIndex': 0}))
 S['triple'] = SC.single('triple', 'tir', 12042, 34, "Triple aspect",
                         "Pendant 15 s, cumule les effets des trois aspects : puissance d'attaque et dégâts physiques +10 %, armure +25 %.",
@@ -1308,6 +1308,28 @@ teach_all(MG, 902, set(START_SPELLS[META]))
 # 4e spécialisation des classes vanilla (section 6 bis du doc)
 exec(open(OUT + 'spe4.py', encoding='utf-8').read())
 
+# Bombe collante (demandée par Alexis le 01/11) : sort de bas niveau utilisable au corps à corps (pas d'arme à distance).
+# Défini après tous les autres sorts du Sniper pour ne pas décaler leurs numéros.
+from spellgen import dbc_col as _dcb
+S['collante'] = SC.ranked('collante', 'mec', 133, 1, 9, "Bombe collante", 3, 3000, 0, lambda L, k: (
+    {'SpellIconID': 937, 'SpellVisual': SPR[4068][_dcb('SpellVisual')], 'School': 2, 'RangeIndex': RANGE[20],
+     'Effect1': 2, 'EffectImplicitTargetA1': 6, 'EffectBasePoints1': rv(90, L) - 1, 'EffectDieSides1': rv(110, L) - rv(90, L) + 1,
+     'EffectBonusCoefficient1': 0, 'EffectBonusCoefficientFromAP1': 0.05,
+     'Effect2': 6, 'EffectApplyAuraName2': 3, 'EffectImplicitTargetA2': 6, 'EffectBasePoints2': max(1, rv(150, L) // 5) - 1,
+     'EffectDieSides2': 1, 'EffectAmplitude2': 1000, 'DurationIndex': DUR[5000], 'EffectBonusCoefficient2': 0,
+     'EffectBonusCoefficientFromAP2': 0.01, 'Effect3': 0, 'EffectApplyAuraName3': 0},
+    "Lance une bombe qui colle à la cible : %d à %d points de dégâts de Feu, puis %d points de dégâts de Feu en 5 s. "
+    "Utilisable au corps à corps." % (rv(90, L), rv(110, L), max(1, rv(150, L) // 5) * 5),
+    "Brûle."))
+START_SPELLS[SNIPER].append(S['collante'][0])
+for _sid in S['collante']:
+    _sp = [x for x in SG.spells if x['id'] == _sid][0]
+    _lv = _sp['sets']['SpellLevel']
+    _tid = TEACH[0]; TEACH[0] += 1
+    TG.add(_tid, TEACH_BASE, _sp['name'], _sp['desc'], _sp['rank'], family=False,
+           sets={'EffectTriggerSpell1': _sid, 'SpellLevel': _lv, 'BaseLevel': _lv, 'MaxLevel': 0, 'SpellIconID': 937})
+    TRAINER_SPELLS.setdefault(901, []).append((_tid, max(10, 9 * _lv * _lv), _lv))
+
 # (gabarit, entrée, nom, sous-titre, PNJ modèle, décalage, modèle 3D ou 0)
 TRAINERS = [
     (900, 990170, "Mortis Valcendre", "Maître nécromancien", 459, 0, 10427),       # Comté du Nord
@@ -1385,6 +1407,16 @@ for _g in [NG, SG, MG, TG]:
         _k = _sp['id'] if _g is not TG else _sp['sets'].get('EffectTriggerSpell1')
         if _k in ICON_FIX:
             _sp['sets']['SpellIconID'] = ICON_FIX[_k]
+
+# Tir saignant et Tir bestial : modèle Morsure de serpent (le tir automatique continue), effets de Flèche de dispersion
+_TIRS_SERPENT = set(S['saignant']) | set(S['bestial'])
+for _sp in SG.spells:
+    if _sp['id'] in _TIRS_SERPENT:
+        _st = _sp['sets']
+        _st.setdefault('Effect1', 31)
+        _st.setdefault('EffectApplyAuraName1', 0)
+        _st.setdefault('Effect2', 6)
+        _st.setdefault('EffectImplicitTargetA2', 6)
 
 # ======================================================================== corrections générales des sorts clonés
 from spellgen import dbc_col as _dc
