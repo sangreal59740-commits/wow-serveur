@@ -22,11 +22,13 @@ NECRO, SNIPER, META = 6, 10, 11
 NEW = {
     NECRO: (9, HUMAN, [HUMAN, TROLL]),
     SNIPER: (3, DWARF, [DWARF, ORC]),
-    META: (11, NE, [HUMAN, DWARF, NE, GNOME, ORC, TROLL, TAUREN, UD]),
+    META: (11, NE, [NE, GNOME, TROLL, TAUREN]),
 }
 NAMES = {NECRO: "Nécromancien", SNIPER: "Sniper", META: "Métamorphe"}
 # classes vanilla ouvertes à une race de plus : (race, classe, race modèle de la classe)
 EXTRA = [(3, 7, 2), (5, 2, 1)]       # Nain chaman (modèle : Orc), Mort-vivant paladin (modèle : Humain)
+# paires vanilla retirées (race, classe) : Elfe de la nuit et Troll guerriers, Humain voleur, Nain prêtre
+REMOVED = [(4, 1), (8, 1), (1, 4), (3, 5)]
 CBIT = {c: 1 << (c - 1) for c in range(1, 12)}
 
 # ---------------------------------------------------------------- ChrClasses
@@ -68,6 +70,7 @@ for c, (_, _, races) in NEW.items():
 for r, c, _ in EXTRA:
     if (r, c) not in pairs:
         pairs.append((r, c))
+pairs = [p for p in pairs if p not in REMOVED]
 pairs.sort()
 out = b'WDBC' + struct.pack('<4I', len(pairs), nf, rs, 1) + b''.join(bytes(p) for p in pairs) + b'\0'
 open(OUT + 'CharBaseInfo.dbc', 'wb').write(out)
@@ -256,6 +259,12 @@ for i, (entry, nom, sous, cls, src_npc, src_list) in enumerate([
       % (9903100 + i, entry, src_npc))
 w("INSERT INTO creature_template SELECT * FROM tmp_ct2;")
 w("DROP TEMPORARY TABLE tmp_ct2;")
+# paires vanilla retirées : sauvegarde puis suppression (les personnages déjà créés restent jouables)
+w("CREATE TABLE IF NOT EXISTS custom_backup_playercreateinfo_retire SELECT * FROM playercreateinfo WHERE (race, class) IN (%s);"
+  % ", ".join("(%d, %d)" % p for p in REMOVED))
+for t in ('playercreateinfo', 'playercreateinfo_spell', 'playercreateinfo_action', 'playercreateinfo_item'):
+    for r_, c_ in REMOVED:
+        w("DELETE FROM %s WHERE race=%d AND class=%d;" % (t, r_, c_))
 w("SELECT 'Classes OK' AS resultat;")
 open('/home/claude/wow/classes/classes.sql', 'w', encoding='utf-8').write("\n".join(L) + "\n")
 print('paires', len(pairs), 'tenues', len(recs), 'compétences ajoutées', len(extra))

@@ -1410,7 +1410,7 @@ for _cls, _tid, _cost, _lv in V4_TRAIN:
              "FROM creature_template WHERE TrainerType=0 AND TrainerClass=%d AND TrainerTemplateId=0;" % (_tid, _cost, _lv, _cls))
 # Métamorphe : les sorts du druide disparaissent de la création ; les maîtres druides deviennent maîtres métamorphes
 L.append("DELETE FROM playercreateinfo_spell WHERE class=%d AND Spell IN (5176, 5185);" % META)
-for race in (1, 2, 3, 4, 5, 6, 7, 8):
+for race in (4, 6, 7, 8):                  # races du Métamorphe
     for sp in START_SPELLS[META]:
         L.append("INSERT IGNORE INTO playercreateinfo_spell (race, class, Spell, Note) VALUES (%d, %d, %d, 'Metamorphe');" % (race, META, sp))
 L.append("UPDATE playercreateinfo_action SET action=%d WHERE class=%d AND type=0 AND action=5176;" % (M['terre'][0], META))
