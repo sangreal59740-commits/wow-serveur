@@ -409,7 +409,7 @@ M['feu'] = mr('hfeu', 'dru', 8050, 6, 8, "Horion de feu", 9, 0, 0, lambda L, k: 
     "Inflige %d à %d points de dégâts de Feu puis %d en 10 s. Recharge partagée avec Horion de terre." % (rv(280, L), rv(300, L), rv(200, L) // 10 * 10),
     "Brûle."))
 M['perçant'] = ms('percant', 'ang', 355, 8, "Cri perçant", "Provoque la cible, qui vous attaque pendant 3 s.", 3000, 0, 3,
-                  icon_sid=355, tooltip="Provoqué.", Category=0, CategoryRecoveryTime=0)
+                  icon_sid=355, tooltip="Provoqué.", Category=0, CategoryRecoveryTime=0, RangeIndex=RANGE[20])
 M['appel'] = ms('appel', 'ang', 1160, 10, "Cri d'appel",
                 "Réduit de 10 % la puissance d'attaque des ennemis à moins de 20 mètres pendant 6 s.", 15000, 0, 5,
                 tooltip="Puissance d'attaque réduite.", EffectApplyAuraName1=166, EffectBasePoints1=-11, EffectDieSides1=1,
