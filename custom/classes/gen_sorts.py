@@ -1094,9 +1094,9 @@ tree(NG, 400, "Invocateur", CM_N, 0, "WarlockSummoning", 688, [
     (5, "Givre éternel", 2, 116, ('fx', mod(0, True, ['k_givre'], 15)), lambda r: "Augmente le Bouclier du squelette de givre de %d %% des PV max et son Blizzard de %d %%." % (r, 15 * r)),
     (6, "Légion", 1, 18710, D, "Vous donne 1 point d'invocation supplémentaire.", "Armée des morts"),
     (6, "Maître nécromancien", 5, 23785, D, lambda r: "Chaque type d'invocation différent actif augmente vos dégâts et ceux de l'armée de %.1f %% et réduit les dégâts subis d'autant." % (0.3 * r)),
-    (6, "Berserk amélioré", 2, 18788, ('fx', mod(1, False, ['berserk'], 2000)), lambda r: "Augmente la durée de Berserk de %d s." % (2 * r)),
+    (6, "Berserk amélioré", 2, 18788, ('fx', lambda r: [('mod', 1, False, ['berserk'], 2000 * r), ('mod', 1, False, ['annihilation'], 1500 * r)]),
+     lambda r: "Augmente la durée de Berserk de %d s et celle d'Annihilation de %.1f s." % (2 * r, 1.5 * r)),
     (7, "Invocation : Wyrm de givre", 1, 116, ('spell', N['inv_wyrm']), "Débloque le Wyrm de givre (2 points d'invocation)."),
-    (7, "Annihilation prolongée", 2, 18788, ('fx', mod(1, False, ['annihilation'], 1500)), lambda r: "Augmente la durée d'Annihilation de %.1f s." % (1.5 * r)),
     (7, "Lien des morts", 1, 19028, D, "20 % des dégâts que vous subissez sont transférés à votre invocation principale."),
 ])
 tree(NG, 401, "Malédiction", CM_N, 1, "WarlockCurses", 172, [
