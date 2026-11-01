@@ -1398,6 +1398,9 @@ for _sid, _cols in sorted(VPATCH.items()):
         else:
             _p[_dbc_col(k)] = v & 0xffffffff
     SPELL_PATCH[str(_sid)] = {str(k): v for k, v in _p.items()}
+L.append("DELETE FROM spell_group_spell WHERE SpellId BETWEEN 55000 AND 55999;")
+for _gid, _sid in globals().get('V4_GROUP_ADD', []):
+    L.append("INSERT INTO spell_group_spell (Id, SpellId) VALUES (%d, %d);" % (_gid, _sid))
 L.append("DELETE FROM npc_trainer_template WHERE spell BETWEEN 64500 AND 65499 AND entry NOT BETWEEN 900 AND 909;")
 L.append("DELETE FROM npc_trainer WHERE spell BETWEEN 64500 AND 65499;")
 for _cls, _tid, _cost, _lv in V4_TRAIN:

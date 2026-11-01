@@ -2,6 +2,7 @@
 #define CMANGOS_MODULE_CLASSES_H
 
 #include "Module.h"
+#include "Entities/Player.h"
 #include <deque>
 #include <mutex>
 #include <unordered_map>
@@ -44,6 +45,8 @@ namespace cmangos_module
         void BotThink(Player* bot);
         void Upkeep(Player* player);
         void OnDealDamage(Unit* unit, Unit* victim, uint32 health, uint32 damage) override;
+        void OnDealHeal(Unit* unit, Unit* victim, int32 gain, uint32 addHealth) override;
+        bool OnLoadActionButtons(Player* player, ActionButtonList& actionButtons) override;
 
     private:
         // Nécromancien
@@ -68,6 +71,8 @@ namespace cmangos_module
         std::unordered_map<uint64, int32> forceValue;               // joueur -> Force donnée par Force de l'esprit
         std::unordered_map<uint64, time_t> egideTime;               // joueur -> dernier déclenchement d'Égide angélique
         std::unordered_set<uint64> runique;                          // Chamans sous Appel runique (soin à la fin)
+        std::unordered_map<uint64, uint64> lienTarget;              // Mage -> allié sous Lien de vie
+        std::unordered_map<uint64, ActionButtonList*> actionLists;  // joueur -> sa barre d'action (pour suivre les changements de sorts)
         uint32 botTimer = 0;
     };
 }

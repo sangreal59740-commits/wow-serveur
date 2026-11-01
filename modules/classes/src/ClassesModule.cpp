@@ -398,7 +398,7 @@ namespace cmangos_module
     }
 
     // ------------------------------------------------------------------ 4e spé des classes vanilla
-    void ClassesModule::Spe4Cast(Player* player, uint32 id, Unit* /*victim*/)
+    void ClassesModule::Spe4Cast(Player* player, uint32 id, Unit* victim)
     {
         uint8 cls = player->getClass();
         if (cls == CLASS_PALADIN)
@@ -426,6 +426,19 @@ namespace cmangos_module
             // Absorption démoniaque : dégâts +25 %, dégâts subis -10 %
             if (In(K4_ABSORB, K4_ABSORB_N, id))
                 player->CastSpell(player, K4_ABSORB2[0], TRIGGERED_OLD_TRIGGERED);
+        }
+        else if (cls == CLASS_MAGE)
+        {
+            // Lien de vie : un seul allié lié à la fois
+            if (In(A4_LIEN, A4_LIEN_N, id) && victim)
+            {
+                uint64 key = player->GetObjectGuid().GetRawValue();
+                ObjectGuid old(lienTarget[key]);
+                if (!old.IsEmpty() && old != victim->GetObjectGuid())
+                    if (Unit* prev = player->GetMap()->GetUnit(old))
+                        prev->RemoveAurasByCasterSpell(A4_LIEN[0], player->GetObjectGuid());
+                lienTarget[key] = victim->GetObjectGuid().GetRawValue();
+            }
         }
         else if (cls == CLASS_SHAMAN)
         {
@@ -484,6 +497,77 @@ namespace cmangos_module
                 player->CastSpell(player, K4_INCANT[0], TRIGGERED_OLD_TRIGGERED);
             else if (!incant && player->HasAura(K4_INCANT[0]))
                 player->RemoveAurasDueToSpell(K4_INCANT[0]);
+        }
+        else if (cls == CLASS_MAGE)
+        {
+            // Cœur de la nature : sorts de Feu <-> soins de Nature (en deux temps : retirer un rang retire aussi les suivants)
+            bool coeur = T4_COEUR[0] && player->HasSpell(T4_COEUR[0]);
+            std::vector<std::pair<uint32, uint32>> swaps;
+            if (coeur)
+            {
+                std::vector<uint32> remove;
+                for (uint32 i = 0; i < A4_FIRE_N; ++i)
+                    if (player->HasSpell(A4_FIRE[i]))
+                    {
+                        if (!player->HasSpell(A4_HEAL[i]))
+                            player->learnSpell(A4_HEAL[i], false);
+                        swaps.emplace_back(A4_FIRE[i], A4_HEAL[i]);
+                        if (!In(A4_KEEP, A4_KEEP_N, A4_FIRE[i]))
+                            remove.push_back(A4_FIRE[i]);
+                    }
+                for (uint32 f : remove)
+                    if (player->HasSpell(f))
+                        player->removeSpell(f, false, false);
+            }
+            else
+            {
+                std::vector<uint32> remove;
+                for (uint32 i = 0; i < A4_FIRE_N; ++i)
+                    if (player->HasSpell(A4_HEAL[i]))
+                    {
+                        if (!player->HasSpell(A4_FIRE[i]))
+                            player->learnSpell(A4_FIRE[i], false);
+                        swaps.emplace_back(A4_HEAL[i], A4_FIRE[i]);
+                        remove.push_back(A4_HEAL[i]);
+                    }
+                for (uint32 h : remove)
+                    if (player->HasSpell(h))
+                        player->removeSpell(h, false, false);
+            }
+            // barre d'action : les boutons suivent le changement de sort
+            auto it = actionLists.find(player->GetObjectGuid().GetRawValue());
+            if (!swaps.empty() && it != actionLists.end() && it->second)
+            {
+                bool sent = false;
+                ActionButtonList copy = *it->second;
+                for (auto const& b : copy)
+                    if (b.second.GetType() == ACTION_BUTTON_SPELL && b.second.uState != ACTIONBUTTON_DELETED)
+                        for (auto const& sw : swaps)
+                            if (b.second.GetAction() == sw.first)
+                            {
+                                player->addActionButton(b.first, sw.second, ACTION_BUTTON_SPELL);
+                                sent = true;
+                            }
+                if (sent)
+                    player->SendInitialActionButtons();
+            }
+            // Armure de nature : puissance des soins +20 %
+            int32 sp = 0;
+            if (player->HasAura(A4_ARMURE[0]))
+            {
+                int32 cur = 0;
+                if (Aura* a = player->GetAura(A4_ARMURE_SP[0], EFFECT_INDEX_0))
+                    cur = a->GetModifier()->m_amount;
+                sp = (player->SpellBaseHealingBonusDone(SPELL_SCHOOL_MASK_ALL) - cur) / 5;
+            }
+            SetHiddenAura(player, A4_ARMURE_SP[0], std::max(0, sp), 0);
+            // Intelligence sylvestre : Intelligence des arcanes +20 % et autant d'Esprit, sur le Mage seulement
+            int32 ai = 0;
+            if (T4_SYLV[0] && player->HasSpell(T4_SYLV[0]))
+                for (uint32 i = 0; i < A4_INT_N; ++i)
+                    if (Aura* a = player->GetAura(A4_INT[i], EFFECT_INDEX_0))
+                        ai = std::max(ai, a->GetModifier()->m_amount);
+            SetHiddenAura(player, A4_AI[0], ai / 5, ai * 6 / 5);
         }
         else if (cls == CLASS_SHAMAN)
         {
@@ -554,6 +638,13 @@ namespace cmangos_module
         Player* player = static_cast<Player*>(caster);
         SpellEntry const* info = spell->m_spellInfo;
         uint32 id = info->Id;
+        if (player->getClass() == CLASS_MAGE)
+        {
+            // Bouclier de nature : Âme affaiblie comme Mot de pouvoir : Bouclier
+            if (In(A4_BOUCLIER, A4_BOUCLIER_N, id) && victim->IsAlive())
+                player->CastSpell(victim, 6788, TRIGGERED_OLD_TRIGGERED);
+            return;
+        }
         if (player->getClass() == C_NECRO && victim->IsAlive())
         {
             if ((In(N_DOT_PESTE, N_DOT_PESTE_N, id) || In(N_DUP_PESTE, N_DUP_PESTE_N, id)) && T_FLEAU[0] && player->HasSpell(T_FLEAU[0]))
@@ -780,6 +871,41 @@ namespace cmangos_module
         player->CastCustomSpell(player, M_H2_EGIDE, &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
     }
 
+    void ClassesModule::OnDealHeal(Unit* unit, Unit* victim, int32 /*gain*/, uint32 addHealth)
+    {
+        if (!unit || !victim || !addHealth || s_depth > 0 || unit->GetTypeId() != TYPEID_PLAYER)
+            return;
+        Player* mage = static_cast<Player*>(unit);
+        if (mage->getClass() != CLASS_MAGE)
+            return;
+        std::lock_guard<std::recursive_mutex> guard(lock);
+        DepthGuard depth;
+        // Écorce protectrice : armure de la cible +10 % pendant 5 s
+        if (T4_ECORCE[0] && mage->HasSpell(T4_ECORCE[0]) && victim->IsAlive())
+            mage->CastSpell(victim, A4_ECORCE[0], TRIGGERED_OLD_TRIGGERED);
+        // Lien de vie : l'allié lié reçoit 10 % (20 % avec le talent) des soins faits sur les autres
+        auto it = lienTarget.find(mage->GetObjectGuid().GetRawValue());
+        if (it == lienTarget.end() || !it->second)
+            return;
+        ObjectGuid tg(it->second);
+        if (tg == victim->GetObjectGuid())
+            return;
+        Unit* linked = mage->GetMap()->GetUnit(tg);
+        if (!linked || !linked->IsAlive() || !linked->GetSpellAuraHolder(A4_LIEN[0], mage->GetObjectGuid()) ||
+            !mage->IsWithinDistInMap(linked, 40.0f))
+            return;
+        int32 bp = int32(addHealth * (10 + 5 * TRank(mage, T4_LIEN_VAM, T4_LIEN_VAM_N)) / 100);
+        if (bp > 0)
+            mage->CastCustomSpell(linked, A4_LIEN_SOIN[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+    }
+
+    bool ClassesModule::OnLoadActionButtons(Player* player, ActionButtonList& actionButtons)
+    {
+        std::lock_guard<std::recursive_mutex> guard(lock);
+        actionLists[player->GetObjectGuid().GetRawValue()] = &actionButtons;
+        return false;
+    }
+
     void ClassesModule::OnLearnTalent(Player* player, uint32 spellId)
     {
         // Maîtrise de l'invocation : toutes les armes
@@ -798,6 +924,8 @@ namespace cmangos_module
         armies.erase(player->GetObjectGuid().GetRawValue());
         forceValue.erase(player->GetObjectGuid().GetRawValue());
         runique.erase(player->GetObjectGuid().GetRawValue());
+        lienTarget.erase(player->GetObjectGuid().GetRawValue());
+        actionLists.erase(player->GetObjectGuid().GetRawValue());
     }
 
     // ------------------------------------------------------------------ IA des bots

@@ -374,5 +374,142 @@ for _sid in HC.sla:
 V4H += [('H4_TERRE', [Hh['terre']]), ('H4_FOUDRE', LSHIELD), ('H4_RUNIQUE', [Hh['runique']]), ('H4_HOT', [Hh['hot']])]
 V4T += [('T4_DOUBLE_B', "Bouclier double")]
 
+# ======================================================================== Mage : Nature
+MAGE = 3
+AG = Gen(3, [32, 33, 34, 35, 36, 37] + list(range(39, 64)))
+V4_GENS.append((AG, 55500, 55699))
+AC = Ctx(AG, 55500, {'arcanes': 237}, MAGE, MAGE)
+A = {}
+A_FIRE, A_HEAL, A_KEEP = [], [], [11366, 11113]       # sort de Feu -> soin ; rangs 1 appris par talent (gardés)
+AHEALS = []
+NATVIS = visual(25297)
+
+def _heal_family(key, fire_ids, base, name, cast, cd, mpct, mn60, mx60, coef, desc_fn, hot=None, target=21, extra=None, icon_sid=25297):
+    ids = []
+    for k, fid in enumerate(fire_ids):
+        L = SPR[fid][dbc_col('SpellLevel')]
+        f = 0.93 if (k + 1 < len(fire_ids) and SPR[fire_ids[k + 1]][dbc_col('SpellLevel')] == L) else 1.0
+        mn, mx = round(rank_value(mn60, L) * f), round(rank_value(mx60, L) * f)
+        sets = common(L, cd, 0, mpct, icon_sid, base_cls=MAGE)
+        sets.update({'CastingTimeIndex': cast, 'School': 3, 'SpellVisual': NATVIS, 'RangeIndex': RANGE[40], 'DmgClass': 1,
+                     'Effect1': 10, 'EffectApplyAuraName1': 0, 'EffectBasePoints1': mn - 1, 'EffectDieSides1': mx - mn + 1,
+                     'EffectRealPointsPerLevel1': 0, 'EffectImplicitTargetA1': target, 'EffectImplicitTargetB1': 0,
+                     'EffectBonusCoefficient1': coef, 'EffectMiscValue1': 0, 'EffectTriggerSpell1': 0, 'EffectChainTarget1': 0,
+                     'Effect2': 0, 'EffectApplyAuraName2': 0, 'Effect3': 0, 'EffectApplyAuraName3': 0, 'Mechanic': 0,
+                     'TargetCreatureType': 0, 'AttributesEx3': 0})
+        t = 0
+        if hot:
+            tick60, amp, dur = hot
+            t = round(rank_value(tick60, L) * f)
+            sets.update({'Effect2': 6, 'EffectApplyAuraName2': 8, 'EffectBasePoints2': t - 1, 'EffectDieSides2': 1,
+                         'EffectRealPointsPerLevel2': 0, 'EffectImplicitTargetA2': target, 'EffectImplicitTargetB2': 0,
+                         'EffectAmplitude2': amp, 'EffectBonusCoefficient2': coef / 10.0, 'DurationIndex': DUR[dur],
+                         'EffectRadiusIndex2': sets.get('EffectRadiusIndex1', 0)})
+        if extra:
+            sets.update(extra)
+            if hot and 'EffectRadiusIndex1' in extra:
+                sets['EffectRadiusIndex2'] = extra['EffectRadiusIndex1']
+            if hot and 'EffectImplicitTargetB1' in extra:
+                sets['EffectImplicitTargetB2'] = extra['EffectImplicitTargetB1']
+        hid = AG.add(AC.nid(), base, name, desc_fn(mn, mx, t), "Rang %d" % (k + 1), key=key, sets=sets)
+        AC.sla.append((237, hid))
+        ids.append(hid)
+        A_FIRE.append(fid); A_HEAL.append(hid)
+    AG.chain_ranks(ids)
+    teach_v4(MAGE, AG, ids)
+    AHEALS.append(key)
+    return ids
+
+A['boule'] = _heal_family('boule_vie', [133, 143, 145, 3140, 8400, 8401, 8402, 10148, 10149, 10150, 10151, 25306], 10965,
+                          "Boule de vie", CAST[3000], 0, 40, 1966, 2194, 0.857,
+                          lambda a, b, t: "Une boule de vie soigne l'allié ciblé de %d à %d points de vie." % (a, b))
+A['vif'] = _heal_family('vif', [2948, 8444, 8445, 8446, 10205, 10206, 10207], 10917, "Vif-éclat", CAST[1500], 0, 25, 812, 959, 0.429,
+                        lambda a, b, t: "Un éclat de vie rapide soigne l'allié ciblé de %d à %d points de vie." % (a, b), icon_sid=9858)
+A['trait'] = _heal_family('trait_vie', [2136, 2137, 2138, 8412, 8413, 10197, 10199], 10917, "Trait de vie", CAST[0], 8000, 15, 446, 524, 0.429,
+                          lambda a, b, t: "Soigne instantanément l'allié ciblé de %d à %d points de vie." % (a, b), icon_sid=8936)
+A['flor'] = _heal_family('floraison', [2120, 2121, 8422, 8423, 10215, 10216], 10216, "Floraison", CAST[3000], 0, 55, 1041, 1099, 0.286,
+                         lambda a, b, t: "Fait fleurir la zone ciblée : soigne les alliés dans un rayon de 8 mètres de %d à %d points de vie, "
+                                         "puis de %d points de vie en 8 s." % (a, b, 4 * t),
+                         hot=(50, 2000, 8000), target=31,
+                         extra={'Targets': 64, 'RangeIndex': RANGE[30], 'EffectRadiusIndex1': RADIUS[8], 'EffectImplicitTargetB1': 0},
+                         icon_sid=740)
+A['explo'] = _heal_family('explo_vie', [11366, 12505, 12522, 12523, 12524, 12525, 12526, 18809], 10965, "Explosion vitale", 171, 0, 50,
+                          2560, 2850, 1.0, lambda a, b, t: "Une explosion de vie soigne l'allié ciblé de %d à %d points de vie, puis de %d "
+                                                           "points de vie en 12 s." % (a, b, 4 * t), hot=(100, 3000, 12000), icon_sid=25297)
+A['vague'] = _heal_family('vague_vie', [11113, 13018, 13019, 13020, 13021], 10965, "Vague de vie", CAST[0], 45000, 35, 400, 460, 0.193,
+                          lambda a, b, t: "Une vague de vie soigne les alliés à moins de 10 mètres de %d à %d points de vie." % (a, b),
+                          target=30, extra={'EffectRadiusIndex1': RADIUS[10], 'RangeIndex': RANGE[0]}, icon_sid=740)
+
+# Biome : soin sur la durée (comme Rénovation), rangs chez le maître Mage
+def _biome(L, k):
+    t = round(rank_value(194, L))
+    return ({'School': 3, 'SpellVisual': visual(774), 'RangeIndex': RANGE[40], 'EffectBasePoints1': t - 1, 'EffectDieSides1': 1,
+             'EffectRealPointsPerLevel1': 0, 'EffectBonusCoefficient1': 0.2, 'TargetCreatureType': 0},
+            "Soigne l'allié ciblé de %d points de vie en 15 s." % (5 * t), "%d points de vie toutes les 3 s." % t)
+A['biome'] = AC.ranked('biome', 'arcanes', 25315, 20, 6, "Biome", 18, 0, 0, _biome, icon_sid=774)
+teach_v4(MAGE, AG, A['biome'])
+AHEALS.append('biome')
+
+A['armure'] = AC.single('armure_nat', 'arcanes', 7302, 15, "Armure de nature",
+                        "Une armure d'écorce vous entoure pendant 30 min : armure +20 % et puissance des soins +20 %. "
+                        "Une seule armure de mage à la fois.", 0, 0, 12, icon_sid=8936,
+                        tooltip="Armure +20 %, puissance des soins +20 %.", School=3, DurationIndex=DUR[1800000],
+                        **merge(aur(1, 101, 1, 20), aur(2, 4, 0, 1), none3(3)))
+NOTEACH.add(A['armure'])
+A['armure_sp'] = cspell(AC, 'armure_sp', 12042, "Armure de nature", DurationIndex=DUR[-1], **merge(aur(1, 135, 127, 1), none3(2, 3)))
+
+_b, _pl = sc(942, 30)
+A['bouclier'] = AC.single('bouclier_nat', 'arcanes', 10901, 30, "Bouclier de nature",
+                          "Entoure l'allié ciblé d'un bouclier de nature qui absorbe 942 points de dégâts pendant 30 s. "
+                          "La cible ne peut pas recevoir d'autre bouclier pendant 15 s.", 4000, 0, 30, icon_sid=8936,
+                          tooltip="Absorbe des dégâts.", School=3, SpellVisual=visual(7302), MaxLevel=60, EffectBasePoints1=_b,
+                          EffectRealPointsPerLevel1=_pl, EffectBonusCoefficient1=0.1)
+NOTEACH.add(A['bouclier'])
+A['ecorce'] = cspell(AC, 'ecorce', 12042, "Écorce protectrice", DurationIndex=DUR[5000], SpellIconID=icon(8936),
+                     **merge(aur(1, 101, 1, 10), none3(2, 3)))
+A['ai'] = cspell(AC, 'ai_bonus', 12042, "Intelligence sylvestre", DurationIndex=DUR[-1],
+                 **merge(aur(1, 29, 3, 1), aur(2, 29, 4, 1), none3(3)))
+A['lien'] = AC.single('lien_vie', 'arcanes', 1243, 40, "Lien de vie",
+                      "Lie la vie de l'allié ciblé à la vôtre pendant 5 min : chacun de vos soins sur un autre allié le soigne aussi "
+                      "de 10 % du montant. Un seul Lien de vie à la fois.", 0, 0, 10, icon_sid=19236,
+                      tooltip="Reçoit 10 % des soins du Mage.", School=3, DurationIndex=DUR[300000], RangeIndex=RANGE[40],
+                      **merge(aur(1, 4, 0, 1, target=21), none3(2, 3)))
+NOTEACH.add(A['lien'])
+A['lien_soin'] = cspell(AC, 'lien_soin', 10917, "Lien de vie", School=3, SpellVisual=visual(774),
+                        **merge({'Effect1': 10, 'EffectBasePoints1': 0, 'EffectDieSides1': 1, 'EffectImplicitTargetA1': 21,
+                                 'EffectBonusCoefficient1': 0, 'EffectRealPointsPerLevel1': 0}, none3(2, 3)))
+
+HEALK = AHEALS + ['bouclier_nat', 'lien_soin']
+tree(AG, 410, "Nature", CBIT[MAGE], 3, "MageArcane", 25297, [
+    (1, "Cœur de la nature", 1, 25297, D,
+     "Vos sorts de Feu deviennent des soins de Nature (Boule de feu, Brûlure, Trait de feu, Choc de flammes, Explosion pyrotechnique, "
+     "Vague explosive). Un reset de talents vous rend vos sorts de Feu."),
+    (1, "Sève", 5, 774, ('fx', aura(136, 0, 2)), lambda r: "Augmente vos soins de %d %%." % (2 * r)),
+    (2, "Armure de nature", 1, 8936, ('spell', A['armure']), "Armure +20 % et puissance des soins +20 % pendant 30 min."),
+    (2, "Pollen", 5, 9858, ('fx', mod(7, False, HEALK, 1)), lambda r: "Augmente de %d %% la chance de coup critique de vos soins." % r),
+    (3, "Biome", 1, 774, ('spell', A['biome'][0]), "Soin sur la durée de 15 s. Rangs suivants chez le maître Mage."),
+    (3, "Biome luxuriant", 5, 774, ('fx', lambda r: [('mod', 0, True, ['biome'], 5 * r), ('mod', 22, True, ['biome'], 5 * r)]),
+     lambda r: "Augmente les soins de Biome de %d %%." % (5 * r), "Biome"),
+    (4, "Écorce protectrice", 1, 8936, D, "Vos soins augmentent l'armure de la cible de 10 % pendant 5 s."),
+    (4, "Intelligence sylvestre", 1, 1459, D,
+     "Sur vous, Intelligence des arcanes et Illumination des arcanes donnent 20 % d'Intelligence en plus, et autant d'Esprit."),
+    (4, "Concentration naturelle", 3, 17116, ('fx', mod(14, True, HEALK, -2)), lambda r: "Réduit le coût de vos soins de %d %%." % (2 * r)),
+    (5, "Bouclier de nature", 1, 8936, ('spell', A['bouclier']), "Absorbe des dégâts pendant 30 s, comme Mot de pouvoir : Bouclier."),
+    (5, "Bouclier renforcé", 3, 8936, ('fx', mod(8, True, ['bouclier_nat'], 10)),
+     lambda r: "Augmente l'absorption de Bouclier de nature de %d %%." % (10 * r), "Bouclier de nature"),
+    (6, "Harmonie", 5, 17116, ('fx', aura(136, 0, 2)), lambda r: "Augmente vos soins de %d %%." % (2 * r)),
+    (7, "Lien de vie", 1, 19236, ('spell', A['lien']),
+     "Un allié reçoit 10 % de chacun de vos soins sur les autres, pendant 5 min."),
+    (7, "Lien de vie amélioré", 2, 19236, D, lambda r: "Lien de vie transmet %d %% de vos soins." % (10 + 5 * r), "Lien de vie"),
+])
+for _sid in AC.sla:
+    V4_SLA.append((MAGE,) + _sid)
+V4_GROUP_ADD = [(13, A['armure'])]
+V4H += [('A4_FIRE', A_FIRE), ('A4_HEAL', A_HEAL), ('A4_KEEP', A_KEEP), ('A4_ARMURE', [A['armure']]), ('A4_ARMURE_SP', [A['armure_sp']]),
+        ('A4_BOUCLIER', [A['bouclier']]), ('A4_ECORCE', [A['ecorce']]), ('A4_AI', [A['ai']]),
+        ('A4_INT', [1459, 1460, 1461, 10156, 10157, 23028]), ('A4_LIEN', [A['lien']]), ('A4_LIEN_SOIN', [A['lien_soin']])]
+V4T += [('T4_COEUR', "Cœur de la nature"), ('T4_ECORCE', "Écorce protectrice"), ('T4_SYLV', "Intelligence sylvestre"),
+        ('T4_LIEN_V', "Lien de vie"), ('T4_LIEN_VAM', "Lien de vie amélioré")]
+
 # ======================================================================== fin : on rend la main au générateur principal
 TALG, TAL_ID = TALG_MAIN, TAL_ID_MAIN
