@@ -421,6 +421,43 @@ namespace cmangos_module
     }
 
     // ------------------------------------------------------------------ 4e spé des classes vanilla
+    // remplace chaque sort de `from` connu par son équivalent de `to` (et l'inverse quand `active` est faux), barre d'action comprise.
+    // En deux temps : retirer un rang retire aussi les rangs suivants.
+    void ClassesModule::SwapSpells(Player* player, const uint32_t* from, const uint32_t* to, uint32 n, bool active)
+    {
+        std::vector<std::pair<uint32, uint32>> swaps;
+        std::vector<uint32> remove;
+        for (uint32 i = 0; i < n; ++i)
+        {
+            uint32 a = active ? from[i] : to[i], b = active ? to[i] : from[i];
+            if (player->HasSpell(a))
+            {
+                if (!player->HasSpell(b))
+                    player->learnSpell(b, false);
+                swaps.emplace_back(a, b);
+                remove.push_back(a);
+            }
+        }
+        for (uint32 a : remove)
+            if (player->HasSpell(a))
+                player->removeSpell(a, false, false);
+        auto it = actionLists.find(player->GetObjectGuid().GetRawValue());
+        if (swaps.empty() || it == actionLists.end() || !it->second)
+            return;
+        bool sent = false;
+        ActionButtonList copy = *it->second;
+        for (auto const& btn : copy)
+            if (btn.second.GetType() == ACTION_BUTTON_SPELL && btn.second.uState != ACTIONBUTTON_DELETED)
+                for (auto const& sw : swaps)
+                    if (btn.second.GetAction() == sw.first)
+                    {
+                        player->addActionButton(btn.first, sw.second, ACTION_BUTTON_SPELL);
+                        sent = true;
+                    }
+        if (sent)
+            player->SendInitialActionButtons();
+    }
+
     void ClassesModule::Spe4Cast(Player* player, uint32 id, Unit* victim)
     {
         uint8 cls = player->getClass();
@@ -553,6 +590,19 @@ namespace cmangos_module
                 player->CastSpell(player, K4_INCANT[0], TRIGGERED_OLD_TRIGGERED);
             else if (!incant && player->HasAura(K4_INCANT[0]))
                 player->RemoveAurasDueToSpell(K4_INCANT[0]);
+        }
+        else if (cls == CLASS_PRIEST)
+        {
+            bool corr = T4_CORRUPTION[0] && player->HasSpell(T4_CORRUPTION[0]);
+            SwapSpells(player, Q4_SRC, Q4_HEAL, Q4_SRC_N, corr);
+            // apparence d'ombre verte
+            if (corr && !player->HasAura(Q4_APPARENCE[0]))
+                player->CastSpell(player, Q4_APPARENCE[0], TRIGGERED_OLD_TRIGGERED);
+            else if (!corr && player->HasAura(Q4_APPARENCE[0]))
+                player->RemoveAurasDueToSpell(Q4_APPARENCE[0]);
+            // Esprit de rédemption / de corruption : un démon au lieu d'un ange
+            if (corr && player->HasAura(27827) && !player->HasAura(Q4_DEMON[0]))
+                player->CastSpell(player, Q4_DEMON[0], TRIGGERED_OLD_TRIGGERED);
         }
         else if (cls == CLASS_HUNTER)
         {
@@ -904,6 +954,24 @@ namespace cmangos_module
             return false;
         uint32 id = aura->GetSpellProto()->Id;
         Player* pc = static_cast<Player*>(caster);
+        // Prêtre Corrompu : Sangsue, les DoT soignent l'allié le plus blessé à 20 m
+        if (pc->getClass() == CLASS_PRIEST && T4_SANGSUE[0] && pc->HasSpell(T4_SANGSUE[0]) &&
+            (aura->GetModifier()->m_auraname == SPELL_AURA_PERIODIC_DAMAGE || aura->GetModifier()->m_auraname == SPELL_AURA_PERIODIC_LEECH))
+        {
+            std::vector<Unit*> allies;
+            GroupAround(pc, pc, 20.0f, allies);
+            Unit* best = nullptr;
+            for (Unit* a : allies)
+                if (HpPct(a) < 1.0f && (!best || HpPct(a) < HpPct(best)))
+                    best = a;
+            int32 bp = aura->GetModifier()->m_amount * int32(20 + 5 * TRank(pc, T4_SANGSUE_AM, T4_SANGSUE_AM_N)) / 100;
+            if (best && bp > 0)
+            {
+                DepthGuard depth;
+                pc->CastCustomSpell(best, Q4_SOIN[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+            }
+            return false;
+        }
         if (pc->getClass() == C_NECRO)
         {
             if (In(N_DOT_MOT, N_DOT_MOT_N, id) || In(N_DOT_CORRUPTION, N_DOT_CORRUPTION_N, id) ||
@@ -971,6 +1039,20 @@ namespace cmangos_module
 
     void ClassesModule::OnDealDamage(Unit* unit, Unit* victim, uint32 health, uint32 damage)
     {
+        // Prêtre Corrompu : les dégâts des rats soignent les alliés blessés à 20 m du Prêtre
+        if (unit && victim && damage && s_depth == 0 && unit->GetTypeId() == TYPEID_UNIT && unit->GetEntry() == Q4_RAT[0])
+            if (Unit* owner = unit->GetOwner())
+                if (owner->GetTypeId() == TYPEID_PLAYER && owner->IsAlive())
+                {
+                    Player* pr = static_cast<Player*>(owner);
+                    int32 bp = int32(std::min(damage, health) * (100 + 15 * TRank(pr, T4_RATS_ENR, T4_RATS_ENR_N)) / 100);
+                    std::vector<Unit*> allies;
+                    GroupAround(pr, pr, 20.0f, allies);
+                    DepthGuard depth;
+                    for (Unit* a : allies)
+                        if (HpPct(a) < 1.0f && bp > 0)
+                            pr->CastCustomSpell(a, Q4_SOIN[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
         // Chaman Ruines : Bouclier de terre, chaque coup reçu est absorbé à 10 % et consomme une charge
         if (victim && damage && damage < health && s_depth == 0 && victim->GetTypeId() == TYPEID_PLAYER && victim != unit &&
             static_cast<Player*>(victim)->getClass() == CLASS_SHAMAN && victim->IsAlive())

@@ -389,6 +389,18 @@ namespace classes_data
     static const uint32_t I4_POSTURES_N = 2;
     static const uint32_t I4_FORM[] = { 21 };
     static const uint32_t I4_FORM_N = 1;
+    static const uint32_t Q4_SRC[] = { 2050, 2052, 2053, 2054, 2055, 6063, 6064, 2060, 10963, 10964, 10965, 25314, 2061, 9472, 9473, 9474, 10915, 10916, 10917, 139, 6074, 6075, 6076, 6077, 6078, 10927, 10928, 10929, 25315, 596, 996, 10960, 10961, 25316 };
+    static const uint32_t Q4_SRC_N = 34;
+    static const uint32_t Q4_HEAL[] = { 55950, 55951, 55952, 55953, 55954, 55955, 55956, 55957, 55958, 55959, 55960, 55961, 55962, 55963, 55964, 55965, 55966, 55967, 55968, 55969, 55970, 55971, 55972, 55973, 55974, 55975, 55976, 55977, 55978, 55979, 55980, 55981, 55982, 55983 };
+    static const uint32_t Q4_HEAL_N = 34;
+    static const uint32_t Q4_SOIN[] = { 55984 };
+    static const uint32_t Q4_SOIN_N = 1;
+    static const uint32_t Q4_APPARENCE[] = { 55985 };
+    static const uint32_t Q4_APPARENCE_N = 1;
+    static const uint32_t Q4_DEMON[] = { 55986 };
+    static const uint32_t Q4_DEMON_N = 1;
+    static const uint32_t Q4_RAT[] = { 990591 };
+    static const uint32_t Q4_RAT_N = 1;
     static const uint32_t T4_INSTINCT[] = { 56038 };
     static const uint32_t T4_INSTINCT_N = 1;
     static const uint32_t T4_FUREUR_AV[] = { 56052, 56053, 56054, 56055, 56056 };
@@ -429,4 +441,12 @@ namespace classes_data
     static const uint32_t T4_FAMILIER_N = 1;
     static const uint32_t T4_TRIAGE[] = { 56216, 56217, 56218 };
     static const uint32_t T4_TRIAGE_N = 3;
+    static const uint32_t T4_CORRUPTION[] = { 56229 };
+    static const uint32_t T4_CORRUPTION_N = 1;
+    static const uint32_t T4_SANGSUE[] = { 56254 };
+    static const uint32_t T4_SANGSUE_N = 1;
+    static const uint32_t T4_SANGSUE_AM[] = { 56256, 56257 };
+    static const uint32_t T4_SANGSUE_AM_N = 2;
+    static const uint32_t T4_RATS_ENR[] = { 56259, 56260 };
+    static const uint32_t T4_RATS_ENR_N = 2;
 }

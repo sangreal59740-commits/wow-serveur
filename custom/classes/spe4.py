@@ -730,5 +730,89 @@ V4H += [('I4_SHOT', I4_SHOT), ('I4_SRC', I4_SRC), ('I4_W', I4_W), ('I4_MULT', I4
         ('I4_POSTURES', [I['furtif'], I['infirmier']]), ('I4_FORM', [FORM_INFIRMIER])]
 V4T += [('T4_POSTURES', "Postures de campagne"), ('T4_FAMILIER', "Familier infirmier"), ('T4_TRIAGE', "Triage")]
 
+# ======================================================================== Prêtre : Corrompu
+PRIEST = 5
+PRG = Gen(6, [33] + list(range(35, 64)))
+V4_GENS.append((PRG, 55950, 55999))
+PRC = Ctx(PRG, 55950, {'ombre': 78}, PRIEST, PRIEST)
+Q = {}
+C_RAT = 990591
+P_HEALS = {'Soin inférieur corrompu': [2050, 2052, 2053], 'Soin corrompu': [2054, 2055, 6063, 6064],
+           'Soins supérieurs corrompus': [2060, 10963, 10964, 10965, 25314],
+           'Soins rapides corrompus': [2061, 9472, 9473, 9474, 10915, 10916, 10917],
+           'Rénovation corrompue': [139, 6074, 6075, 6076, 6077, 6078, 10927, 10928, 10929, 25315],
+           'Prière de soins corrompue': [596, 996, 10960, 10961, 25316]}
+Q_SRC, Q_HEAL = [], []
+GREEN = visual(6789)
+for _name, _ids in P_HEALS.items():
+    _chain = []
+    for _k, _sid in enumerate(_ids):
+        _sets = {'School': 5, 'StancesNot': 0, 'SpellVisual': visual(172) if 'Rénovation' in _name else GREEN,
+                 'SpellFamilyFlags': vflags(_sid)}
+        _h = PRG.add(PRC.nid(), _sid, _name, "", "Rang %d" % (_k + 1), key='corr_' + _name, sets=_sets)
+        PRC.sla.append((78, _h)); _chain.append(_h)
+        Q_SRC.append(_sid); Q_HEAL.append(_h)
+    PRG.chain_ranks(_chain)
+# la description reprend celle du sort d'origine (mêmes valeurs), traduite comme le reste du client
+from spellgen import SPELL as _SPELL
+_DFR = json.load(open('/home/claude/wow/fr/out2/_all.json', encoding='utf-8'))
+for _sp in PRG.spells:
+    if _sp['id'] in Q_HEAL:
+        _r = SPR[_sp['base']]
+        _en_d, _en_t = _SPELL.str(_r[138]), _SPELL.str(_r[147])
+        _sp['desc'] = _DFR.get(_en_d, _en_d) + " Soin corrompu : école d'Ombre, utilisable en Forme d'ombre."
+        _sp['tooltip'] = _DFR.get(_en_t, _en_t)
+
+Q['soin'] = cspell(PRC, 'p_soin', 10917, "Corruption vivifiante", School=5, StancesNot=0, SpellVisual=GREEN,
+                   **merge({'Effect1': 10, 'EffectBasePoints1': 0, 'EffectDieSides1': 1, 'EffectImplicitTargetA1': 21,
+                            'EffectBonusCoefficient1': 0, 'EffectRealPointsPerLevel1': 0}, none3(2, 3)))
+Q['apparence'] = cspell(PRC, 'p_apparence', 18791, "Corruption", DurationIndex=DUR[-1], SpellIconID=icon(18791),
+                        **merge(aur(1, 4, 0, 1), none3(2, 3)))
+Q['demon'] = cspell(PRC, 'p_demon', 12042, "Esprit de corruption", DurationIndex=DUR[15000], SpellIconID=icon(20711),
+                    **merge(aur(1, 56, 11859, 1), none3(2, 3)))
+a['rat_morsure'] = cspell(PRC, 'k_rat', 11976, "Morsure", School=0, **merge(weapon(1, 100), none3(2, 3)))
+creature(C_RAT, "Rat corrompu", 1141, 1.2, 1, 0.2, 0.25, 0.5, 1, [(a['rat_morsure'], 1, 1000, 2500)])
+Q['rats'] = PRC.single('rats', 'ombre', 12740, 20, "Rats affamés",
+                       "Invoque 2 rats corrompus pendant 10 s. Ils attaquent votre cible et leurs dégâts soignent les alliés "
+                       "blessés à moins de 20 mètres.", 60000, 0, 10, icon_sid=8122, School=5, StancesNot=0,
+                       DurationIndex=DUR[10000], CastingTimeIndex=1, EffectMiscValue1=C_RAT, EffectBasePoints1=1, EffectDieSides1=1,
+                       EffectImplicitTargetA1=1, EffectRadiusIndex1=RADIUS[3])
+NOTEACH.add(Q['rats'])
+Q['nuee'] = PRC.single('nuee', 'ombre', 12740, 40, "Nuée de rats",
+                       "Invoque 5 rats corrompus pendant 15 s. Ils attaquent votre cible et 100 % de leurs dégâts soignent tous les "
+                       "alliés à moins de 20 mètres.", 180000, 0, 15, icon_sid=8122, School=5, StancesNot=0,
+                       DurationIndex=DUR[15000], CastingTimeIndex=1, EffectMiscValue1=C_RAT, EffectBasePoints1=4, EffectDieSides1=1,
+                       EffectImplicitTargetA1=1, EffectRadiusIndex1=RADIUS[5])
+NOTEACH.add(Q['nuee'])
+
+PHEALM = vmask(2050, 2054, 2060, 2061, 139, 596)
+tree(PRG, 413, "Corrompu", CBIT[PRIEST], 3, "PriestShadow", 18791, [
+    (1, "Corruption", 1, 18791, D,
+     "Vous prenez une apparence d'ombre verte. Vos soins deviennent des soins corrompus : mêmes valeurs, école d'Ombre, "
+     "utilisables en Forme d'ombre."),
+    (1, "Ombre vivifiante", 5, 15473, ('fx', aura(136, 0, 2)), lambda r: "Augmente vos soins de %d %%." % (2 * r)),
+    (2, "Méditation sombre", 3, 14521, ('fx', aura(134, 0, 5)),
+     lambda r: "%d %% de votre régénération de mana continue pendant les incantations." % (5 * r)),
+    (2, "Bouclier corrompu", 3, 10901, ('fx', mod(8, True, [vflags(17)], 5)),
+     lambda r: "Augmente l'absorption de Mot de pouvoir : Bouclier de %d %%." % (5 * r)),
+    (3, "Rats affamés", 1, 8122, ('spell', Q['rats']), "2 rats corrompus pendant 10 s ; leurs dégâts soignent les alliés blessés à 20 m. Recharge 1 min."),
+    (3, "Agilité noire", 5, 14520, ('fx', mod(14, True, [PHEALM], -2)), lambda r: "Réduit le coût de vos soins de %d %%." % (2 * r)),
+    (4, "Volonté de fer", 5, 14751, ('fx', mod(7, False, [PHEALM], 1)), lambda r: "Augmente de %d %% la chance de coup critique de vos soins." % r),
+    (4, "Peste noire", 3, 2944, ('fx', aura(79, 32, 2)), lambda r: "Augmente vos dégâts d'Ombre de %d %%." % (2 * r)),
+    (5, "Sangsue", 1, 15286, D, "Vos dégâts sur la durée soignent l'allié le plus blessé à 20 mètres de 20 % de leurs dégâts."),
+    (5, "Rats durables", 1, 8122, ('fx', mod(1, False, ['rats', 'nuee'], 5000)), "Vos rats restent 5 s de plus.", "Rats affamés"),
+    (6, "Sangsue améliorée", 2, 15286, D, lambda r: "Sangsue soigne de %d %% des dégâts." % (20 + 5 * r), "Sangsue"),
+    (6, "Esprit de corruption", 1, 20711, D,
+     "À votre mort, vous devenez un démon pendant 10 s : vos sorts ne coûtent pas de mana. Ensuite, vous mourez."),
+    (7, "Nuée de rats", 1, 8122, ('spell', Q['nuee']), "5 rats corrompus pendant 15 s ; 100 % de leurs dégâts soignent les alliés à 20 m. Recharge 3 min."),
+    (7, "Rats enragés", 2, 8122, D, lambda r: "Les soins de vos rats sont augmentés de %d %%." % (15 * r), "Nuée de rats"),
+])
+for _sid in PRC.sla:
+    V4_SLA.append((PRIEST,) + _sid)
+V4H += [('Q4_SRC', Q_SRC), ('Q4_HEAL', Q_HEAL), ('Q4_SOIN', [Q['soin']]), ('Q4_APPARENCE', [Q['apparence']]), ('Q4_DEMON', [Q['demon']]),
+        ('Q4_RAT', [C_RAT])]
+V4T += [('T4_CORRUPTION', "Corruption"), ('T4_SANGSUE', "Sangsue"), ('T4_SANGSUE_AM', "Sangsue améliorée"),
+        ('T4_RATS_ENR', "Rats enragés")]
+
 # ======================================================================== fin : on rend la main au générateur principal
 TALG, TAL_ID = TALG_MAIN, TAL_ID_MAIN
