@@ -1,0 +1,65 @@
+run 41303506623
+== 0x3AA138
+CooldownContainer::AddCooldown(class std::chrono::time_point<struct std::chrono::system_clock, class std::chrono::duration<__int64, struct std::ratio<1, 1000>>>, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, bool)
+D:\a\wow-serveur\wow-serveur\core\src\game\Entities\Object.cpp:3117:0
+
+== 0x2A8257
+Player::AddCooldown(struct SpellEntry const &, struct ItemPrototype const *, bool, unsigned int, bool)
+D:\a\wow-serveur\wow-serveur\core\src\game\Entities\Player.cpp:20929:0
+
+== 0x4B66D7
+Spell::SendSpellCooldown(void)
+D:\a\wow-serveur\wow-serveur\core\src\game\Spells\Spell.cpp:3528:0
+
+== 0x4BCE3D
+Spell::cast(bool)
+D:\a\wow-serveur\wow-serveur\core\src\game\Spells\Spell.cpp:3281:0
+
+== 0x4B46C1
+Spell::Prepare(void)
+D:\a\wow-serveur\wow-serveur\core\src\game\Spells\Spell.cpp:3107:0
+
+== 0x4BA0DD
+Spell::SpellStart(class SpellCastTargets const *, class Aura *)
+D:\a\wow-serveur\wow-serveur\core\src\game\Spells\Spell.cpp:3028:0
+
+== 0x5F1A93
+WorldSession::HandleCastSpellOpcode(class WorldPacket &)
+D:\a\wow-serveur\wow-serveur\core\src\game\Spells\SpellHandler.cpp:395:0
+
+== 0x218768
+WorldSession::ExecuteOpcode(struct OpcodeHandler const &, class WorldPacket &)
+D:\a\wow-serveur\wow-serveur\core\src\game\Server\WorldSession.cpp:1225:0
+
+== 0x21F17F
+WorldSession::Update(unsigned int)
+D:\a\wow-serveur\wow-serveur\core\src\game\Server\WorldSession.cpp:393:0
+
+== 0x15FA50
+World::UpdateSessions(unsigned int)
+D:\a\wow-serveur\wow-serveur\core\src\game\World\World.cpp:2343:0
+
+== 0x8785A5
+TalentSpec::CheckTalents(unsigned int, class std::basic_ostringstream<char, struct std::char_traits<char>, class std::allocator<char>> *)
+D:\a\wow-serveur\wow-serveur\core\src\modules\PlayerBots\playerbot\Talentspec.cpp:53:0
+
+== 0x7BBB56
+PlayerbotAIConfig::LoadTalentSpecs(void)
+D:\a\wow-serveur\wow-serveur\core\src\modules\PlayerBots\playerbot\PlayerbotAIConfig.cpp:1173:0
+
+== 0x7B739D
+PlayerbotAIConfig::Initialize(void)
+D:\a\wow-serveur\wow-serveur\core\src\modules\PlayerBots\playerbot\PlayerbotAIConfig.cpp:815:0
+
+== 0x15D98B
+World::SetInitialWorldSettings(void)
+D:\a\wow-serveur\wow-serveur\core\src\game\World\World.cpp:1608:0
+
+== 0x10C840
+std::atomic<bool>::operator=
+C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\include\atomic:2174:0
+Database::AllowAsyncTransactions
+D:\a\wow-serveur\wow-serveur\core\src\shared\Database\Database.h:217:0
+Master::Run(void)
+D:\a\wow-serveur\wow-serveur\core\src\mangosd\Master.cpp:147:0
+
