@@ -16,6 +16,10 @@
 #include "Spells/SpellAuras.h"
 #include "Spells/SpellMgr.h"
 #include "World/World.h"
+#include "Maps/GridDefines.h"
+#include "Grids/GridNotifiers.h"
+#include "Grids/GridNotifiersImpl.h"
+#include "Grids/CellImpl.h"
 
 #include <algorithm>
 #include <cmath>
@@ -104,6 +108,25 @@ namespace cmangos_module
     {
         if (!IsBot(player))
             ChatHandler(player).SendSysMessage(text);
+    }
+
+    // membres du groupe (ou le joueur seul) à moins de `range` mètres de `center`
+    static void GroupAround(Player* p, Unit* center, float range, std::vector<Unit*>& out)
+    {
+        if (Group* g = p->GetGroup())
+        {
+            for (GroupReference* ref = g->GetFirstMember(); ref; ref = ref->next())
+                if (Player* m = ref->getSource())
+                    if (m->IsInWorld() && m->IsAlive() && m->GetMap() == p->GetMap() && center->IsWithinDistInMap(m, range))
+                        out.push_back(m);
+        }
+        else if (p->IsAlive() && center->IsWithinDistInMap(p, range))
+            out.push_back(p);
+    }
+
+    static float HpPct(Unit* u)
+    {
+        return u->GetMaxHealth() ? float(u->GetHealth()) / float(u->GetMaxHealth()) : 1.0f;
     }
 
     ClassesModule::ClassesModule() : Module("Classes", nullptr)
@@ -427,6 +450,33 @@ namespace cmangos_module
             if (In(K4_ABSORB, K4_ABSORB_N, id))
                 player->CastSpell(player, K4_ABSORB2[0], TRIGGERED_OLD_TRIGGERED);
         }
+        else if (cls == CLASS_HUNTER)
+        {
+            // Rafale : 3 Tirs multiples d'un coup sur tout le monde à 20 m (soins en Posture infirmier, dégâts sinon)
+            if (In(I4_RAFALE, I4_RAFALE_N, id))
+            {
+                int32 bp = int32((float(player->CalculateDamage(RANGED_ATTACK, false)) + 150.0f) * (player->GetShapeshiftForm() == ShapeshiftForm(I4_FORM[0]) ? 1.2f : 1.0f));
+                if (player->GetShapeshiftForm() == ShapeshiftForm(I4_FORM[0]))
+                {
+                    std::vector<Unit*> allies;
+                    GroupAround(player, player, 20.0f, allies);
+                    for (Unit* a : allies)
+                        for (int k = 0; k < 3; ++k)
+                            player->CastCustomSpell(a, I4_SOIN[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
+                else
+                {
+                    UnitList enemies;
+                    MaNGOS::AnyUnfriendlyUnitInObjectRangeCheck check(player, 20.0f);
+                    MaNGOS::UnitListSearcher<MaNGOS::AnyUnfriendlyUnitInObjectRangeCheck> searcher(enemies, check);
+                    Cell::VisitAllObjects(player, searcher, 20.0f);
+                    for (Unit* e : enemies)
+                        if (e->IsAlive() && player->CanAttack(e))
+                            for (int k = 0; k < 3; ++k)
+                                player->CastCustomSpell(e, I4_DEGATS[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
+            }
+        }
         else if (cls == CLASS_ROGUE)
         {
             // Forme spectrale : recharge de Spectre remise à zéro
@@ -503,6 +553,44 @@ namespace cmangos_module
                 player->CastSpell(player, K4_INCANT[0], TRIGGERED_OLD_TRIGGERED);
             else if (!incant && player->HasAura(K4_INCANT[0]))
                 player->RemoveAurasDueToSpell(K4_INCANT[0]);
+        }
+        else if (cls == CLASS_HUNTER)
+        {
+            // Postures de campagne : un tir de soin pour chaque rang de tir connu
+            bool postures = T4_POSTURES[0] && player->HasSpell(T4_POSTURES[0]);
+            for (uint32 j = 0; j < I4_SHOT_N; ++j)
+            {
+                if (!I4_SRC[j])
+                    continue;
+                if (postures && player->HasSpell(I4_SRC[j]) && !player->HasSpell(I4_SHOT[j]))
+                    player->learnSpell(I4_SHOT[j], false);
+                else if (!postures && player->HasSpell(I4_SHOT[j]))
+                    player->removeSpell(I4_SHOT[j], false, false);
+            }
+            // Familier infirmier : le familier soigne l'allié le plus blessé toutes les 6 s
+            if (T4_FAMILIER[0] && player->HasSpell(T4_FAMILIER[0]))
+            {
+                uint32& tick = petHealTick[player->GetObjectGuid().GetRawValue()];
+                if (++tick >= 6)
+                {
+                    tick = 0;
+                    if (Pet* pet = player->GetPet())
+                        if (pet->IsAlive() && pet->IsInWorld())
+                        {
+                            std::vector<Unit*> allies;
+                            GroupAround(player, pet, 30.0f, allies);
+                            Unit* best = nullptr;
+                            for (Unit* a : allies)
+                                if (HpPct(a) < 0.9f && (!best || HpPct(a) < HpPct(best)))
+                                    best = a;
+                            if (best)
+                            {
+                                int32 bp = int32(100.0f + player->GetTotalAttackPowerValue(RANGED_ATTACK) * 0.15f);
+                                pet->CastCustomSpell(best, I4_SOIN[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                            }
+                        }
+                }
+            }
         }
         else if (cls == CLASS_ROGUE)
         {
@@ -654,6 +742,63 @@ namespace cmangos_module
         Player* player = static_cast<Player*>(caster);
         SpellEntry const* info = spell->m_spellInfo;
         uint32 id = info->Id;
+        if (player->getClass() == CLASS_HUNTER)
+        {
+            // tirs de soin de l'Infirmier : le module calcule le soin (arme, base du sort, puissance d'attaque à distance)
+            for (uint32 j = 0; j < I4_SHOT_N; ++j)
+                if (I4_SHOT[j] == id && I4_KIND[j] != 9)
+                {
+                    float amount = 0.0f;
+                    int32 base = SpellValue(info, 0);
+                    if (base <= 1)
+                        base = 0;
+                    if (I4_W[j])
+                        amount += float(player->CalculateDamage(RANGED_ATTACK, false));
+                    amount = (amount + float(base)) * float(I4_MULT[j]) / 100.0f;
+                    amount += player->GetTotalAttackPowerValue(RANGED_ATTACK) * float(I4_APC[j]) / 100.0f;
+                    uint32 rT = TRank(player, T4_TRIAGE, T4_TRIAGE_N);
+                    std::vector<Unit*> targets;
+                    if (I4_KIND[j] == 2)
+                    {
+                        // la cible + les 2 alliés les plus blessés à 10 m d'elle
+                        std::vector<Unit*> near;
+                        GroupAround(player, victim, 10.0f, near);
+                        near.erase(std::remove(near.begin(), near.end(), victim), near.end());
+                        std::sort(near.begin(), near.end(), [](Unit* a, Unit* b) { return HpPct(a) < HpPct(b); });
+                        targets.push_back(victim);
+                        for (uint32 k = 0; k < near.size() && k < 2; ++k)
+                            targets.push_back(near[k]);
+                    }
+                    else if (I4_KIND[j] == 3)
+                    {
+                        GroupAround(player, victim, 8.0f, targets);
+                        if (std::find(targets.begin(), targets.end(), victim) == targets.end())
+                            targets.push_back(victim);
+                    }
+                    else
+                        targets.push_back(victim);
+                    for (Unit* t : targets)
+                    {
+                        float a = amount;
+                        if (rT && HpPct(t) < 0.5f)
+                            a *= 1.0f + 0.05f * rT;
+                        if (I4_KIND[j] == 1)
+                        {
+                            int32 bp = int32(a / 5.0f);
+                            if (bp > 0)
+                                player->CastCustomSpell(t, I4_HOT[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                        }
+                        else
+                        {
+                            int32 bp = int32(a);
+                            if (bp > 0)
+                                player->CastCustomSpell(t, I4_SOIN[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                        }
+                    }
+                    break;
+                }
+            return;
+        }
         if (player->getClass() == CLASS_MAGE)
         {
             // Bouclier de nature : Âme affaiblie comme Mot de pouvoir : Bouclier
@@ -941,6 +1086,7 @@ namespace cmangos_module
         forceValue.erase(player->GetObjectGuid().GetRawValue());
         runique.erase(player->GetObjectGuid().GetRawValue());
         lienTarget.erase(player->GetObjectGuid().GetRawValue());
+        petHealTick.erase(player->GetObjectGuid().GetRawValue());
         actionLists.erase(player->GetObjectGuid().GetRawValue());
     }
 

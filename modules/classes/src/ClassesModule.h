@@ -72,6 +72,7 @@ namespace cmangos_module
         std::unordered_map<uint64, time_t> egideTime;               // joueur -> dernier déclenchement d'Égide angélique
         std::unordered_set<uint64> runique;                          // Chamans sous Appel runique (soin à la fin)
         std::unordered_map<uint64, uint64> lienTarget;              // Mage -> allié sous Lien de vie
+        std::unordered_map<uint64, uint32> petHealTick;             // Chasseur -> secondes depuis le dernier soin du familier
         std::unordered_map<uint64, ActionButtonList*> actionLists;  // joueur -> sa barre d'action (pour suivre les changements de sorts)
         uint32 botTimer = 0;
     };

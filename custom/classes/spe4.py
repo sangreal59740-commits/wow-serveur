@@ -600,5 +600,135 @@ for _sid in RC.sla:
 V4H += [('R4_CRIT', [R['crit']]), ('R4_FORME', [R['forme']]), ('R4_SPECTRE', [R['spectre']])]
 V4T += [('T4_PENOMBRE', "Pénombre")]
 
+# ======================================================================== Chasseur : Infirmier
+HUNTER = 3
+IG = Gen(9, range(32, 64))
+V4_GENS.append((IG, 55825, 55949))
+IC = Ctx(IG, 55825, {'precision': 163}, HUNTER, HUNTER)
+I = {}
+FORM_FURTIF, FORM_INFIRMIER = 20, 21
+ST_INF = 1 << (FORM_INFIRMIER - 1)
+FORM_PATCH = {FORM_FURTIF: ("Posture furtive", 0), FORM_INFIRMIER: ("Posture infirmier", 1)}
+HSHOTS_V = {'auto': [75], 'arcane': [3044, 14281, 14282, 14283, 14284, 14285, 14286, 14287],
+            'serpent': [1978, 13549, 13550, 13551, 13552, 13553, 13554, 13555, 25295],
+            'multi': [2643, 14288, 14289, 14290, 25294], 'volley': [1510, 14294, 14295],
+            'aimed': [19434, 20900, 20901, 20902, 20903, 20904]}
+# en Posture infirmier, les tirs de dégâts sont remplacés par les tirs de soin
+vset(sum(HSHOTS_V.values(), []), StancesNot=ST_INF)
+
+I['furtif'] = IC.single('posture', 'precision', 2457, 10, "Posture furtive", "Posture du chasseur : vos tirs infligent des dégâts.",
+                        1000, 0, 0, icon_sid=5384, School=0, PowerType=0, EffectMiscValue1=FORM_FURTIF, EffectApplyAuraName1=36)
+I['infirmier'] = IC.single('posture', 'precision', 2457, 10, "Posture infirmier",
+                           "Posture du soigneur : vos tirs de distance soignent vos alliés au lieu de blesser vos ennemis.",
+                           1000, 0, 0, icon_sid=1515 if False else 3662, School=0, PowerType=0, EffectMiscValue1=FORM_INFIRMIER,
+                           EffectApplyAuraName1=36)
+NOTEACH.update([I['furtif'], I['infirmier']])
+
+# soins cachés : direct et sur la durée (montant calculé par le module)
+I['soin'] = cspell(IC, 'i_soin', 10917, "Soin de campagne", School=3, Stances=0, StancesNot=0, SpellVisual=visual(25297),
+                   **merge({'Effect1': 10, 'EffectBasePoints1': 0, 'EffectDieSides1': 1, 'EffectImplicitTargetA1': 21,
+                            'EffectBonusCoefficient1': 0, 'EffectRealPointsPerLevel1': 0}, none3(2, 3)))
+I['hot'] = cspell(IC, 'i_hot', 10929, "Morsure apaisante", School=3, Stances=0, StancesNot=0, DurationIndex=DUR[15000], SpellIconID=icon(1978),
+                  **merge({'Effect1': 6, 'EffectApplyAuraName1': 8, 'EffectBasePoints1': 0, 'EffectDieSides1': 1,
+                           'EffectImplicitTargetA1': 21, 'EffectAmplitude1': 3000, 'EffectBonusCoefficient1': 0,
+                           'EffectRealPointsPerLevel1': 0}, none3(2, 3)))
+I['degats'] = cspell(IC, 'i_degats', 3044, "Rafale", School=0, DmgClass=3,
+                     **merge({'Effect1': 2, 'EffectBasePoints1': 0, 'EffectDieSides1': 1, 'EffectImplicitTargetA1': 6,
+                              'EffectBonusCoefficient1': 0, 'EffectRealPointsPerLevel1': 0}, none3(2, 3)))
+
+# tirs de soin : effet factice, le module calcule le soin (arme x mult + base + PA distance x apc)
+I4_SHOT, I4_SRC, I4_W, I4_MULT, I4_APC, I4_KIND = [], [], [], [], [], []
+def _hshots(key, src_ids, name, base60, w, mult, apc, kind, desc_fn, extra=None, icon_sid=None):
+    ids = []
+    for k, sid in enumerate(src_ids):
+        L = SPR[sid][dbc_col('SpellLevel')]
+        b = round(rank_value(base60, L)) if base60 else 0
+        sets = {'Stances': ST_INF, 'StancesNot': 0, 'School': 3, 'SpellVisual': NATVIS, 'TargetCreatureType': 0,
+                'Effect1': 3, 'EffectApplyAuraName1': 0, 'EffectBasePoints1': max(0, b - 1), 'EffectDieSides1': 1,
+                'EffectImplicitTargetA1': 21, 'EffectImplicitTargetB1': 0, 'EffectRealPointsPerLevel1': 0, 'EffectChainTarget1': 0,
+                'EffectTriggerSpell1': 0, 'EffectRadiusIndex1': 0, 'Mechanic': 0}
+        sets.update(none3(2, 3))
+        if extra:
+            sets.update(extra)
+        if icon_sid:
+            sets['SpellIconID'] = icon(icon_sid)
+        hid = IG.add(IC.nid(), sid, name, desc_fn(b), "Rang %d" % (k + 1) if len(src_ids) > 1 else "", key=key, sets=sets)
+        IC.sla.append((163, hid))
+        ids.append(hid)
+        I4_SHOT.append(hid); I4_SRC.append(sid); I4_W.append(w); I4_MULT.append(mult); I4_APC.append(apc); I4_KIND.append(kind)
+    IG.chain_ranks(ids) if len(ids) > 1 else None
+    return ids
+I['tir'] = _hshots('tir_soin', [75], "Tir de soin", 0, 1, 120, 0, 0,
+                   lambda b: "Tir automatique de soin : soigne l'allié ciblé de 120 % des dégâts de votre arme à distance.")
+I['revig'] = _hshots('revigorant', HSHOTS_V['arcane'], "Tir revigorant", 220, 0, 100, 20, 0,
+                     lambda b: "Soigne instantanément l'allié ciblé de %d points de vie, plus 20 %% de votre puissance d'attaque à distance." % b)
+I['apaise'] = _hshots('apaisante', HSHOTS_V['serpent'], "Morsure apaisante", 670, 0, 100, 10, 1,
+                      lambda b: "Soigne l'allié ciblé de %d points de vie en 15 s, plus 10 %% de votre puissance d'attaque à distance." % b)
+I['multi'] = _hshots('multi_soin', HSHOTS_V['multi'], "Tir de soin multiple", 150, 1, 120, 0, 2,
+                     lambda b: "Soigne l'allié ciblé et 2 alliés proches de 120 %% des dégâts de votre arme + %d." % round(b * 1.2))
+I['vise'] = _hshots('visee', HSHOTS_V['aimed'], "Visée salvatrice", 600, 1, 120, 0, 0,
+                    lambda b: "Un tir précis qui soigne l'allié ciblé de 120 %% des dégâts de votre arme + %d." % round(b * 1.2))
+# Salve de soins : zone au sol, soin sur la durée
+I['salve'] = []
+for _k, _sid in enumerate(HSHOTS_V['volley']):
+    _L = SPR[_sid][dbc_col('SpellLevel')]
+    _t = round(rank_value(100, _L))
+    _s = common(_L, 60000, 0, 25, 1510, base_cls=HUNTER)
+    _s.update({'Stances': ST_INF, 'School': 3, 'SpellVisual': visual(740), 'CastingTimeIndex': 1, 'Targets': 64, 'RangeIndex': RANGE[35],
+               'AttributesEx': 0, 'DurationIndex': DUR[6000], 'Effect1': 27, 'EffectApplyAuraName1': 8, 'EffectBasePoints1': _t - 1,
+               'EffectDieSides1': 1, 'EffectImplicitTargetA1': 31, 'EffectImplicitTargetB1': 0, 'EffectAmplitude1': 1000,
+               'EffectRadiusIndex1': RADIUS[8], 'EffectRealPointsPerLevel1': 0, 'EffectTriggerSpell1': 0, 'EffectBonusCoefficient1': 0})
+    _s.update(none3(2, 3))
+    _h = IG.add(IC.nid(), 10216, "Salve de soins", "Une salve de flèches de soin : %d points de vie par seconde pendant 6 s aux alliés "
+                "dans un rayon de 8 mètres." % _t, "Rang %d" % (_k + 1), key='salve', sets=_s)
+    IC.sla.append((163, _h)); I['salve'].append(_h)
+    I4_SHOT.append(_h); I4_SRC.append(_sid); I4_W.append(0); I4_MULT.append(0); I4_APC.append(0); I4_KIND.append(9)
+IG.chain_ranks(I['salve'])
+
+I['fusee'] = IC.single('fusee', 'precision', 3044, 30, "Fusée de soin",
+                       "Tire une fusée de soin : l'allié ciblé et les alliés à moins de 8 mètres sont soignés de 320 points de vie, "
+                       "plus 10 % de votre puissance d'attaque à distance.", 8000, 0, 12, icon_sid=1543,
+                       **merge({'Stances': ST_INF, 'School': 3, 'SpellVisual': NATVIS, 'Effect1': 3, 'EffectApplyAuraName1': 0,
+                                'EffectBasePoints1': 319, 'EffectDieSides1': 1, 'EffectImplicitTargetA1': 21, 'EffectRealPointsPerLevel1': 0,
+                                'TargetCreatureType': 0}, none3(2, 3)))
+I4_SHOT.append(I['fusee']); I4_SRC.append(0); I4_W.append(0); I4_MULT.append(100); I4_APC.append(10); I4_KIND.append(3)
+NOTEACH.add(I['fusee'])
+_b, _pl = sc(150, 25)
+I['bandage'] = IC.single('bandage', 'precision', 10929, 25, "Bandage de combat",
+                         "Pose un bandage de combat sur un allié à 20 mètres : 450 points de vie en 9 s.", 10000, 0, 10, icon_sid=10840,
+                         tooltip="Récupère des points de vie toutes les 3 s.", School=3, Stances=0, StancesNot=0, RangeIndex=RANGE[20], DurationIndex=DUR[10000],
+                         MaxLevel=60, EffectBasePoints1=_b, EffectRealPointsPerLevel1=_pl, EffectAmplitude1=3000, EffectBonusCoefficient1=0)
+NOTEACH.add(I['bandage'])
+I['rafale'] = IC.single('rafale', 'precision', 12042, 40, "Rafale",
+                        "Tire 3 Tirs multiples d'un coup sur tout le monde à moins de 20 mètres : en Posture infirmier, soigne vos "
+                        "alliés ; en Posture furtive, blesse vos ennemis.", 180000, 0, 20, icon_sid=25294, School=0,
+                        **merge(aur(1, 4, 0, 1), none3(2, 3)), DurationIndex=DUR[1000])
+NOTEACH.add(I['rafale'])
+
+ISHOTK = ['tir_soin', 'revigorant', 'apaisante', 'multi_soin', 'visee', 'salve', 'fusee']
+VSHOTM = vmask(*sum(HSHOTS_V.values(), []))
+tree(IG, 412, "Infirmier", CBIT[HUNTER], 3, "HunterMarksmanship", 3662, [
+    (1, "Postures de campagne", 1, 3662, ('fx', lambda r: [('learn', I['furtif']), ('learn', I['infirmier'])]),
+     "Vous apprenez la Posture furtive (vos tirs blessent) et la Posture infirmier (vos tirs soignent vos alliés)."),
+    (1, "Puissance de campagne", 5, 19431, ('fx', aura(167, 0, 2)), lambda r: "Augmente votre puissance d'attaque à distance de %d %%." % (2 * r)),
+    (2, "Trousse de campagne", 5, 10840, ('fx', aura(136, 0, 2)), lambda r: "Augmente vos soins de %d %%." % (2 * r)),
+    (2, "Main sûre", 3, 19426, ('fx', mod(7, False, ['i_soin', 'i_hot'], 2)), lambda r: "Augmente de %d %% la chance de coup critique de vos soins." % (2 * r)),
+    (3, "Munitions bénies", 5, 19416, ('fx', mod(14, True, [VSHOTM] + ISHOTK, -2)), lambda r: "Réduit le coût en mana de vos tirs de %d %%." % (2 * r)),
+    (3, "Familier infirmier", 1, 1515, D, "Votre familier soigne l'allié le plus blessé toutes les 6 s."),
+    (4, "Bandage de combat", 1, 10840, ('spell', I['bandage']), "450 points de vie en 9 s sur un allié à 20 m. Recharge 10 s."),
+    (4, "Triage", 3, 10840, D, lambda r: "Vos tirs de soin soignent %d %% de plus les cibles sous 50 %% de vie." % (5 * r)),
+    (5, "Fusée de soin", 1, 1543, ('spell', I['fusee']), "Soigne l'allié ciblé et les alliés à 8 mètres. Recharge 8 s."),
+    (5, "Cadence de campagne", 3, 19461, ('fx', aura(140, 0, 4)), lambda r: "Augmente votre vitesse de tir de %d %%." % (4 * r)),
+    (6, "Vocation", 5, 19498, ('fx', aura(137, 3, 3)), lambda r: "Augmente votre Intelligence de %d %%." % (3 * r)),
+    (7, "Rafale", 1, 25294, ('spell', I['rafale']), "3 Tirs multiples d'un coup sur tout le monde à 20 m : soins ou dégâts selon la posture. Recharge 3 min."),
+    (7, "Rafale améliorée", 2, 25294, ('fx', mod(11, False, ['rafale'], -30000)), lambda r: "Réduit la recharge de Rafale de %d s." % (30 * r)),
+])
+for _sid in IC.sla:
+    V4_SLA.append((HUNTER,) + _sid)
+V4H += [('I4_SHOT', I4_SHOT), ('I4_SRC', I4_SRC), ('I4_W', I4_W), ('I4_MULT', I4_MULT), ('I4_APC', I4_APC), ('I4_KIND', I4_KIND),
+        ('I4_SOIN', [I['soin']]), ('I4_HOT', [I['hot']]), ('I4_DEGATS', [I['degats']]), ('I4_RAFALE', [I['rafale']]),
+        ('I4_POSTURES', [I['furtif'], I['infirmier']]), ('I4_FORM', [FORM_INFIRMIER])]
+V4T += [('T4_POSTURES', "Postures de campagne"), ('T4_FAMILIER', "Familier infirmier"), ('T4_TRIAGE', "Triage")]
+
 # ======================================================================== fin : on rend la main au générateur principal
 TALG, TAL_ID = TALG_MAIN, TAL_ID_MAIN
