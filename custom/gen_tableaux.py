@@ -34,10 +34,10 @@ for g, m, x, y, z in boards:
             a = best[1]
             side = 1 if used.get(a[0], 0) == 0 else -1
             used[a[0]] = used.get(a[0], 0) + 1
-            # 2 m à côté de l'objet (un tableau de chaque côté au plus), perpendiculairement à la direction de l'auberge, tourné vers elle
+            # 3,5 m à côté de l'objet (un tableau de chaque côté au plus), perpendiculairement à la direction de l'auberge
             ang = math.atan2(inn[3] - a[3], inn[2] - a[2])
-            bx, by = a[2] + 2.0 * math.cos(ang + side * math.pi / 2), a[3] + 2.0 * math.sin(ang + side * math.pi / 2)
-            o = ang % (2 * math.pi)
+            bx, by = a[2] + 3.5 * math.cos(ang + side * math.pi / 2), a[3] + 3.5 * math.sin(ang + side * math.pi / 2)
+            o = (ang + math.pi) % (2 * math.pi)     # affiche tournée vers la rue (dos à l'auberge)
             L.append("UPDATE gameobject SET position_x=%.2f, position_y=%.2f, position_z=%.2f, orientation=%.3f, rotation0=0, rotation1=0, "
                      "rotation2=%.5f, rotation3=%.5f WHERE guid=%d;" % (bx, by, a[4], o, math.sin(o / 2), math.cos(o / 2), g))
             stats[kind] = stats.get(kind, 0) + 1
