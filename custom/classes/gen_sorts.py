@@ -10,7 +10,7 @@ NECRO, SNIPER, META = 6, 10, 11
 CBIT = {c: 1 << (c - 1) for c in range(1, 12)}
 
 BASEMANA = {}
-for c, lv, m in q("select class, level, basemana from player_classlevelstats where class in (9, 3, 7)"):
+for c, lv, m in q("select class, level, basemana from player_classlevelstats"):
     BASEMANA[(int(c), int(lv))] = int(m)
 
 def mana(cls_base, pct, level):
@@ -996,7 +996,7 @@ PASSIVE_BASE = 17810
 def kmask(gen, keys):
     m = 0
     for k in keys:
-        m |= gen.mask(k)
+        m |= k if isinstance(k, int) else gen.mask(k)     # entier = masque brut (sorts vanilla)
     return m
 
 def talent_spell(gen, name, rk, nranks, effects, desc, icon_sid):
@@ -1026,6 +1026,8 @@ def talent_spell(gen, name, rk, nranks, effects, desc, icon_sid):
                 TAL_PROC.append((sid, e[4], e[5], flags, e[6]))
         elif e[0] == 'dummy':
             sets.update({'Effect%d' % n: 6, 'EffectApplyAuraName%d' % n: 4})
+        elif e[0] == 'learn':      # ('learn', sort appris avec le talent, retiré au reset)
+            sets.update({'Effect%d' % n: 36, 'EffectTriggerSpell%d' % n: e[1], 'EffectImplicitTargetA%d' % n: 1})
     TALG.add(sid, PASSIVE_BASE, name, desc, "Rang %d" % (rk + 1) if nranks > 1 else "", family=False, sets=sets)
     return sid
 
@@ -1289,15 +1291,18 @@ START_SPELLS[SNIPER] = [S['arcanes'][0]]
 teach_all(SG, 901, set(START_SPELLS[SNIPER]))
 VANILLA_FR = {1515: "Dompter une bête", 883: "Appel du familier", 2641: "Renvoyer le familier", 982: "Ressusciter le familier",
               6991: "Nourrir le familier", 5149: "Dressage des bêtes", 5384: "Feindre la mort"}
-for vs, lv, tree in SNIPER_VANILLA:
+for vs, lv, tree_ in SNIPER_VANILLA:
     tid = TEACH[0]; TEACH[0] += 1
     TG.add(tid, TEACH_BASE, VANILLA_FR[vs], "", "", family=False,
            sets={'EffectTriggerSpell1': vs, 'SpellLevel': lv, 'BaseLevel': lv, 'MaxLevel': 0, 'SpellIconID': icon(vs)})
     TRAINER_SPELLS.setdefault(901, []).append((tid, max(10, 9 * lv * lv), lv))
-    SC.sla.append((SC.skills[tree], vs))
+    SC.sla.append((SC.skills[tree_], vs))
 
 START_SPELLS[META] = [M['terre'][0], M['remous'][0]]
 teach_all(MG, 902, set(START_SPELLS[META]))
+
+# 4e spécialisation des classes vanilla (section 6 bis du doc)
+exec(open(OUT + 'spe4.py', encoding='utf-8').read())
 
 # (gabarit, entrée, nom, sous-titre, PNJ modèle, décalage, modèle 3D ou 0)
 TRAINERS = [
@@ -1375,6 +1380,28 @@ for race in (2, 3):
         L.append("INSERT IGNORE INTO playercreateinfo_spell (race, class, Spell, Note) VALUES (%d, %d, %d, 'Sniper');" % (race, SNIPER, sp))
 L.append("UPDATE playercreateinfo_action SET action=%d WHERE class=%d AND type=0 AND action=2973;" % (S['arcanes'][0], SNIPER))
 L += MG.sql(63000, 63499)
+# 4e spé des classes vanilla : sorts, talents, sorts vanilla modifiés, rangs vendus par les maîtres de classe
+for _g, _a, _b in V4_GENS:
+    L += _g.sql(_a, _b)
+L += T4G.sql(56000, 56999)
+from spellgen import dbc_col as _dbc_col
+SPELL_PATCH = {}
+for _sid, _cols in sorted(VPATCH.items()):
+    L.append("UPDATE spell_template SET %s WHERE Id=%d;" % (", ".join("%s=%d" % (k, v) for k, v in _cols.items()), _sid))
+    _p = {}
+    for k, v in _cols.items():
+        if k == 'SpellFamilyFlags':
+            _p[161] = v & 0xffffffff; _p[162] = (v >> 32) & 0xffffffff
+        else:
+            _p[_dbc_col(k)] = v & 0xffffffff
+    SPELL_PATCH[str(_sid)] = {str(k): v for k, v in _p.items()}
+L.append("DELETE FROM npc_trainer_template WHERE spell BETWEEN 64500 AND 65499 AND entry NOT BETWEEN 900 AND 909;")
+L.append("DELETE FROM npc_trainer WHERE spell BETWEEN 64500 AND 65499;")
+for _cls, _tid, _cost, _lv in V4_TRAIN:
+    L.append("INSERT IGNORE INTO npc_trainer_template (entry, spell, spellcost, reqskill, reqskillvalue, reqlevel) SELECT DISTINCT TrainerTemplateId, "
+             "%d, %d, 0, 0, %d FROM creature_template WHERE TrainerType=0 AND TrainerClass=%d AND TrainerTemplateId>0;" % (_tid, _cost, _lv, _cls))
+    L.append("INSERT IGNORE INTO npc_trainer (entry, spell, spellcost, reqskill, reqskillvalue, reqlevel) SELECT Entry, %d, %d, 0, 0, %d "
+             "FROM creature_template WHERE TrainerType=0 AND TrainerClass=%d AND TrainerTemplateId=0;" % (_tid, _cost, _lv, _cls))
 # Métamorphe : les sorts du druide disparaissent de la création ; les maîtres druides deviennent maîtres métamorphes
 L.append("DELETE FROM playercreateinfo_spell WHERE class=%d AND Spell IN (5176, 5185);" % META)
 for race in (1, 2, 3, 4, 5, 6, 7, 8):
@@ -1421,8 +1448,8 @@ for gid, (gname, ids) in zip((900, 901, 902), [('Sniper balles', GROUPS.get('bal
     L.append("INSERT INTO spell_group (Id, Rule, Name) VALUES (%d, 2, '%s');" % (gid, gname))
     for sid in ids:
         L.append("INSERT INTO spell_group_spell (Id, SpellId) VALUES (%d, %d);" % (gid, sid))
-L.append("DELETE FROM spell_affect WHERE entry BETWEEN 62000 AND 64499;")
-L.append("DELETE FROM spell_proc_event WHERE entry BETWEEN 62000 AND 64499;")
+L.append("DELETE FROM spell_affect WHERE entry BETWEEN 62000 AND 64499 OR entry BETWEEN 55000 AND 56999;")
+L.append("DELETE FROM spell_proc_event WHERE entry BETWEEN 62000 AND 64499 OR entry BETWEEN 55000 AND 56999;")
 for sid, fam, m, flags, pex in TAL_PROC:
     L.append("INSERT INTO spell_proc_event (entry, SchoolMask, SpellFamilyName, SpellFamilyMask0, SpellFamilyMask1, SpellFamilyMask2, procFlags, procEx, ppmRate, CustomChance, Cooldown) "
              "VALUES (%d, 0, %d, %d, %d, %d, %d, %d, 0, 0, 0);" % (sid, fam, m, m, m, flags, pex))
@@ -1439,6 +1466,9 @@ for cls, lst in ((NECRO, NSLA), (NECRO, NCX.sla), (SNIPER, SC.sla), (META, MC.sl
     for skill, sid in lst:
         SLA_ROWS.append([sla_id, skill, sid, 0, CBIT[cls], 0, 0, 1, 0, 0, 0, 0, 0, 0, 0])
         sla_id += 1
+for cls, skill, sid in V4_SLA:
+    SLA_ROWS.append([sla_id, skill, sid, 0, CBIT[cls], 0, 0, 1, 0, 0, 0, 0, 0, 0, 0])
+    sla_id += 1
 
 # DBC serveur : SkillLine (nouvelles lignes + Métamorphe) et SkillLineAbility (base + métiers + sorts custom)
 import struct
@@ -1488,7 +1518,8 @@ print('talents', len(TALENT_ROWS), 'sorts de talent', len(TALG.spells), 'sans ef
 json.dump(DUMMY_TALENTS, open(OUT + 'talents_a_coder.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=0)
 
 json.dump({'talenttab_new': tab_new, 'talenttab_meta': {str(k): v for k, v in META_TABS.items()},
-           'spell': NG.dbc_rows() + SG.dbc_rows() + MG.dbc_rows() + TG.dbc_rows() + TALG.dbc_rows(), 'sla': SLA_ROWS, 'skilllines': sk_new, 'rename_skill': RENAME_SKILL,
+           'spell': NG.dbc_rows() + SG.dbc_rows() + MG.dbc_rows() + TG.dbc_rows() + TALG.dbc_rows() + sum((_g.dbc_rows() for _g, _a, _b in V4_GENS), []) + T4G.dbc_rows(),
+           'spell_patch': SPELL_PATCH, 'sla': SLA_ROWS, 'skilllines': sk_new, 'rename_skill': RENAME_SKILL,
            'masks': {'necro': NG.masks, 'sniper': SG.masks, 'meta': MG.masks}, 'ids': {'necro': N, 'sniper': S, 'meta': M}},
           open(OUT + 'sorts_rows.json', 'w', encoding='utf-8'), ensure_ascii=False)
 open(OUT + 'sorts.sql', 'w', encoding='utf-8').write("\n".join(L) + "\n")
@@ -1571,6 +1602,14 @@ for k in ['fauve', 'arcanes', 'saignant', 'marque', 'long', 'multiple', 'precisi
     arr("BS_" + k.upper(), ranks(k, SG))
 for k in ['terre', 'hfeu', 'tonnerre', 'colere', 'lunaire', 'stellaire', 'massacre', 'remous', 'recup', 'salve', 'lien']:
     arr("BM_" + k.upper(), ranks(k, MG))
+H.append("    // 4e spé des classes vanilla")
+for _n, _v in V4H:
+    arr(_n, _v)
+T4NAMES = {}
+for t in T4G.spells:
+    T4NAMES.setdefault(t['name'], []).append(t['id'])
+for _n, _t in V4T:
+    arr(_n, T4NAMES.get(_t, []))
 H.append("}")
 open(OUT + 'ClassesData.h', 'w', encoding='utf-8').write("\n".join(H) + "\n")
 print('en-tête module : ClassesData.h')
