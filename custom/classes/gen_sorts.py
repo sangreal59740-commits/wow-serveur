@@ -1007,6 +1007,9 @@ def talent_spell(gen, name, rk, nranks, effects, desc, icon_sid):
         sets.update({'Effect%d' % (i + 1): 0, 'EffectApplyAuraName%d' % (i + 1): 0, 'EffectMiscValue%d' % (i + 1): 0,
                      'EffectBasePoints%d' % (i + 1): 0, 'EffectDieSides%d' % (i + 1): 1, 'EffectImplicitTargetA%d' % (i + 1): 1,
                      'EffectTriggerSpell%d' % (i + 1): 0, 'EffectItemType%d' % (i + 1): 0})
+    # les modificateurs de sorts ne s'appliquent qu'aux sorts de la même famille que le sort de talent
+    sets['SpellFamilyName'] = gen.family
+    sets['SpellFamilyFlags'] = 0
     for i, e in enumerate(effects):
         n = i + 1
         if e[0] == 'mod':          # ('mod', type, pct, keys, valeur)

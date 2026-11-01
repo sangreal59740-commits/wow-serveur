@@ -317,6 +317,18 @@ namespace classes_data
     static const uint32_t W4_SOIF_N = 1;
     static const uint32_t W4_FOU[] = { 55128 };
     static const uint32_t W4_FOU_N = 1;
+    static const uint32_t K4_DA[] = { 706, 1086, 11733, 11734, 11735 };
+    static const uint32_t K4_DA_N = 5;
+    static const uint32_t K4_DA2[] = { 55250, 55251, 55252, 55253, 55254 };
+    static const uint32_t K4_DA2_N = 5;
+    static const uint32_t K4_MENACE[] = { 55255 };
+    static const uint32_t K4_MENACE_N = 1;
+    static const uint32_t K4_INCANT[] = { 55256 };
+    static const uint32_t K4_INCANT_N = 1;
+    static const uint32_t K4_ABSORB[] = { 55260 };
+    static const uint32_t K4_ABSORB_N = 1;
+    static const uint32_t K4_ABSORB2[] = { 55257 };
+    static const uint32_t K4_ABSORB2_N = 1;
     static const uint32_t T4_INSTINCT[] = { 56038 };
     static const uint32_t T4_INSTINCT_N = 1;
     static const uint32_t T4_FUREUR_AV[] = { 56052, 56053, 56054, 56055, 56056 };
@@ -327,4 +339,14 @@ namespace classes_data
     static const uint32_t T4_ENDURCI_N = 3;
     static const uint32_t T4_SOIF[] = { 56066, 56067, 56068 };
     static const uint32_t T4_SOIF_N = 3;
+    static const uint32_t T4_ARMURE[] = { 56074, 56075, 56076, 56077, 56078 };
+    static const uint32_t T4_ARMURE_N = 5;
+    static const uint32_t T4_LIEN[] = { 56089 };
+    static const uint32_t T4_LIEN_N = 1;
+    static const uint32_t T4_LIEN_AM[] = { 56095, 56096 };
+    static const uint32_t T4_LIEN_AM_N = 2;
+    static const uint32_t T4_INCANT[] = { 56100 };
+    static const uint32_t T4_INCANT_N = 1;
+    static const uint32_t T4_DOUBLE[] = { 56101 };
+    static const uint32_t T4_DOUBLE_N = 1;
 }

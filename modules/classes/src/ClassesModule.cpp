@@ -414,6 +414,19 @@ namespace cmangos_module
                     player->CastCustomSpell(player, P4_APPEL_SP[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
             }
         }
+        else if (cls == CLASS_WARLOCK)
+        {
+            // Double armure : 2e couche d'Armure démoniaque du même rang
+            for (uint32 i = 0; i < K4_DA_N; ++i)
+                if (id == K4_DA[i] && T4_DOUBLE[0] && player->HasSpell(T4_DOUBLE[0]))
+                {
+                    player->RemoveAurasDueToSpell(K4_DA2[i]);
+                    player->CastSpell(player, K4_DA2[i], TRIGGERED_OLD_TRIGGERED);
+                }
+            // Absorption démoniaque : dégâts +25 %, dégâts subis -10 %
+            if (In(K4_ABSORB, K4_ABSORB_N, id))
+                player->CastSpell(player, K4_ABSORB2[0], TRIGGERED_OLD_TRIGGERED);
+        }
         else if (cls == CLASS_WARRIOR)
         {
             // Soif de carnage : un coup critique rend 1 % des PV max par rang
@@ -430,6 +443,37 @@ namespace cmangos_module
         {
             if (!player->HasAura(P4_APPEL[0]) && player->HasAura(P4_APPEL_SP[0]))
                 player->RemoveAurasDueToSpell(P4_APPEL_SP[0]);
+        }
+        else if (cls == CLASS_WARLOCK)
+        {
+            uint32 rA = TRank(player, T4_ARMURE, T4_ARMURE_N);
+            // Armure démoniaque renforcée : maille, bouclier et blocage (retirés après un reset de talents)
+            static const uint32 gear[] = { 8737, 9116, 107 };
+            for (uint32 g : gear)
+            {
+                if (rA && !player->HasSpell(g))
+                    player->learnSpell(g, false);
+                else if (!rA && player->HasSpell(g))
+                    player->removeSpell(g);
+            }
+            bool armor = false;
+            for (uint32 i = 0; i < K4_DA_N; ++i)
+                if (player->HasAura(K4_DA[i]))
+                    armor = true;
+            // menace +5 % par rang tant qu'Armure démoniaque est active
+            SetHiddenAura(player, K4_MENACE[0], armor ? int32(5 * rA) : 0, 0);
+            // Double armure : la 2e couche disparaît avec l'armure ou le talent
+            bool dbl = T4_DOUBLE[0] && player->HasSpell(T4_DOUBLE[0]);
+            if (!armor || !dbl)
+                for (uint32 i = 0; i < K4_DA_N; ++i)
+                    if (player->HasAura(K4_DA2[i]))
+                        player->RemoveAurasDueToSpell(K4_DA2[i]);
+            // Incantation démoniaque : dégâts d'Immolation et Corruption -25 % (le reste est sur le talent)
+            bool incant = T4_INCANT[0] && player->HasSpell(T4_INCANT[0]);
+            if (incant && !player->HasAura(K4_INCANT[0]))
+                player->CastSpell(player, K4_INCANT[0], TRIGGERED_OLD_TRIGGERED);
+            else if (!incant && player->HasAura(K4_INCANT[0]))
+                player->RemoveAurasDueToSpell(K4_INCANT[0]);
         }
         else if (cls == CLASS_WARRIOR)
         {
@@ -656,6 +700,16 @@ namespace cmangos_module
 
     void ClassesModule::OnDealDamage(Unit* unit, Unit* victim, uint32 health, uint32 damage)
     {
+        // Démoniste Transfuge : Lien gangrené, les dégâts du démon soignent le Démoniste
+        if (unit && victim && damage && s_depth == 0 && unit->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(unit)->IsPet())
+            if (Unit* owner = unit->GetOwner())
+                if (owner->GetTypeId() == TYPEID_PLAYER && owner != victim && owner->IsAlive() &&
+                    static_cast<Player*>(owner)->getClass() == CLASS_WARLOCK && T4_LIEN[0] && static_cast<Player*>(owner)->HasSpell(T4_LIEN[0]))
+                {
+                    uint32 pct = 10 + 5 * TRank(static_cast<Player*>(owner), T4_LIEN_AM, T4_LIEN_AM_N);
+                    if (uint32 h = std::min(damage, health) * pct / 100)
+                        owner->ModifyHealth(int32(h));
+                }
         // Guerrier Berserker : Carnage (vol de vie) et Fou de rage (rage +10 %)
         if (unit && victim && unit != victim && damage && s_depth == 0 && unit->GetTypeId() == TYPEID_PLAYER &&
             static_cast<Player*>(unit)->getClass() == CLASS_WARRIOR && unit->IsAlive())

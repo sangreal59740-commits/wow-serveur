@@ -2,6 +2,7 @@
 # Chaque classe : un Gen dans la famille de sorts de la classe (bits libres >= 34), un arbre de talents (onglet 4),
 # des sorts appris par talent, des modifications de sorts vanilla (VPATCH, serveur + client).
 
+from spellgen import dbc_col
 V4_GENS = []            # (gen, premier id, dernier id)
 V4_SLA = []             # (classe, ligne de compétence, sort)
 V4_TRAIN = []           # (classe, sort d'apprentissage, coût, niveau)
@@ -242,6 +243,77 @@ for _sid in WC.sla:
 V4H += [('W4_CRIT', [W['crit']]), ('W4_ENDURCI', [W['endurci']]), ('W4_SOIF', [W['soif']]), ('W4_FOU', [W['fou']])]
 V4T += [('T4_INSTINCT', "Instinct du berserker"), ('T4_FUREUR_AV', "Fureur aveugle"), ('T4_CARNAGE', "Carnage"),
         ('T4_ENDURCI', "Endurci"), ('T4_SOIF', "Soif de carnage")]
+
+# ======================================================================== Démoniste : Transfuge
+WARLOCK = 8
+KG = Gen(5, [34, 35, 36, 37] + list(range(40, 64)))
+V4_GENS.append((KG, 55250, 55374))
+KC = Ctx(KG, 55250, {'demono': 354}, WARLOCK, WARLOCK)
+K = {}
+DA = [706, 1086, 11733, 11734, 11735]
+SB, CORR, IMMO, SF = vflags(686), vflags(172), vflags(348), vflags(6353)
+DAM = vtag(KG, 'v_da', DA)
+# Double armure : une 2e couche d'Armure démoniaque par rang (hors du groupe des armures, donc cumulable)
+K['da2'] = []
+for _i, _sid in enumerate(DA):
+    K['da2'].append(cspell(KC, 'da2', _sid, "Armure démoniaque", SpellLevel=SPR[_sid][dbc_col('SpellLevel')], MaxLevel=0,
+                           DurationIndex=SPR[_sid][dbc_col('DurationIndex')], SpellIconID=icon(_sid)))
+DAM |= KG.mask('da2')
+K['menace'] = cspell(KC, 'k_menace', 12042, "Armure démoniaque renforcée", DurationIndex=DUR[-1], **merge(aur(1, 10, 127, 1), none3(2, 3)))
+K['incant'] = cspell(KC, 'k_incant', 12042, "Incantation démoniaque", DurationIndex=DUR[-1],
+                     **merge(aur(1, 108, 0, -25), aur(2, 108, 22, -25), none3(3)))
+AFFECT.append((K['incant'], 0, IMMO))
+AFFECT.append((K['incant'], 1, IMMO | CORR))
+K['absorb2'] = cspell(KC, 'absorption', 12042, "Absorption démoniaque", DurationIndex=DUR[20000], SpellIconID=icon(18788),
+                      **merge(aur(1, 79, 127, 25), aur(2, 87, 127, -10), none3(3)))
+
+K['cri'] = KC.single('cri', 'demono', 355, 10, "Cri démoniaque",
+                     "Un cri démoniaque force la cible à vous attaquer pendant 3 s.", 10000, 0, 5, icon_sid=1161,
+                     tooltip="Provoqué.", PowerType=0, Stances=0, StancesNot=0, RangeIndex=RANGE[20], School=5)
+NOTEACH.add(K['cri'])
+_b, _pl = sc(48, 35)
+K['sol'] = KC.single('sol', 'demono', 20924, 35, "Sol éradiqué",
+                     "Éradique le sol autour de vous : 384 points de dégâts d'Ombre en 8 s aux ennemis à moins de 8 mètres.",
+                     8000, 0, 30, icon_sid=11433, School=5, SpellVisual=visual(11433), MaxLevel=60,
+                     EffectBasePoints1=_b, EffectRealPointsPerLevel1=_pl, EffectBonusCoefficient1=0.042)
+NOTEACH.add(K['sol'])
+K['absorb'] = KC.single('absorption', 'demono', 18788, 40, "Absorption démoniaque",
+                        "Vous absorbez votre démon. Pendant 20 s : points de vie maximum, armure, résistances et dégâts +25 %, "
+                        "dégâts subis -10 %.", 180000, 0, 0, icon_sid=18788,
+                        tooltip="PV, armure, résistances et dégâts +25 %, dégâts subis -10 %.", DurationIndex=DUR[20000],
+                        **merge(aur(2, 133, 0, 25), aur(3, 101, 127, 25)))
+NOTEACH.add(K['absorb'])
+
+tree(KG, 408, "Transfuge", CBIT[WARLOCK], 3, "WarlockSummoning", 18788, [
+    (1, "Armure démoniaque renforcée", 5, 706, ('fx', mod(8, True, [DAM], 2)),
+     lambda r: "Augmente les effets d'Armure démoniaque de %d %% ; tant qu'elle est active, votre menace est augmentée de %d %%. "
+               "Vous pouvez porter la maille et le bouclier." % (2 * r, 5 * r)),
+    (1, "Pacte gangrené", 5, 18692, ('fx', aura(137, 2, 4)), lambda r: "Augmente votre Endurance de %d %%." % (4 * r)),
+    (2, "Cri démoniaque", 1, 1161, ('spell', K['cri']), "Force la cible à vous attaquer pendant 3 s. Recharge 10 s."),
+    (2, "Malveillance", 5, 18174, ('fx', aura(10, 127, 10)), lambda r: "Augmente la menace que vous générez de %d %%." % (10 * r)),
+    (3, "Lien gangrené", 1, 19028, D, "10 % des dégâts infligés par votre démon vous soignent."),
+    (3, "Tolérance gangrenée", 5, 18731, ('fx', aura(49, 0, 1)), lambda r: "Augmente votre chance d'esquiver de %d %%." % r),
+    (4, "Lien gangrené amélioré", 2, 19028, D, lambda r: "Les soins de Lien gangrené passent à %d %% des dégâts du démon." % (10 + 5 * r),
+     "Lien gangrené"),
+    (4, "Résistance démoniaque", 3, 18769, ('fx', aura(22, 126, 10)), lambda r: "Augmente toutes vos résistances de %d." % (10 * r)),
+    (5, "Incantation démoniaque", 1, 18288, ('fx', lambda r: [('mod', 10, True, [SB | IMMO | SF | CORR], -100), ('mod', 0, True, [SB], -50),
+                                                             ('mod', 0, True, [SF], -75)]),
+     "Trait de l'ombre, Immolation, Corruption et Feu de l'âme deviennent instantanés. En échange, dégâts de Trait de l'ombre -50 %, "
+     "d'Immolation et de Corruption -25 %, de Feu de l'âme -75 %."),
+    (5, "Double armure", 1, 706, D, "Armure démoniaque se cumule 2 fois.", "Armure démoniaque renforcée"),
+    (6, "Sol éradiqué", 1, 11433, ('spell', K['sol']), "Dégâts d'Ombre autour de vous pendant 8 s. Recharge 8 s."),
+    (6, "Sol profané", 3, 11433, ('fx', mod(22, True, ['sol'], 10)), lambda r: "Augmente les dégâts de Sol éradiqué de %d %%." % (10 * r), "Sol éradiqué"),
+    (7, "Absorption démoniaque", 1, 18788, ('spell', K['absorb']),
+     "Absorbe votre démon : 20 s de PV, armure, résistances et dégâts +25 %, dégâts subis -10 %. Recharge 3 min."),
+    (7, "Absorption prolongée", 2, 18788, ('fx', mod(1, False, ['absorption'], 2500)),
+     lambda r: "Augmente la durée d'Absorption démoniaque de %.1f s." % (2.5 * r)),
+])
+for _sid in KC.sla:
+    V4_SLA.append((WARLOCK,) + _sid)
+V4H += [('K4_DA', DA), ('K4_DA2', K['da2']), ('K4_MENACE', [K['menace']]), ('K4_INCANT', [K['incant']]),
+        ('K4_ABSORB', [K['absorb']]), ('K4_ABSORB2', [K['absorb2']])]
+V4T += [('T4_ARMURE', "Armure démoniaque renforcée"), ('T4_LIEN', "Lien gangrené"), ('T4_LIEN_AM', "Lien gangrené amélioré"),
+        ('T4_INCANT', "Incantation démoniaque"), ('T4_DOUBLE', "Double armure")]
 
 # ======================================================================== fin : on rend la main au générateur principal
 TALG, TAL_ID = TALG_MAIN, TAL_ID_MAIN
