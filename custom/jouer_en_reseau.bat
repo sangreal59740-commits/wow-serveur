@@ -9,7 +9,7 @@ if errorlevel 1 (
   exit /b
 )
 set "SPP=C:\SPP_Classics V2\SPP_Classics_V2\SPP_Server\Server\Database"
-for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VirtualBox|VMware|Tailscale|ZeroTier' -and $_.IPAddress -notlike '169.254*' -and $_.PrefixOrigin -in 'Dhcp','Manual' } | Select-Object -First 1).IPAddress"`) do set "IP=%%i"
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 ^| Where-Object { $_.InterfaceAlias -notmatch 'Loopback^|vEthernet^|VirtualBox^|VMware^|Tailscale^|ZeroTier' -and $_.IPAddress -notlike '169.254*' -and $_.PrefixOrigin -in 'Dhcp','Manual' } ^| Select-Object -First 1).IPAddress"`) do set "IP=%%i"
 if "%IP%"=="" (
   echo  ERREUR : adresse réseau introuvable. Envoie une capture a Claude.
   goto fin
@@ -30,7 +30,7 @@ echo  Pare-feu : ports 3724 et 8085 ouverts.
 echo.
 echo  Sur l'autre PC, mets dans C:\wow\realmlist.wtf la ligne :
 echo      set realmlist %IP%
-echo  Sur CE PC, mets la meme ligne dans C:\wow\realmlist.wtf.
+echo  Sur CE PC, rien a changer.
 echo  Puis redémarre le serveur.
 :fin
 echo.
