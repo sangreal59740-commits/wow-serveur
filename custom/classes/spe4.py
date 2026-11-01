@@ -245,7 +245,7 @@ V4T += [('T4_INSTINCT', "Instinct du berserker"), ('T4_FUREUR_AV', "Fureur aveug
         ('T4_ENDURCI', "Endurci"), ('T4_SOIF', "Soif de carnage")]
 
 # ======================================================================== Démoniste : Transfuge
-WARLOCK = 8
+WARLOCK = 9
 KG = Gen(5, [34, 35, 36, 37] + list(range(40, 64)))
 V4_GENS.append((KG, 55250, 55374))
 KC = Ctx(KG, 55250, {'demono': 354}, WARLOCK, WARLOCK)
@@ -375,7 +375,7 @@ V4H += [('H4_TERRE', [Hh['terre']]), ('H4_FOUDRE', LSHIELD), ('H4_RUNIQUE', [Hh[
 V4T += [('T4_DOUBLE_B', "Bouclier double")]
 
 # ======================================================================== Mage : Nature
-MAGE = 3
+MAGE = 8
 AG = Gen(3, [32, 33, 34, 35, 36, 37] + list(range(39, 64)))
 V4_GENS.append((AG, 55500, 55699))
 AC = Ctx(AG, 55500, {'arcanes': 237}, MAGE, MAGE)
@@ -813,6 +813,24 @@ V4H += [('Q4_SRC', Q_SRC), ('Q4_HEAL', Q_HEAL), ('Q4_SOIN', [Q['soin']]), ('Q4_A
         ('Q4_RAT', [C_RAT])]
 V4T += [('T4_CORRUPTION', "Corruption"), ('T4_SANGSUE', "Sangsue"), ('T4_SANGSUE_AM', "Sangsue améliorée"),
         ('T4_RATS_ENR', "Rats enragés")]
+
+# ======================================================================== bots : sorts utilisés par l'IA des 4es spés
+V4_TABS = [(PALADIN, 406), (WARRIOR, 407), (WARLOCK, 408), (SHAMAN, 409), (MAGE, 410), (ROGUE, 411), (HUNTER, 412), (PRIEST, 413)]
+_q = {}
+_i = 0
+for _name, _ids in P_HEALS.items():
+    _q[_name] = Q_HEAL[_i:_i + len(_ids)]
+    _i += len(_ids)
+V4H += [('B4_TRAIT', P['trait']), ('B4_JUGER', [P['juger']]), ('B4_FEU', [P['feu']]),
+        ('B4_FOU', [W['fou']]), ('B4_CRACHAT', [W['crachat']]), ('B4_FRAPPE', [W['frappe']]),
+        ('B4_CRI', [K['cri']]), ('B4_SOL', [K['sol']]),
+        ('B4_TERRE', [Hh['terre']]), ('B4_DEFI', [Hh['defi']]), ('B4_FRACAS', [Hh['fracas']]),
+        ('B4_BOULE', A['boule']), ('B4_VIF', A['vif']), ('B4_BIOME', A['biome']),
+        ('B4_LAMES', [R['lames']]), ('B4_MURMURE', [R['murmure']]), ('B4_ENTAILLE', [R['entaille']]), ('B4_SUPPLICE', [R['supplice']]),
+        ('B4_HORDE', [R['horde']]),
+        ('B4_REVIG', I['revig']), ('B4_APAISE', I['apaise']),
+        ('B4_RENOV', _q['Rénovation corrompue']), ('B4_RAPIDE', _q['Soins rapides corrompus']), ('B4_SUP', _q['Soins supérieurs corrompus']),
+        ('B4_PRIERE', _q['Prière de soins corrompue']), ('B4_RATS', [Q['rats']]), ('B4_NUEE', [Q['nuee']])]
 
 # ======================================================================== fin : on rend la main au générateur principal
 TALG, TAL_ID = TALG_MAIN, TAL_ID_MAIN

@@ -66,6 +66,9 @@ namespace cmangos_module
         void SwapSpells(Player* player, const uint32_t* from, const uint32_t* to, uint32 n, bool active);
         // bots
         bool TryCast(Player* bot, Unit* target, uint32 spellId);
+        bool TryCastAt(Player* bot, Unit* where, uint32 spellId);
+        void BotTalents(Player* bot);
+        void Bot4Think(Player* bot);
 
         std::recursive_mutex lock;
         std::unordered_map<uint64, std::deque<ArmyEntry>> armies;   // joueur -> invocations permanentes (ordre d'arrivée)
@@ -74,6 +77,7 @@ namespace cmangos_module
         std::unordered_set<uint64> runique;                          // Chamans sous Appel runique (soin à la fin)
         std::unordered_map<uint64, uint64> lienTarget;              // Mage -> allié sous Lien de vie
         std::unordered_map<uint64, uint32> petHealTick;             // Chasseur -> secondes depuis le dernier soin du familier
+        std::unordered_map<uint64, uint32> botTalentTick;           // bot -> secondes depuis la dernière vérification des talents
         std::unordered_map<uint64, ActionButtonList*> actionLists;  // joueur -> sa barre d'action (pour suivre les changements de sorts)
         uint32 botTimer = 0;
     };

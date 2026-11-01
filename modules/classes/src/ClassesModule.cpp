@@ -99,6 +99,13 @@ namespace cmangos_module
         return player->GetSession() && player->GetSession()->GetRemoteAddress() == "disconnected/bot";
     }
 
+    // un bot de classe vanilla sur quatre joue la 4e spé (choix fixe, selon son identifiant)
+    static bool Is4thBot(Player* player)
+    {
+        uint8 cls = player->getClass();
+        return IsBot(player) && cls != C_NECRO && cls != C_SNIPER && cls != C_META && player->GetObjectGuid().GetCounter() % 4 == 0;
+    }
+
     static int32 SpellValue(SpellEntry const* info, uint32 eff = 0)
     {
         return info ? info->CalculateSimpleValue(SpellEffectIndex(eff)) : 0;
@@ -1169,6 +1176,7 @@ namespace cmangos_module
         runique.erase(player->GetObjectGuid().GetRawValue());
         lienTarget.erase(player->GetObjectGuid().GetRawValue());
         petHealTick.erase(player->GetObjectGuid().GetRawValue());
+        botTalentTick.erase(player->GetObjectGuid().GetRawValue());
         actionLists.erase(player->GetObjectGuid().GetRawValue());
     }
 
@@ -1189,8 +1197,8 @@ namespace cmangos_module
                 if (!p || !p->IsInWorld() || !p->IsAlive())
                     continue;
                 uint8 cls = p->getClass();
-                // classes vanilla : seulement les vrais joueurs (4e spé) ; les bots ne la prennent pas
-                if (cls != C_NECRO && cls != C_SNIPER && cls != C_META && IsBot(p))
+                // classes vanilla : les vrais joueurs et les bots qui jouent une 4e spé (un sur quatre)
+                if (cls != C_NECRO && cls != C_SNIPER && cls != C_META && IsBot(p) && !Is4thBot(p))
                     continue;
                 if (Map* map = p->GetMap())
                     todo.emplace_back(map, p->GetObjectGuid());
@@ -1220,6 +1228,8 @@ namespace cmangos_module
         uint8 cls = player->getClass();
         if (cls != C_NECRO && cls != C_SNIPER && cls != C_META)
         {
+            if (Is4thBot(player))
+                BotTalents(player);
             Spe4Upkeep(player);
             return;
         }
@@ -1300,6 +1310,236 @@ namespace cmangos_module
             MetaPassives(player);
     }
 
+    // ------------------------------------------------------------------ bots de 4e spé
+    // tous les points vont dans le 4e arbre (dans l'ordre des paliers), le reste est laissé au système des bots
+    void ClassesModule::BotTalents(Player* bot)
+    {
+        uint32& tick = botTalentTick[bot->GetObjectGuid().GetRawValue()];
+        if (++tick < 10)
+            return;
+        tick = 0;
+        int idx = -1;
+        for (uint32 i = 0; i < B4_CLASS_N; ++i)
+            if (B4_CLASS[i] == bot->getClass())
+                idx = int(i);
+        if (idx < 0 || bot->GetLevel() < 10)
+            return;
+        uint32 total = bot->GetLevel() - 9, have = 0, treeMax = 0;
+        for (uint32 k = 0; k < B4_COUNT[idx]; ++k)
+        {
+            TalentEntry const* te = sTalentStore.LookupEntry(B4_TID[B4_START[idx] + k]);
+            if (!te)
+                continue;
+            treeMax += B4_RANKS[B4_START[idx] + k];
+            for (int r = MAX_TALENT_RANK - 1; r >= 0; --r)
+                if (te->RankID[r] && bot->HasSpell(te->RankID[r]))
+                {
+                    have += r + 1;
+                    break;
+                }
+        }
+        uint32 want = std::min(total, treeMax);
+        if (have >= want)
+            return;
+        if (bot->GetFreeTalentPoints() < want - have)
+            bot->resetTalents(true);
+        for (uint32 k = 0; k < B4_COUNT[idx]; ++k)
+        {
+            uint32 tid = B4_TID[B4_START[idx] + k];
+            TalentEntry const* te = sTalentStore.LookupEntry(tid);
+            if (!te)
+                continue;
+            for (uint32 r = 0; r < B4_RANKS[B4_START[idx] + k]; ++r)
+            {
+                if (te->RankID[r] && bot->HasSpell(te->RankID[r]))
+                    continue;
+                if (!bot->GetFreeTalentPoints())
+                    return;
+                bot->LearnTalent(tid, r);
+            }
+        }
+    }
+
+    bool ClassesModule::TryCastAt(Player* bot, Unit* where, uint32 spellId)
+    {
+        if (!spellId || !where)
+            return false;
+        SpellEntry const* info = sSpellTemplate.LookupEntry<SpellEntry>(spellId);
+        if (!info || !bot->IsSpellReady(*info))
+            return false;
+        if (info->manaCost && bot->GetPower(POWER_MANA) < info->manaCost)
+            return false;
+        return bot->CastSpell(where->GetPositionX(), where->GetPositionY(), where->GetPositionZ(), info, TRIGGERED_NONE) == SPELL_CAST_OK;
+    }
+
+    void ClassesModule::Bot4Think(Player* bot)
+    {
+        DepthGuard depth;
+        Unit* victim = bot->GetVictim();
+        if (victim && (!victim->IsAlive() || !bot->CanAttack(victim)))
+            victim = nullptr;
+        bool combat = bot->IsInCombat();
+        ObjectGuid me = bot->GetObjectGuid();
+        auto mine = [&](Unit* u, uint32 id) { return id && u->GetSpellAuraHolder(id, me) != nullptr; };
+        auto self = [&](uint32 id) { return id && bot->HasSpell(id) && !bot->HasAura(id) && TryCast(bot, bot, id); };
+        // allié le plus blessé du groupe (le bot compris) et nombre d'alliés blessés
+        std::vector<Unit*> allies;
+        GroupAround(bot, bot, 40.0f, allies);
+        Unit* low = nullptr;
+        uint32 hurt = 0, hurtBad = 0;
+        for (Unit* a : allies)
+        {
+            if (HpPct(a) < 0.8f)
+                ++hurt;
+            if (HpPct(a) < 0.6f)
+                ++hurtBad;
+            if (!low || HpPct(a) < HpPct(low))
+                low = a;
+        }
+        float lp = low ? HpPct(low) : 1.0f;
+        switch (bot->getClass())
+        {
+            case CLASS_PALADIN:
+                if (self(P4_SCEAU[0]))
+                    return;
+                if (combat && victim)
+                {
+                    if (victim->GetHealth() * 2 > victim->GetMaxHealth() && bot->HasSpell(P4_APPEL[0]) && TryCast(bot, bot, P4_APPEL[0]))
+                        return;
+                    if (bot->HasSpell(B4_JUGER[0]) && !mine(victim, B4_JUGER[0]) && TryCast(bot, victim, B4_JUGER[0]))
+                        return;
+                    if (bot->HasSpell(B4_FEU[0]) && TryCastAt(bot, victim, B4_FEU[0]))
+                        return;
+                    if (uint32 t = Best(bot, B4_TRAIT, B4_TRAIT_N))
+                        TryCast(bot, victim, t);
+                }
+                break;
+            case CLASS_WARRIOR:
+                if (self(B4_FOU[0]))
+                    return;
+                if (combat && victim && bot->IsWithinDistInMap(victim, 8.0f))
+                {
+                    if (bot->HasSpell(B4_FRAPPE[0]) && TryCast(bot, victim, B4_FRAPPE[0]))
+                        return;
+                    if (bot->HasSpell(B4_CRACHAT[0]) && bot->HasInArc(victim) && TryCast(bot, victim, B4_CRACHAT[0]))
+                        return;
+                }
+                break;
+            case CLASS_WARLOCK:
+                if (combat && victim)
+                {
+                    if (bot->GetHealth() * 5 < bot->GetMaxHealth() * 2 && bot->GetPet() && bot->HasSpell(K4_ABSORB[0]) && TryCast(bot, bot, K4_ABSORB[0]))
+                        return;
+                    if (victim->GetVictim() != bot && bot->HasSpell(B4_CRI[0]) && TryCast(bot, victim, B4_CRI[0]))
+                        return;
+                    if (bot->IsWithinDistInMap(victim, 8.0f) && bot->HasSpell(B4_SOL[0]) && TryCast(bot, bot, B4_SOL[0]))
+                        return;
+                }
+                break;
+            case CLASS_SHAMAN:
+                if (self(B4_TERRE[0]))
+                    return;
+                if (combat && victim)
+                {
+                    if (bot->GetHealth() * 5 < bot->GetMaxHealth() * 2 && bot->HasSpell(H4_RUNIQUE[0]) && TryCast(bot, bot, H4_RUNIQUE[0]))
+                        return;
+                    if (victim->GetVictim() != bot && bot->HasSpell(B4_DEFI[0]) && TryCast(bot, victim, B4_DEFI[0]))
+                        return;
+                    if (bot->getAttackers().size() >= 2 && bot->HasSpell(B4_FRACAS[0]) && TryCast(bot, bot, B4_FRACAS[0]))
+                        return;
+                }
+                break;
+            case CLASS_MAGE:
+                if (self(A4_ARMURE[0]))
+                    return;
+                if (low && lp < 0.9f)
+                {
+                    if (lp < 0.6f && bot->HasSpell(A4_BOUCLIER[0]) && !low->HasAura(6788) && TryCast(bot, low, A4_BOUCLIER[0]))
+                        return;
+                    uint32 biome = Best(bot, B4_BIOME, B4_BIOME_N);
+                    if (biome && !mine(low, biome) && TryCast(bot, low, biome))
+                        return;
+                    if (lp < 0.5f)
+                    {
+                        if (uint32 v = Best(bot, B4_VIF, B4_VIF_N))
+                            if (TryCast(bot, low, v))
+                                return;
+                    }
+                    else if (lp < 0.75f)
+                        if (uint32 b = Best(bot, B4_BOULE, B4_BOULE_N))
+                            if (TryCast(bot, low, b))
+                                return;
+                }
+                break;
+            case CLASS_ROGUE:
+                if (self(B4_LAMES[0]))
+                    return;
+                if (combat && victim)
+                {
+                    if (bot->HasSpell(B4_HORDE[0]) && victim->GetHealth() * 2 > victim->GetMaxHealth() && TryCast(bot, bot, B4_HORDE[0]))
+                        return;
+                    if (bot->GetComboPoints() >= 4 && bot->HasSpell(B4_SUPPLICE[0]) && TryCast(bot, victim, B4_SUPPLICE[0]))
+                        return;
+                    if (bot->HasSpell(B4_MURMURE[0]) && !mine(victim, B4_MURMURE[0]) && TryCast(bot, victim, B4_MURMURE[0]))
+                        return;
+                    if (bot->HasSpell(B4_ENTAILLE[0]) && !mine(victim, B4_ENTAILLE[0]) && TryCast(bot, victim, B4_ENTAILLE[0]))
+                        return;
+                }
+                break;
+            case CLASS_HUNTER:
+                if (bot->HasSpell(I4_POSTURES[1]) && bot->GetShapeshiftForm() != ShapeshiftForm(I4_FORM[0]))
+                {
+                    TryCast(bot, bot, I4_POSTURES[1]);
+                    return;
+                }
+                if (low && lp < 0.9f)
+                {
+                    if (hurtBad >= 3 && bot->HasSpell(I4_RAFALE[0]) && TryCast(bot, bot, I4_RAFALE[0]))
+                        return;
+                    if (hurt >= 3 && bot->HasSpell(I4_SHOT[I4_SHOT_N - 1]))
+                        for (uint32 j = 0; j < I4_SHOT_N; ++j)
+                            if (I4_KIND[j] == 3 && TryCast(bot, low, I4_SHOT[j]))
+                                return;
+                    uint32 hot = Best(bot, B4_APAISE, B4_APAISE_N);
+                    if (hot && !mine(low, I4_HOT[0]) && TryCast(bot, low, hot))
+                        return;
+                    if (lp < 0.7f)
+                        if (uint32 r = Best(bot, B4_REVIG, B4_REVIG_N))
+                            if (TryCast(bot, low, r))
+                                return;
+                }
+                break;
+            case CLASS_PRIEST:
+                if (combat && victim && hurtBad >= 3 && bot->HasSpell(B4_NUEE[0]) && TryCast(bot, bot, B4_NUEE[0]))
+                    return;
+                if (combat && victim && bot->HasSpell(B4_RATS[0]) && TryCast(bot, bot, B4_RATS[0]))
+                    return;
+                if (low && lp < 0.9f)
+                {
+                    if (hurt >= 3)
+                        if (uint32 p = Best(bot, B4_PRIERE, B4_PRIERE_N))
+                            if (TryCast(bot, bot, p))
+                                return;
+                    uint32 ren = Best(bot, B4_RENOV, B4_RENOV_N);
+                    if (ren && !mine(low, ren) && TryCast(bot, low, ren))
+                        return;
+                    if (lp < 0.45f)
+                    {
+                        if (uint32 f = Best(bot, B4_RAPIDE, B4_RAPIDE_N))
+                            if (TryCast(bot, low, f))
+                                return;
+                    }
+                    else if (lp < 0.7f)
+                        if (uint32 g = Best(bot, B4_SUP, B4_SUP_N))
+                            if (TryCast(bot, low, g))
+                                return;
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
     bool ClassesModule::TryCast(Player* bot, Unit* target, uint32 spellId)
     {
         if (!spellId || !target)
@@ -1318,6 +1558,11 @@ namespace cmangos_module
             return;
         std::lock_guard<std::recursive_mutex> guard(lock);
         uint8 cls = bot->getClass();
+        if (cls != C_NECRO && cls != C_SNIPER && cls != C_META)
+        {
+            Bot4Think(bot);
+            return;
+        }
         if (cls == C_META)
         {
             DepthGuard depth;

@@ -1611,6 +1611,15 @@ for k in ['terre', 'hfeu', 'tonnerre', 'colere', 'lunaire', 'stellaire', 'massac
 H.append("    // 4e spé des classes vanilla")
 for _n, _v in V4H:
     arr(_n, _v)
+# arbres de la 4e spé pour les bots : talents dans l'ordre des paliers (id du talent, nombre de rangs)
+B4_CLASS, B4_START, B4_COUNT, B4_TID, B4_RANKS = [], [], [], [], []
+for _cls, _tab in V4_TABS:
+    _rows = sorted([r for r in TALENT_ROWS if r[1] == _tab], key=lambda r: (r[2], r[3]))
+    B4_CLASS.append(_cls); B4_START.append(len(B4_TID)); B4_COUNT.append(len(_rows))
+    for r in _rows:
+        B4_TID.append(r[0]); B4_RANKS.append(sum(1 for v in r[4:13] if v))
+for _n, _v in [('B4_CLASS', B4_CLASS), ('B4_START', B4_START), ('B4_COUNT', B4_COUNT), ('B4_TID', B4_TID), ('B4_RANKS', B4_RANKS)]:
+    arr(_n, _v)
 T4NAMES = {}
 for t in T4G.spells:
     T4NAMES.setdefault(t['name'], []).append(t['id'])
