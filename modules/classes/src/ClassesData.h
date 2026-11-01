@@ -309,4 +309,22 @@ namespace classes_data
     static const uint32_t P4_APPEL_N = 1;
     static const uint32_t P4_APPEL_SP[] = { 55011 };
     static const uint32_t P4_APPEL_SP_N = 1;
+    static const uint32_t W4_CRIT[] = { 55125 };
+    static const uint32_t W4_CRIT_N = 1;
+    static const uint32_t W4_ENDURCI[] = { 55126 };
+    static const uint32_t W4_ENDURCI_N = 1;
+    static const uint32_t W4_SOIF[] = { 55127 };
+    static const uint32_t W4_SOIF_N = 1;
+    static const uint32_t W4_FOU[] = { 55128 };
+    static const uint32_t W4_FOU_N = 1;
+    static const uint32_t T4_INSTINCT[] = { 56038 };
+    static const uint32_t T4_INSTINCT_N = 1;
+    static const uint32_t T4_FUREUR_AV[] = { 56052, 56053, 56054, 56055, 56056 };
+    static const uint32_t T4_FUREUR_AV_N = 5;
+    static const uint32_t T4_CARNAGE[] = { 56057, 56058, 56059 };
+    static const uint32_t T4_CARNAGE_N = 3;
+    static const uint32_t T4_ENDURCI[] = { 56060, 56061, 56062 };
+    static const uint32_t T4_ENDURCI_N = 3;
+    static const uint32_t T4_SOIF[] = { 56066, 56067, 56068 };
+    static const uint32_t T4_SOIF_N = 3;
 }

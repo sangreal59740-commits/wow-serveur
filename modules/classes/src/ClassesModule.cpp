@@ -414,6 +414,13 @@ namespace cmangos_module
                     player->CastCustomSpell(player, P4_APPEL_SP[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
             }
         }
+        else if (cls == CLASS_WARRIOR)
+        {
+            // Soif de carnage : un coup critique rend 1 % des PV max par rang
+            if (In(W4_SOIF, W4_SOIF_N, id))
+                if (uint32 r = TRank(player, T4_SOIF, T4_SOIF_N))
+                    player->DealHeal(player, player->GetMaxHealth() * r / 100, sSpellTemplate.LookupEntry<SpellEntry>(W4_SOIF[0]));
+        }
     }
 
     void ClassesModule::Spe4Upkeep(Player* player)
@@ -423,6 +430,24 @@ namespace cmangos_module
         {
             if (!player->HasAura(P4_APPEL[0]) && player->HasAura(P4_APPEL_SP[0]))
                 player->RemoveAurasDueToSpell(P4_APPEL_SP[0]);
+        }
+        else if (cls == CLASS_WARRIOR)
+        {
+            bool instinct = T4_INSTINCT[0] && player->HasSpell(T4_INSTINCT[0]);
+            // Instinct du berserker : Posture berserker dès le niveau 10 (gardée après un reset de talents)
+            if (instinct && !player->HasSpell(2458))
+                player->learnSpell(2458, false);
+            bool low = player->GetHealth() * 2 < player->GetMaxHealth();
+            // critique : +3 % en Posture berserker avec Instinct, Fureur aveugle sous 50 % de vie
+            int32 crit = 0;
+            if (instinct && player->GetShapeshiftForm() == FORM_BERSERKERSTANCE)
+                crit += 3;
+            if (low)
+                crit += 2 * int32(TRank(player, T4_FUREUR_AV, T4_FUREUR_AV_N));
+            SetHiddenAura(player, W4_CRIT[0], crit, 0);
+            // Endurci : dégâts subis réduits sous 50 % de vie
+            int32 red = low ? -2 * int32(TRank(player, T4_ENDURCI, T4_ENDURCI_N)) : 0;
+            SetHiddenAura(player, W4_ENDURCI[0], red, 0);
         }
     }
 
@@ -629,8 +654,26 @@ namespace cmangos_module
                             player->CastSpell(next, d, TRIGGERED_OLD_TRIGGERED);
     }
 
-    void ClassesModule::OnDealDamage(Unit* /*unit*/, Unit* victim, uint32 health, uint32 damage)
+    void ClassesModule::OnDealDamage(Unit* unit, Unit* victim, uint32 health, uint32 damage)
     {
+        // Guerrier Berserker : Carnage (vol de vie) et Fou de rage (rage +10 %)
+        if (unit && victim && unit != victim && damage && s_depth == 0 && unit->GetTypeId() == TYPEID_PLAYER &&
+            static_cast<Player*>(unit)->getClass() == CLASS_WARRIOR && unit->IsAlive())
+        {
+            Player* war = static_cast<Player*>(unit);
+            uint32 dealt = std::min(damage, health);
+            if (uint32 r = TRank(war, T4_CARNAGE, T4_CARNAGE_N))
+                if (uint32 h = dealt * r / 100)
+                    war->ModifyHealth(int32(h));
+            if (W4_FOU[0] && war->HasAura(W4_FOU[0]))
+            {
+                float L = float(war->GetLevel());
+                float conv = 0.0091107836f * L * L + 3.225598133f * L + 4.2652911f;
+                int32 add = int32(float(dealt) / conv * 7.5f);     // 10 % de la rage d'un coup (rage interne x10)
+                if (add > 0)
+                    war->ModifyPower(POWER_RAGE, add);
+            }
+        }
         if (!victim || victim->GetTypeId() != TYPEID_PLAYER || !victim->IsAlive() || damage >= health)
             return;
         Player* player = static_cast<Player*>(victim);

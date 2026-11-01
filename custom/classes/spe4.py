@@ -166,5 +166,82 @@ for _sid in PC.sla:
     V4_SLA.append((PALADIN,) + _sid)
 V4H += [('P4_JUG_SOLEIL', [P['jug']]), ('P4_SCEAU', [P['sceau']]), ('P4_APPEL', [P['appel']]), ('P4_APPEL_SP', [P['appel_sp']])]
 
+# ======================================================================== Guerrier : Berserker
+WARRIOR = 1
+WG = Gen(4, range(34, 64))
+V4_GENS.append((WG, 55125, 55249))
+WC = Ctx(WG, 55125, {'fureur': 256}, WARRIOR, WARRIOR)
+W = {}
+WHIRLWIND = vflags(1680)
+
+W['crit'] = cspell(WC, 'w_crit', 12042, "Instinct du berserker", DurationIndex=DUR[-1], **merge(aur(1, 52, 0, 1), none3(2, 3)))
+W['endurci'] = cspell(WC, 'w_endurci', 12042, "Endurci", DurationIndex=DUR[-1], **merge(aur(1, 87, 127, -1), none3(2, 3)))
+W['soif'] = cspell(WC, 'w_soif', 12042, "Soif de carnage", DurationIndex=0,
+                   **merge({'Effect1': 3, 'EffectImplicitTargetA1': 1, 'EffectApplyAuraName1': 0, 'EffectBasePoints1': 0}, none3(2, 3)))
+
+W['fou'] = WC.single('fou', 'fureur', 12042, 30, "Fou de rage",
+                     "Vous entrez dans une rage folle jusqu'à annulation : rage générée par vos attaques +10 %, chance de coup "
+                     "critique +2 % et dégâts des coups critiques +20 %.", 1000, 0, 0, icon_sid=18499,
+                     tooltip="Rage +10 %, critique +2 %, dégâts critiques +20 %.", DurationIndex=DUR[-1], School=0,
+                     **merge(aur(1, 52, 0, 2), aur(2, 163, 127, 20), aur(3, 4, 0, 1)))
+NOTEACH.add(W['fou'])
+
+_b, _pl = sc(150, 35)
+W['crachat'] = WC.single('crachat', 'fureur', 10161, 35, "Crachat de rage",
+                         "Crache votre rage en cône devant vous : 120 %% des dégâts de l'arme et %d points de dégâts de Feu aux "
+                         "ennemis à moins de 10 mètres, ralentis de 30 %% pendant 8 s." % 150, 10000, 0, 0, icon_sid=16396,
+                         tooltip="Ralenti de 30 %.", PowerType=1, ManaCost=250, School=2, DmgClass=2, MaxLevel=60,
+                         SpellVisual=visual(16396), DurationIndex=DUR[8000], EquippedItemClass=-1,
+                         **merge(weapon(1, 120, target=24), {'EffectRadiusIndex1': RADIUS[10], 'EffectRealPointsPerLevel1': 0},
+                                 {'Effect2': 2, 'EffectApplyAuraName2': 0, 'EffectBasePoints2': _b, 'EffectDieSides2': 1,
+                                  'EffectRealPointsPerLevel2': _pl, 'EffectImplicitTargetA2': 24, 'EffectRadiusIndex2': RADIUS[10],
+                                  'EffectBonusCoefficient2': 0, 'EffectMiscValue2': 0},
+                                 aur(3, 33, 0, -30, target=24), {'EffectRadiusIndex3': RADIUS[10]}))
+NOTEACH.add(W['crachat'])
+
+_b, _pl = sc(236, 40)
+_b2, _pl2 = sc(30, 40)
+W['frappe'] = WC.single('frappe_folle', 'fureur', 11585, 40, "Frappe folle",
+                        "Une frappe démente : dégâts de l'arme + 236, et un saignement de 300 points de dégâts en 20 s. "
+                        "Le saignement se cumule 2 fois.", 6000, 0, 0, icon_sid=25286,
+                        tooltip="Saigne : dégâts physiques toutes les 2 s.", PowerType=1, ManaCost=100, School=0, DmgClass=2,
+                        Stances=0, StancesNot=0, CasterAuraState=0, TargetAuraState=0, Category=0, StackAmount=2, MaxLevel=60,
+                        DurationIndex=DUR[20000],
+                        **merge({'Effect1': 17, 'EffectBasePoints1': _b, 'EffectDieSides1': 1, 'EffectRealPointsPerLevel1': _pl,
+                                 'EffectImplicitTargetA1': 6, 'EffectApplyAuraName1': 0},
+                                {'Effect2': 6, 'EffectApplyAuraName2': 3, 'EffectBasePoints2': _b2, 'EffectDieSides2': 1,
+                                 'EffectRealPointsPerLevel2': _pl2, 'EffectImplicitTargetA2': 6, 'EffectAmplitude2': 2000,
+                                 'EffectMechanic2': 15, 'EffectMiscValue2': 0}, none3(3)))
+NOTEACH.add(W['frappe'])
+
+tree(WG, 407, "Berserker", CBIT[WARRIOR], 3, "WarriorFury", 2458, [
+    (1, "Instinct du berserker", 1, 2458, D,
+     "Vous apprenez la Posture berserker. En Posture berserker, votre chance de coup critique est augmentée de 3 % supplémentaires (6 % au total)."),
+    (1, "Sang chaud", 5, 12880, ('fx', aura(79, 1, 1)), lambda r: "Augmente vos dégâts physiques de %d %%." % r),
+    (2, "Peau épaisse", 5, 12295, ('fx', aura(101, 1, 2)), lambda r: "Augmente votre armure de %d %%." % (2 * r)),
+    (2, "Hargne", 3, 12317, ('fx', aura(138, 0, 1)), lambda r: "Augmente votre vitesse d'attaque de %d %%." % r),
+    (3, "Fureur aveugle", 5, 12320, D, lambda r: "Sous 50 %% de vie, votre chance de coup critique est augmentée de %d %%." % (2 * r)),
+    (3, "Carnage", 3, 12290, D, lambda r: "Vos coups vous rendent %d %% des dégâts infligés sous forme de points de vie." % r),
+    (4, "Endurci", 3, 12298, D, lambda r: "Sous 50 %% de vie, les dégâts que vous subissez sont réduits de %d %%." % (2 * r)),
+    (4, "Tourbillon amélioré", 3, 1680, ('fx', mod(0, True, [WHIRLWIND], 10)), lambda r: "Augmente les dégâts de Tourbillon de %d %%." % (10 * r)),
+    (5, "Fou de rage", 1, 18499, ('spell', W['fou']),
+     "Buff permanent : rage générée par vos attaques +10 %, coups critiques +2 %, dégâts des coups critiques +20 %."),
+    (5, "Soif de carnage", 3, 12292, ('fx', lambda r: [('proc', W['soif'], 100, 0x4 | 0x10, 0, 0, 2)]),
+     lambda r: "Chacun de vos coups critiques vous rend %d %% de vos points de vie maximum." % r),
+    (6, "Crachat de rage", 1, 16396, ('spell', W['crachat']),
+     "Cône de rage devant vous : 120 % des dégâts de l'arme et des dégâts de Feu, cibles ralenties de 30 %. Recharge 10 s."),
+    (6, "Crachat de rage amélioré", 3, 16396, ('fx', mod(0, True, ['crachat'], 5)), lambda r: "Augmente les dégâts de Crachat de rage de %d %%." % (5 * r),
+     "Crachat de rage"),
+    (7, "Frappe folle", 1, 25286, ('spell', W['frappe']),
+     "Frappe héroïque x1,5 instantanée et saignement de 300 points de dégâts en 20 s, cumulable 2 fois. Recharge 6 s."),
+    (7, "Folie sanglante", 2, 12867, ('fx', mod(22, True, ['frappe_folle'], 15)),
+     lambda r: "Augmente les dégâts du saignement de Frappe folle de %d %%." % (15 * r)),
+])
+for _sid in WC.sla:
+    V4_SLA.append((WARRIOR,) + _sid)
+V4H += [('W4_CRIT', [W['crit']]), ('W4_ENDURCI', [W['endurci']]), ('W4_SOIF', [W['soif']]), ('W4_FOU', [W['fou']])]
+V4T += [('T4_INSTINCT', "Instinct du berserker"), ('T4_FUREUR_AV', "Fureur aveugle"), ('T4_CARNAGE', "Carnage"),
+        ('T4_ENDURCI', "Endurci"), ('T4_SOIF', "Soif de carnage")]
+
 # ======================================================================== fin : on rend la main au générateur principal
 TALG, TAL_ID = TALG_MAIN, TAL_ID_MAIN
