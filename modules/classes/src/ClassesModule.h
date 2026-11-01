@@ -5,6 +5,7 @@
 #include <deque>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <ctime>
 
@@ -66,6 +67,7 @@ namespace cmangos_module
         std::unordered_map<uint64, std::deque<ArmyEntry>> armies;   // joueur -> invocations permanentes (ordre d'arrivée)
         std::unordered_map<uint64, int32> forceValue;               // joueur -> Force donnée par Force de l'esprit
         std::unordered_map<uint64, time_t> egideTime;               // joueur -> dernier déclenchement d'Égide angélique
+        std::unordered_set<uint64> runique;                          // Chamans sous Appel runique (soin à la fin)
         uint32 botTimer = 0;
     };
 }

@@ -427,6 +427,16 @@ namespace cmangos_module
             if (In(K4_ABSORB, K4_ABSORB_N, id))
                 player->CastSpell(player, K4_ABSORB2[0], TRIGGERED_OLD_TRIGGERED);
         }
+        else if (cls == CLASS_SHAMAN)
+        {
+            // Bouclier de terre et Bouclier de foudre s'excluent, sauf avec Bouclier double
+            bool dbl = T4_DOUBLE_B[0] && player->HasSpell(T4_DOUBLE_B[0]);
+            if (!dbl && In(H4_TERRE, H4_TERRE_N, id))
+                for (uint32 i = 0; i < H4_FOUDRE_N; ++i)
+                    player->RemoveAurasDueToSpell(H4_FOUDRE[i]);
+            else if (!dbl && In(H4_FOUDRE, H4_FOUDRE_N, id))
+                player->RemoveAurasDueToSpell(H4_TERRE[0]);
+        }
         else if (cls == CLASS_WARRIOR)
         {
             // Soif de carnage : un coup critique rend 1 % des PV max par rang
@@ -474,6 +484,15 @@ namespace cmangos_module
                 player->CastSpell(player, K4_INCANT[0], TRIGGERED_OLD_TRIGGERED);
             else if (!incant && player->HasAura(K4_INCANT[0]))
                 player->RemoveAurasDueToSpell(K4_INCANT[0]);
+        }
+        else if (cls == CLASS_SHAMAN)
+        {
+            // Appel runique : soin sur la durée quand le bouclier se termine
+            uint64 key = player->GetObjectGuid().GetRawValue();
+            if (player->HasAura(H4_RUNIQUE[0]))
+                runique.insert(key);
+            else if (runique.erase(key))
+                player->CastSpell(player, H4_HOT[0], TRIGGERED_OLD_TRIGGERED);
         }
         else if (cls == CLASS_WARRIOR)
         {
@@ -700,6 +719,16 @@ namespace cmangos_module
 
     void ClassesModule::OnDealDamage(Unit* unit, Unit* victim, uint32 health, uint32 damage)
     {
+        // Chaman Ruines : Bouclier de terre, chaque coup reçu est absorbé à 10 % et consomme une charge
+        if (victim && damage && damage < health && s_depth == 0 && victim->GetTypeId() == TYPEID_PLAYER && victim != unit &&
+            static_cast<Player*>(victim)->getClass() == CLASS_SHAMAN && victim->IsAlive())
+            if (SpellAuraHolder* hold = victim->GetSpellAuraHolder(H4_TERRE[0]))
+            {
+                if (uint32 back = damage / 10)
+                    victim->ModifyHealth(int32(back));
+                if (hold->DropAuraCharge() || hold->GetAuraCharges() == 0)
+                    victim->RemoveAurasDueToSpell(H4_TERRE[0]);
+            }
         // Démoniste Transfuge : Lien gangrené, les dégâts du démon soignent le Démoniste
         if (unit && victim && damage && s_depth == 0 && unit->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(unit)->IsPet())
             if (Unit* owner = unit->GetOwner())
@@ -768,6 +797,7 @@ namespace cmangos_module
         std::lock_guard<std::recursive_mutex> guard(lock);
         armies.erase(player->GetObjectGuid().GetRawValue());
         forceValue.erase(player->GetObjectGuid().GetRawValue());
+        runique.erase(player->GetObjectGuid().GetRawValue());
     }
 
     // ------------------------------------------------------------------ IA des bots

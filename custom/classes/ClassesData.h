@@ -329,6 +329,14 @@ namespace classes_data
     static const uint32_t K4_ABSORB_N = 1;
     static const uint32_t K4_ABSORB2[] = { 55257 };
     static const uint32_t K4_ABSORB2_N = 1;
+    static const uint32_t H4_TERRE[] = { 55375 };
+    static const uint32_t H4_TERRE_N = 1;
+    static const uint32_t H4_FOUDRE[] = { 324, 325, 905, 945, 8134, 10431, 10432 };
+    static const uint32_t H4_FOUDRE_N = 7;
+    static const uint32_t H4_RUNIQUE[] = { 55379 };
+    static const uint32_t H4_RUNIQUE_N = 1;
+    static const uint32_t H4_HOT[] = { 55378 };
+    static const uint32_t H4_HOT_N = 1;
     static const uint32_t T4_INSTINCT[] = { 56038 };
     static const uint32_t T4_INSTINCT_N = 1;
     static const uint32_t T4_FUREUR_AV[] = { 56052, 56053, 56054, 56055, 56056 };
@@ -349,4 +357,6 @@ namespace classes_data
     static const uint32_t T4_INCANT_N = 1;
     static const uint32_t T4_DOUBLE[] = { 56101 };
     static const uint32_t T4_DOUBLE_N = 1;
+    static const uint32_t T4_DOUBLE_B[] = { 56129 };
+    static const uint32_t T4_DOUBLE_B_N = 1;
 }

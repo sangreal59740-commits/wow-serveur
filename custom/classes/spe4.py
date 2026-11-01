@@ -315,5 +315,64 @@ V4H += [('K4_DA', DA), ('K4_DA2', K['da2']), ('K4_MENACE', [K['menace']]), ('K4_
 V4T += [('T4_ARMURE', "Armure démoniaque renforcée"), ('T4_LIEN', "Lien gangrené"), ('T4_LIEN_AM', "Lien gangrené amélioré"),
         ('T4_INCANT', "Incantation démoniaque"), ('T4_DOUBLE', "Double armure")]
 
+# ======================================================================== Chaman : Ruines
+SHAMAN = 7
+HG = Gen(11, [36, 37, 38, 39, 40, 41] + list(range(43, 64)))
+V4_GENS.append((HG, 55375, 55499))
+HC = Ctx(HG, 55375, {'amelio': 373}, SHAMAN, SHAMAN)
+Hh = {}
+LSHIELD = [324, 325, 905, 945, 8134, 10431, 10432]
+CHAIN = vflags(421)
+STONESKIN, TOTEMS_M = 0x8000, 537395200
+
+Hh['terre'] = HC.single('bouclier_terre', 'amelio', 10432, 10, "Bouclier de terre",
+                        "Entoure le Chaman d'un bouclier de terre pendant 10 min. Chaque coup reçu absorbe 10 % de ses dégâts et "
+                        "consomme une charge. 5 charges. Un seul bouclier élémentaire à la fois.", 0, 0, 8, icon_sid=10432,
+                        tooltip="Absorbe 10 % de chaque coup reçu.", School=3, ProcCharges=5, ProcFlags=0, ProcChance=0,
+                        DurationIndex=DUR[600000], **merge(aur(1, 4, 0, 10), none3(2, 3)))
+NOTEACH.add(Hh['terre'])
+Hh['defi'] = HC.single('defi', 'amelio', 355, 10, "Défi tellurique", "La terre force la cible à vous attaquer pendant 3 s.",
+                       10000, 0, 5, icon_sid=5730, tooltip="Provoqué.", PowerType=0, Stances=0, StancesNot=0, RangeIndex=RANGE[20], School=3)
+NOTEACH.add(Hh['defi'])
+Hh['fracas'] = HC.single('fracas', 'amelio', 20549, 25, "Fracas de pierre",
+                         "Frappe le sol et étourdit pendant 3 s les ennemis à moins de 8 mètres.", 30000, 0, 10, icon_sid=8056,
+                         tooltip="Étourdi.", DurationIndex=DUR[3000], School=3, EffectRadiusIndex1=RADIUS[8], Attributes=SPR[20549][dbc_col('Attributes')] & ~0x10)
+NOTEACH.add(Hh['fracas'])
+_b, _pl = sc(80, 40)
+Hh['hot'] = cspell(HC, 'runique_hot', 774, "Appel runique", SpellLevel=40, BaseLevel=40, MaxLevel=60, DurationIndex=DUR[10000], School=3,
+                   **merge({'Effect1': 6, 'EffectApplyAuraName1': 8, 'EffectBasePoints1': _b, 'EffectDieSides1': 1,
+                            'EffectRealPointsPerLevel1': _pl, 'EffectImplicitTargetA1': 1, 'EffectAmplitude1': 1000,
+                            'EffectBonusCoefficient1': 0.05}, none3(2, 3)))
+Hh['runique'] = HC.single('runique', 'amelio', 12042, 40, "Appel runique",
+                          "Des runes de pierre absorbent 30 % des dégâts que vous subissez pendant 15 s. À la fin, elles vous rendent "
+                          "800 points de vie en 10 s.", 180000, 0, 0, icon_sid=20594, tooltip="Dégâts subis -30 %.",
+                          DurationIndex=DUR[15000], School=3, **merge(aur(1, 87, 127, -30), none3(2, 3)))
+NOTEACH.add(Hh['runique'])
+
+tree(HG, 409, "Ruines", CBIT[SHAMAN], 3, "ShamanEnhancement", 8071, [
+    (1, "Bouclier de terre", 1, 10432, ('spell', Hh['terre']),
+     "Bouclier de 5 charges : chaque coup reçu absorbe 10 % de ses dégâts. Remplace Bouclier de foudre."),
+    (1, "Armure de pierre", 5, 16258, ('fx', aura(101, 1, 5)), lambda r: "Augmente votre armure de %d %%." % (5 * r)),
+    (2, "Défi tellurique", 1, 5730, ('spell', Hh['defi']), "Force la cible à vous attaquer pendant 3 s. Recharge 10 s."),
+    (2, "Rancune de la terre", 5, 16176, ('fx', aura(10, 127, 5)), lambda r: "Augmente la menace que vous générez de %d %%." % (5 * r)),
+    (3, "Peau de pierre améliorée", 3, 8071, ('fx', mod(8, True, [STONESKIN], 20)),
+     lambda r: "Augmente la réduction de dégâts du Totem de peau de pierre de %d %%." % (20 * r)),
+    (3, "Économie totémique", 5, 16173, ('fx', mod(14, True, [TOTEMS_M], -10)), lambda r: "Réduit le coût en mana de vos totems de %d %%." % (10 * r)),
+    (4, "Fracas de pierre", 1, 8056, ('spell', Hh['fracas']), "Étourdit 3 s les ennemis à moins de 8 mètres. Recharge 30 s."),
+    (4, "Charges terrestres", 3, 10432, ('fx', mod(4, False, ['bouclier_terre'], 1)),
+     lambda r: "Bouclier de terre a %d charge(s) de plus." % r, "Bouclier de terre"),
+    (5, "Chaîne tellurique", 1, 421, ('fx', lambda r: [('mod', 10, True, [CHAIN], -100), ('mod', 0, True, [CHAIN], -40)]),
+     "Chaîne d'éclairs devient instantanée ; ses dégâts sont réduits de 40 %."),
+    (5, "Bouclier double", 1, 324, D, "Bouclier de terre et Bouclier de foudre peuvent être actifs en même temps.", "Charges terrestres"),
+    (6, "Granit", 5, 16258, ('fx', aura(87, 127, -1)), lambda r: "Réduit les dégâts que vous subissez de %d %%." % r),
+    (7, "Appel runique", 1, 20594, ('spell', Hh['runique']),
+     "Absorbe 30 % des dégâts subis pendant 15 s, puis rend 800 PV en 10 s. Recharge 3 min."),
+    (7, "Runes durables", 2, 20594, ('fx', mod(1, False, ['runique'], 2500)), lambda r: "Augmente la durée d'Appel runique de %.1f s." % (2.5 * r)),
+])
+for _sid in HC.sla:
+    V4_SLA.append((SHAMAN,) + _sid)
+V4H += [('H4_TERRE', [Hh['terre']]), ('H4_FOUDRE', LSHIELD), ('H4_RUNIQUE', [Hh['runique']]), ('H4_HOT', [Hh['hot']])]
+V4T += [('T4_DOUBLE_B', "Bouclier double")]
+
 # ======================================================================== fin : on rend la main au générateur principal
 TALG, TAL_ID = TALG_MAIN, TAL_ID_MAIN
