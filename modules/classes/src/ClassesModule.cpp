@@ -29,6 +29,9 @@ namespace cmangos_module
     static const uint8 C_META = 11;
 
     static ClassesModule* instance = nullptr;
+    // profondeur d'appel : nos propres sorts déclenchés ne doivent pas relancer la logique (boucle infinie)
+    static thread_local int s_depth = 0;
+    struct DepthGuard { DepthGuard() { ++s_depth; } ~DepthGuard() { --s_depth; } };
 
     // ------------------------------------------------------------------ outils
     static bool In(const uint32_t* arr, uint32 n, uint32 id)
@@ -330,7 +333,10 @@ namespace cmangos_module
         uint8 cls = player->getClass();
         if (cls != C_NECRO && cls != C_SNIPER && cls != C_META)
             return;
+        if (s_depth > 0)
+            return;
         std::lock_guard<std::recursive_mutex> guard(lock);
+        DepthGuard depth;
         uint32 id = spell->m_spellInfo->Id;
         if (cls == C_NECRO)
             NecroCast(player, id, victim, spell);
@@ -344,6 +350,9 @@ namespace cmangos_module
     {
         if (!spell || !caster || !victim || caster->GetTypeId() != TYPEID_PLAYER || !spell->m_spellInfo)
             return;
+        if (s_depth > 0)
+            return;
+        DepthGuard depth;
         Player* player = static_cast<Player*>(caster);
         SpellEntry const* info = spell->m_spellInfo;
         uint32 id = info->Id;
@@ -380,7 +389,7 @@ namespace cmangos_module
     bool ClassesModule::OnPeriodicTick(Aura* aura)
     {
         // Maléfice : les DoT du Nécromancien infligent un tick supplémentaire (dégâts doublés)
-        if (!aura || !N_MALEFICE[0])
+        if (!aura || !N_MALEFICE[0] || s_depth > 0)
             return false;
         Unit* caster = aura->GetCaster();
         Unit* target = aura->GetTarget();
@@ -393,6 +402,7 @@ namespace cmangos_module
             In(N_DOT_MALEDICTION, N_DOT_MALEDICTION_N, id) || In(N_DOT_PESTE, N_DOT_PESTE_N, id) || In(N_DOT_MAUDIT, N_DOT_MAUDIT_N, id))
         {
             int32 amount = std::max(1, aura->GetModifier()->m_amount);
+            DepthGuard depth;
             caster->CastCustomSpell(target, N_H_MALEFICE_TICK, &amount, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
         }
         return false;
@@ -492,6 +502,11 @@ namespace cmangos_module
             return;
         std::lock_guard<std::recursive_mutex> guard(lock);
         uint8 cls = bot->getClass();
+        if (cls == C_META)
+        {
+            DepthGuard depth;
+            MetaPassives(bot);
+        }
         Unit* victim = bot->GetVictim();
         if (victim && (!victim->IsAlive() || !bot->CanAttack(victim)))
             victim = nullptr;
@@ -560,7 +575,6 @@ namespace cmangos_module
         {
             if (selfBuff(BM_LIEN, BM_LIEN_N))
                 return;
-            MetaPassives(bot);
             // soins d'abord : membre du groupe sous 50 %
             Unit* hurt = nullptr;
             if (Group* group = bot->GetGroup())
