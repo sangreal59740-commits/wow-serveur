@@ -121,6 +121,14 @@ for r in srows:
 for r in srows:
     if r[1] == 293 and r[2] == ALLRACES:
         r[3] |= CBIT[SNIPER]
+# onglets de sorts : les classes custom ont leurs propres lignes de compétence (900 à 905)
+for r in srows:
+    if r[1] in (354, 355, 593):
+        r[3] &= ~CBIT[NECRO]
+    if r[1] in (50, 51, 163):
+        r[3] &= ~CBIT[SNIPER]
+for skill, c in ((900, NECRO), (901, NECRO), (902, NECRO), (903, SNIPER), (904, SNIPER), (905, SNIPER)):
+    extra.append([nid, skill, ALLRACES, CBIT[c], 1040, 0, 0, 0]); nid += 1
 data = open(SRV + 'SkillRaceClassInfo.dbc', 'rb').read()
 nrec, nf, rs, ss = struct.unpack('<4I', data[4:20])
 body = b''.join(struct.pack('<%dI' % nf, *[v & 0xffffffff for v in r]) for r in srows)
@@ -177,8 +185,14 @@ for c, (bc, br, races) in NEW.items():
 w("DELETE FROM playercreateinfo_skills WHERE classMask IN (%d, %d);" % (CBIT[NECRO], CBIT[SNIPER]))
 w("INSERT INTO playercreateinfo_skills (raceMask, classMask, skill, step, note) SELECT 0, %d, skill, step, CONCAT(note, ' (necro)') "
   "FROM playercreateinfo_skills WHERE classMask=%d;" % (CBIT[NECRO], CBIT[9]))
-for sk, note in ((50, 'Sniper: Bestial'), (163, 'Sniper: Tireur'), (51, 'Sniper: Mecanisme'), (46, 'Weapon: Guns (Sniper)'),
+for sk, note in ((46, 'Weapon: Guns (Sniper)'),
                  (44, 'Weapon: Axes (Sniper)'), (414, 'Armor: Leather (Sniper)')):
+    w("INSERT INTO playercreateinfo_skills (raceMask, classMask, skill, step, note) VALUES (0, %d, %d, 0, '%s');" % (CBIT[SNIPER], sk, note))
+w("DELETE FROM playercreateinfo_skills WHERE classMask=%d AND skill IN (354, 355, 593);" % CBIT[NECRO])
+for sk, note in ((900, 'Necro: Invocateur'), (901, 'Necro: Malediction'), (902, 'Necro: Magicien')):
+    w("INSERT INTO playercreateinfo_skills (raceMask, classMask, skill, step, note) VALUES (0, %d, %d, 0, '%s');" % (CBIT[NECRO], sk, note))
+w("DELETE FROM playercreateinfo_skills WHERE classMask=%d AND skill IN (50, 51, 163);" % CBIT[SNIPER])
+for sk, note in ((903, 'Sniper: Tireur'), (904, 'Sniper: Bestial'), (905, 'Sniper: Mecanisme')):
     w("INSERT INTO playercreateinfo_skills (raceMask, classMask, skill, step, note) VALUES (0, %d, %d, 0, '%s');" % (CBIT[SNIPER], sk, note))
 w("UPDATE playercreateinfo_skills SET raceMask=0 WHERE classMask=%d AND raceMask<>0;" % CBIT[META])
 w("SELECT 'Classes OK' AS resultat;")
