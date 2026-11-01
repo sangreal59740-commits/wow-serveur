@@ -1,0 +1,37 @@
+@echo off
+chcp 65001 >nul
+rem Permet de jouer depuis un autre PC de la maison : annonce l'adresse réseau de ce PC au lieu de 127.0.0.1
+rem et ouvre les ports du serveur (3724 et 8085) dans le pare-feu Windows. A lancer une seule fois, base de données allumée.
+net session >nul 2>&1
+if errorlevel 1 (
+  echo  Demande des droits administrateur pour le pare-feu...
+  powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+  exit /b
+)
+set "SPP=C:\SPP_Classics V2\SPP_Classics_V2\SPP_Server\Server\Database"
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VirtualBox|VMware|Tailscale|ZeroTier' -and $_.IPAddress -notlike '169.254*' -and $_.PrefixOrigin -in 'Dhcp','Manual' } | Select-Object -First 1).IPAddress"`) do set "IP=%%i"
+if "%IP%"=="" (
+  echo  ERREUR : adresse réseau introuvable. Envoie une capture a Claude.
+  goto fin
+)
+echo.
+echo  Adresse de ce PC sur le réseau : %IP%
+echo.
+"%SPP%\bin\mysql.exe" --defaults-extra-file="%SPP%\connection.cnf" --database=classicrealmd -e "UPDATE realmlist SET address='%IP%'; SELECT id, name, address, port FROM realmlist;"
+if errorlevel 1 (
+  echo  ERREUR base de données : envoie une capture a Claude.
+  goto fin
+)
+netsh advfirewall firewall delete rule name="WoW serveur (connexion)" >nul 2>&1
+netsh advfirewall firewall delete rule name="WoW serveur (monde)" >nul 2>&1
+netsh advfirewall firewall add rule name="WoW serveur (connexion)" dir=in action=allow protocol=TCP localport=3724 >nul
+netsh advfirewall firewall add rule name="WoW serveur (monde)" dir=in action=allow protocol=TCP localport=8085 >nul
+echo  Pare-feu : ports 3724 et 8085 ouverts.
+echo.
+echo  Sur l'autre PC, mets dans C:\wow\realmlist.wtf la ligne :
+echo      set realmlist %IP%
+echo  Sur CE PC, mets la meme ligne dans C:\wow\realmlist.wtf.
+echo  Puis redémarre le serveur.
+:fin
+echo.
+pause
