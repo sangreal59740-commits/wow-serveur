@@ -1,6 +1,7 @@
 #include "ClassesModule.h"
 #include "ClassesData.h"
 
+#include "AI/BaseAI/UnitAI.h"
 #include "Chat/Chat.h"
 #include "Entities/Creature.h"
 #include "Entities/Pet.h"
@@ -215,7 +216,11 @@ namespace cmangos_module
         {
             uint64 g = u->GetObjectGuid().GetRawValue();
             if (u->GetEntry() == inv.entry && std::find(before.begin(), before.end(), g) == before.end())
+            {
                 dq.push_back({ g, inv.cost });
+                if (u->AI())
+                    u->AI()->SetReactState(REACT_DEFENSIVE);
+            }
         });
     }
 
@@ -1226,6 +1231,12 @@ namespace cmangos_module
         std::lock_guard<std::recursive_mutex> guard(lock);
         DepthGuard depth;
         uint8 cls = player->getClass();
+        // invocations (armée, bêtes, fantômes, rats...) en mode défensif : elles n'attaquent que si le joueur attaque ou est attaqué
+        player->CallForAllControlledUnits([](Unit* u)
+        {
+            if (u && u->AI() && !u->AI()->HasReactState(REACT_DEFENSIVE))
+                u->AI()->SetReactState(REACT_DEFENSIVE);
+        }, CONTROLLED_GUARDIANS);
         if (cls != C_NECRO && cls != C_SNIPER && cls != C_META)
         {
             if (Is4thBot(player))
