@@ -565,35 +565,35 @@ def merge(*ds):
 # ---------------------------------------------------------------- créatures du Nécromancien
 C_SQ, C_GOULE, C_ABO, C_GIVRE, C_CHIEN, C_CK, C_WYRM = range(990500, 990507)
 a = {}
-a['sq_coup'] = cspell(NC, 'sq_coup', 11976, "Coup d'épée", **merge(weapon(1, 100), dmg(2, 15, target=6)))
-a['sq_saign'] = cspell(NC, 'sq_saign', 172, "Saignement", School=0, DurationIndex=DUR[10000], Mechanic=15, **merge(per(1, 15), none(2), none(3)))
-a['gh_croc'] = cspell(NC, 'gh_croc', 11976, "Croc", **merge(weapon(1, 100), dmg(2, 25)))
-a['gh_renov'] = cspell(NC, 'gh_renov', 774, "Rénovation", DurationIndex=DUR[5000], **merge(per(1, 50, aura=8, target=21), none(2), none(3)))
-a['abo_crochet'] = cspell(NC, 'abo_crochet', 11976, "Crochet", **merge(weapon(1, 110), none(2)))
-a['abo_provoc'] = cspell(NC, 'abo_provoc', 1161, "Provocation de masse", EffectRadiusIndex1=RADIUS[10], DurationIndex=DUR[6000])
-a['abo_vomi'] = cspell(NC, 'abo_vomi', 585, "Vomi", School=3, **merge(dmg(1, 200, 40, target=24), {'EffectRadiusIndex1': RADIUS[10]}))
-a['gv_eclair'] = cspell(NC, 'gv_eclair', 585, "Éclair de givre", cast=1500, School=4, SpellVisual=visual(116), **dmg(1, 190, 20))
-a['gv_bouclier'] = cspell(NC, 'gv_bouclier', 11426, "Bouclier de givre", DurationIndex=DUR[15000],
+a['sq_coup'] = cspell(NC, 'k_sq', 11976, "Coup d'épée", **merge(weapon(1, 100), dmg(2, 15, target=6)))
+a['sq_saign'] = cspell(NC, 'k_sq', 172, "Saignement", School=0, DurationIndex=DUR[10000], Mechanic=15, **merge(per(1, 15), none(2), none(3)))
+a['gh_croc'] = cspell(NC, 'k_goule', 11976, "Croc", **merge(weapon(1, 100), dmg(2, 25)))
+a['gh_renov'] = cspell(NC, 'k_goule', 774, "Rénovation", DurationIndex=DUR[5000], **merge(per(1, 50, aura=8, target=21), none(2), none(3)))
+a['abo_crochet'] = cspell(NC, 'k_abo', 11976, "Crochet", **merge(weapon(1, 110), none(2)))
+a['abo_provoc'] = cspell(NC, 'k_abo', 1161, "Provocation de masse", EffectRadiusIndex1=RADIUS[10], DurationIndex=DUR[6000])
+a['abo_vomi'] = cspell(NC, 'k_abo', 585, "Vomi", School=3, **merge(dmg(1, 200, 40, target=24), {'EffectRadiusIndex1': RADIUS[10]}))
+a['gv_eclair'] = cspell(NC, 'k_givre', 585, "Éclair de givre", cast=1500, School=4, SpellVisual=visual(116), **dmg(1, 190, 20))
+a['gv_bouclier'] = cspell(NC, 'k_givre', 11426, "Bouclier de givre", DurationIndex=DUR[15000],
                           **merge(per(1, 150, aura=69, target=1, amp=0), {'EffectMiscValue1': 127},
                                   per(2, 150, aura=69, target=27, amp=0), {'Effect2': 6, 'EffectMiscValue2': 127}))
-a['gv_blizzard'] = cspell(NC, 'gv_blizzard', 172, "Blizzard", School=4, DurationIndex=DUR[4000], SpellVisual=visual(10),
+a['gv_blizzard'] = cspell(NC, 'k_givre', 172, "Blizzard", School=4, DurationIndex=DUR[4000], SpellVisual=visual(10),
                           **merge(per(1, 60), {'EffectChainTarget1': 3}, none(2), none(3)))
-a['ch_morsure'] = cspell(NC, 'ch_morsure', 11976, "Morsure", DurationIndex=DUR[5000], **merge(weapon(1, 100), per(2, 20)))
-a['ch_cri'] = cspell(NC, 'ch_cri', 13730, "Cri", DurationIndex=DUR[10000],
+a['ch_morsure'] = cspell(NC, 'k_chien', 11976, "Morsure", DurationIndex=DUR[5000], **merge(weapon(1, 100), per(2, 20)))
+a['ch_cri'] = cspell(NC, 'k_chien', 13730, "Cri", DurationIndex=DUR[10000],
                      **merge(auraf(1, 101, 1, -15, target=22), {'EffectImplicitTargetB1': 15, 'EffectRadiusIndex1': RADIUS[10]},
                              auraf(2, 166, 0, -15, target=22), {'EffectImplicitTargetB2': 15, 'EffectRadiusIndex2': RADIUS[10]}))
-a['ch_charge'] = cspell(NC, 'ch_charge', 853, "Charge", DurationIndex=DUR[2000])
-a['ck_frappe'] = cspell(NC, 'ck_frappe', 11976, "Frappe impie", DurationIndex=DUR[6000], StackAmount=2,
+a['ch_charge'] = cspell(NC, 'k_chien', 853, "Charge", DurationIndex=DUR[2000])
+a['ck_frappe'] = cspell(NC, 'k_ck', 11976, "Frappe impie", DurationIndex=DUR[6000], StackAmount=2,
                         **merge(weapon(1, 120), per(2, 25), {'School': 5}))
-a['ck_givre'] = cspell(NC, 'ck_givre', 116, "Givre", DurationIndex=DUR[5000], **merge(auraf(1, 33, 0, -50, target=6), none(2)))
-a['ck_buff'] = cspell(NC, 'ck_buff', 21562, "Aura du chevalier", DurationIndex=DUR[3600000], Reagent1=0,
+a['ck_givre'] = cspell(NC, 'k_ck', 116, "Givre", DurationIndex=DUR[5000], **merge(auraf(1, 33, 0, -50, target=6), none(2)))
+a['ck_buff'] = cspell(NC, 'k_ck', 21562, "Aura du chevalier", DurationIndex=DUR[3600000], Reagent1=0,
                       **merge(auraf(1, 137, -1, 10, target=37)))
-a['ck_dnd'] = cspell(NC, 'ck_dnd', 26573, "Mort et décomposition", School=5, DurationIndex=DUR[5000],
+a['ck_dnd'] = cspell(NC, 'k_ck', 26573, "Mort et décomposition", School=5, DurationIndex=DUR[5000],
                      **merge(per(1, 80, aura=3, target=18), {'Effect1': 27, 'EffectRadiusIndex1': RADIUS[8]}))
-a['wy_givrefeu'] = cspell(NC, 'wy_givrefeu', 133, "Givrefeu", cast=1500, School=4, DurationIndex=DUR[4000],
+a['wy_givrefeu'] = cspell(NC, 'k_wyrm', 133, "Givrefeu", cast=1500, School=4, DurationIndex=DUR[4000],
                           **merge(dmg(1, 375, 50), per(2, 20)))
-a['wy_souffle'] = cspell(NC, 'wy_souffle', 585, "Souffle de givre", School=4, **merge(dmg(1, 325, 50, target=24), {'EffectRadiusIndex1': RADIUS[10]}))
-a['wy_buff'] = cspell(NC, 'wy_buff', 12042, "Aura du wyrm", DurationIndex=DUR[3600000],
+a['wy_souffle'] = cspell(NC, 'k_wyrm', 585, "Souffle de givre", School=4, **merge(dmg(1, 325, 50, target=24), {'EffectRadiusIndex1': RADIUS[10]}))
+a['wy_buff'] = cspell(NC, 'k_wyrm', 12042, "Aura du wyrm", DurationIndex=DUR[3600000],
                       **merge(auraf(1, 79, 126, 10, target=27), none(2), none(3)))
 
 def creature(entry, name, disp, scale, ucls, hp, dm, arm, ctype, spells, ranged=False):
@@ -615,10 +615,10 @@ NSUM = [('inv_squelette', 1, "Invocation : Squelette", C_SQ, 1, 200), ('inv_goul
 SUMMON_TABLE = []     # (sort visible, sort caché, sort caché 5 s Annihilation, entrée, coût)
 ANNI_COUNT = {C_SQ: 6, C_GOULE: 5, C_CHIEN: 6, C_GIVRE: 5, C_ABO: 2, C_CK: 1, C_WYRM: 1}
 for key, lv, name, entry, cost, disp in NSUM:
-    front = n_single(key, 'inv', 688, lv, name, "Invoque un %s qui combat à vos côtés. Coûte %d point%s d'invocation." % (name.split(' : ')[1].lower(), cost, 's' if cost > 1 else ''),
+    front = n_single('invocation', 'inv', 688, lv, name, "Invoque un %s qui combat à vos côtés. Coûte %d point%s d'invocation." % (name.split(' : ')[1].lower(), cost, 's' if cost > 1 else ''),
                      0, 3000, 20, icon_sid=688 if cost == 1 else 712, Effect1=3, EffectImplicitTargetA1=1, EffectMiscValue1=entry,
                      DurationIndex=0, Category=0)
-    hidden = cspell(NC, key, 12740, name, EffectMiscValue1=entry, DurationIndex=DUR[-1], EffectBasePoints1=0, EffectDieSides1=1,
+    hidden = cspell(NC, 'invocation', 12740, name, EffectMiscValue1=entry, DurationIndex=DUR[-1], EffectBasePoints1=0, EffectDieSides1=1,
                     EffectImplicitTargetA1=1, CastingTimeIndex=1)
     anni = cspell(NC, 'annihilation', 12740, "Annihilation", EffectMiscValue1=entry, DurationIndex=DUR[5000],
                   EffectBasePoints1=ANNI_COUNT[entry] - 1, EffectDieSides1=1, EffectImplicitTargetA1=1, EffectRadiusIndex1=RADIUS[5])
@@ -985,21 +985,21 @@ CM_N, CM_S, CM_M = CBIT[NECRO], CBIT[SNIPER], CBIT[META]
 
 tree(NG, 400, "Invocateur", CM_N, 0, "WarlockSummoning", 688, [
     (1, "Étreinte de la tombe", 5, 18698, D, lambda r: "Augmente l'Endurance de vos invocations de %d %% et leurs attaques de mêlée de %.1f %%." % (2 * r, 1.5 * r)),
-    (1, "Squelettes aguerris", 3, 18694, D, lambda r: "Augmente les dégâts du Coup d'épée et du Saignement du squelette de %d %%." % (10 * r)),
+    (1, "Squelettes aguerris", 3, 18694, ('fx', mod(0, True, ['k_sq'], 10)), lambda r: "Augmente les dégâts du Coup d'épée et du Saignement du squelette de %d %%." % (10 * r)),
     (1, "Rénovation améliorée", 2, 18692, ('fx', mod(22, True, ['renovation'], 10)), lambda r: "Augmente les soins de Rénovation de %d %%." % (10 * r)),
     (2, "Horde grandissante", 1, 18710, D, "Vous donne 1 point d'invocation supplémentaire."),
-    (2, "Goule vorace", 3, 18705, D, lambda r: "Augmente les dégâts du Croc et les soins de la goule de %d %%." % (10 * r)),
+    (2, "Goule vorace", 3, 18705, ('fx', mod(0, True, ['k_goule'], 10)), lambda r: "Augmente les dégâts du Croc et les soins de la goule de %d %%." % (10 * r)),
     (2, "Chair putride", 5, 18731, D, lambda r: "Augmente l'Endurance de vos invocations de %d %%." % (3 * r)),
     (3, "Maîtrise de l'invocation", 1, 18708, D, "Vous permet de porter toutes les armes."),
-    (3, "Abomination améliorée", 3, 18754, D, lambda r: "Augmente l'armure et les dégâts du Vomi de l'abomination de %d %%." % (10 * r)),
+    (3, "Abomination améliorée", 3, 18754, ('fx', mod(0, True, ['k_abo'], 10)), lambda r: "Augmente l'armure et les dégâts du Vomi de l'abomination de %d %%." % (10 * r)),
     (3, "Réanimation rapide", 1, 18708, D, "Votre prochaine invocation dans les 15 s est instantanée. Recharge 5 min."),
     (4, "Armée des morts", 1, 18709, D, "Vous donne 1 point d'invocation supplémentaire.", "Horde grandissante"),
-    (4, "Pouvoir impie", 5, 18769, D, lambda r: "Augmente les dégâts de vos invocations de %d %%." % (3 * r)),
-    (4, "Maître invocateur", 2, 18709, ('fx', lambda r: [('mod', 10, False, N_SUMMONS, -2000 * r), ('mod', 14, True, N_SUMMONS, -20 * r)]),
+    (4, "Pouvoir impie", 5, 18769, ('fx', mod(0, True, ['k_sq', 'k_goule', 'k_abo', 'k_givre', 'k_chien', 'k_ck', 'k_wyrm'], 3)), lambda r: "Augmente les dégâts de vos invocations de %d %%." % (3 * r)),
+    (4, "Maître invocateur", 2, 18709, ('fx', lambda r: [('mod', 10, False, ['invocation'], -2000 * r), ('mod', 14, True, ['invocation'], -20 * r)]),
      lambda r: "Réduit le temps d'invocation de vos invocations de %d s et leur coût de %d %%." % (2 * r, 20 * r)),
     (5, "Invocation : Chevalier de la mort", 1, 18788, ('spell', N['inv_chevalier']), "Débloque le Chevalier de la mort (2 points d'invocation).", "Pouvoir impie"),
-    (5, "Chiens de la crypte", 3, 18769, D, lambda r: "Augmente l'étourdissement de la Charge de %.1f s et la réduction d'armure du Cri de %d %%." % (0.5 * r, 3 * r)),
-    (5, "Givre éternel", 2, 116, D, lambda r: "Augmente le Bouclier du squelette de givre de %d %% des PV max et son Blizzard de %d %%." % (r, 15 * r)),
+    (5, "Chiens de la crypte", 3, 18769, ('fx', mod(1, False, ['k_chien'], 500)), lambda r: "Augmente l'étourdissement de la Charge de %.1f s et la réduction d'armure du Cri de %d %%." % (0.5 * r, 3 * r)),
+    (5, "Givre éternel", 2, 116, ('fx', mod(0, True, ['k_givre'], 15)), lambda r: "Augmente le Bouclier du squelette de givre de %d %% des PV max et son Blizzard de %d %%." % (r, 15 * r)),
     (6, "Légion", 1, 18710, D, "Vous donne 1 point d'invocation supplémentaire.", "Armée des morts"),
     (6, "Maître nécromancien", 5, 23785, D, lambda r: "Chaque type d'invocation différent actif augmente vos dégâts et ceux de l'armée de %.1f %% et réduit les dégâts subis d'autant." % (0.3 * r)),
     (6, "Berserk amélioré", 2, 18788, ('fx', mod(1, False, ['berserk'], 2000)), lambda r: "Augmente la durée de Berserk de %d s." % (2 * r)),
@@ -1093,13 +1093,13 @@ tree(SG, 404, "Tireur d'élite", CM_S, 1, "HunterMarksmanship", 19434, [
 ])
 tree(SG, 405, "Mécanisme", CM_S, 2, "HunterSurvival", 12749, [
     (1, "Pièges ingénieux", 3, 19239, ('fx', mod(1, False, ['glace'], 500)), lambda r: "Augmente la durée de Piège de glace de %.1f s." % (0.5 * r)),
-    (1, "Mécanique de précision", 5, 12749, D, lambda r: "Augmente les dégâts de vos invocations méca de %d %%." % (3 * r)),
+    (1, "Mécanique de précision", 5, 12749, ('fx', mod(0, True, ['tourelle', 'canon', 'tirmeca'], 3)), lambda r: "Augmente les dégâts de vos invocations méca de %d %%." % (3 * r)),
     (2, "Piégeage", 5, 19184, D, lambda r: "Bombe méca et Dynamite ont %d %% de chance d'immobiliser les cibles pendant 4 s." % (5 * r)),
     (2, "Balle de givre maîtrisée", 1, 116, D, "Balle de givre a sa propre recharge de 15 s et sa DoT passe à 10 % de la PA."),
     (2, "Survivant", 5, 19255, ('fx', aura(133, 0, 2)), lambda r: "Augmente vos points de vie maximum de %d %%." % (2 * r)),
     (3, "Mécanique avancée", 3, 12749, ('fx', mod(11, False, ['tourelle'], -10000)), lambda r: "Réduit la recharge de Tourelle de %d s." % (10 * r)),
     (3, "Dissuasion", 1, 19263, ('spell', 19263), ""),
-    (3, "Canon renforcé", 3, 12749, D, lambda r: "Augmente les dégâts par tir du Canon à boulets de %d %%." % (5 * r)),
+    (3, "Canon renforcé", 3, 12749, ('fx', mod(0, True, ['canon'], 5)), lambda r: "Augmente les dégâts par tir du Canon à boulets de %d %%." % (5 * r)),
     (4, "Mécafusil", 1, 12749, ('spell', S['mecafusil']), "Arme et invocations méca : hâte et dégâts x1,25 pendant 15 s. Recharge 2 min."),
     (4, "Maîtrise des explosifs", 3, 4068, ('fx', mod(0, True, ['bombe', 'dynamite', 'tirmeca'], 5)), lambda r: "Augmente les dégâts de Bombe méca, Dynamite et Tir méca de %d %%." % (5 * r)),
     (4, "Pied sûr", 3, 19290, ('vanilla', [19290, 19294, 24283]), ""),
@@ -1121,9 +1121,9 @@ tree(MG, 283, "Totémique", CM_M, 0, "ShamanRestoration", 10497, [
     (2, "Focalisation totémique", 5, 16173, ('fx', mod(14, True, M_TOTEMS, -5)), lambda r: "Réduit le coût de vos totems de %d %%." % (5 * r)),
     (2, "Remous amélioré", 2, 774, ('fx', mod(22, True, ['remous'], 5)), lambda r: "Augmente les soins de Remous de %d %%." % (5 * r)),
     (3, "Focalisation des soins", 5, 16181, ('fx', mod(9, True, _heals, 14)), lambda r: "Réduit de %d %% le recul de vos soins quand vous subissez des dégâts." % (14 * r)),
-    (3, "Maîtrise totémique", 2, 16189, D, lambda r: "Augmente le rayon de vos totems de %d %%." % (25 * r)),
+    (3, "Maîtrise totémique", 2, 16189, ('fx', mod(6, True, ['totem_feu_dmg', 'totem_givre_dmg', 'totem_eau_soin'], 25)), lambda r: "Augmente le rayon de vos totems de %d %%." % (25 * r)),
     (3, "Grâce curative", 2, 29187, ('fx', mod(2, True, _heals, -7.5)), lambda r: "Réduit de %.1f %% la menace générée par vos soins." % (7.5 * r)),
-    (4, "Totems restaurateurs", 5, 16187, D, lambda r: "Augmente les soins du Totem d'eau de %d %%." % (5 * r)),
+    (4, "Totems restaurateurs", 5, 16187, ('fx', mod(0, True, ['totem_eau_soin'], 5)), lambda r: "Augmente les soins du Totem d'eau de %d %%." % (5 * r)),
     (4, "Maîtrise des marées", 5, 16194, ('fx', mod(7, False, _heals, 1)), lambda r: "Augmente de %d %% la chance de coup critique de vos soins." % r),
     (5, "Voie de la guérison", 3, 8936, D, lambda r: "Chaque Récupération augmente de %d %% les Récupérations suivantes sur la même cible." % (6 * r)),
     (5, "Rapidité de la nature", 1, 17116, ('spell', M['rapidite']), ""),
@@ -1135,7 +1135,7 @@ tree(MG, 281, "Druidique", CM_M, 1, "DruidFeralCombat", 5487, [
     (1, "Savoir ancestral", 5, 17485, ('fx', aura(132, 0, 1)), lambda r: "Augmente votre mana maximum de %d %%." % r),
     (1, "Guidance de l'esprit", 3, 16180, ('fx', aura(54, 0, 1)), lambda r: "Augmente votre chance de toucher de %d %%." % r),
     (2, "Frappes tonitruantes", 5, 16305, ('fx', aura(52, 0, 1)), lambda r: "Augmente votre chance de coup critique de %d %%." % r),
-    (2, "Totems de guerre", 2, 8190, D, lambda r: "Augmente les dégâts des totems de feu et de givre de %.1f %%." % (12.5 * r)),
+    (2, "Totems de guerre", 2, 8190, ('fx', mod(0, True, ['totem_feu_dmg', 'totem_givre_dmg'], 12.5)), lambda r: "Augmente les dégâts des totems de feu et de givre de %.1f %%." % (12.5 * r)),
     (2, "Fougue lunaire", 3, 8921, D, lambda r: "Augmente la hâte par cumul d'Éclair lunaire de %d %%." % r),
     (3, "Force de l'esprit", 3, 16294, D, lambda r: "Convertit %d %% de votre Intelligence en Force." % (33 * r if r < 3 else 100)),
     (3, "Totems renforçants", 2, 8075, D, lambda r: "Augmente le bonus de Force du Totem de roche de %d %%." % (15 * r)),

@@ -103,12 +103,15 @@ namespace cmangos_module
         auto it = armies.find(player->GetObjectGuid().GetRawValue());
         if (it == armies.end())
             return;
-        Map* map = player->GetMap();
+        // seules les invocations encore dans la liste des gardiens du joueur comptent
+        // (un gardien renvoyé quitte cette liste tout de suite, même s'il reste un instant sur la carte)
+        std::vector<uint64> alive;
+        player->CallForAllControlledUnits([&](Unit* u) { if (u && u->IsAlive()) alive.push_back(u->GetObjectGuid().GetRawValue()); },
+                                          CONTROLLED_GUARDIANS);
         auto& dq = it->second;
         dq.erase(std::remove_if(dq.begin(), dq.end(), [&](const ArmyEntry& e)
         {
-            Pet* pet = map ? map->GetPet(ObjectGuid(e.guid)) : nullptr;
-            return !pet || !pet->IsAlive() || pet->GetOwnerGuid() != player->GetObjectGuid();
+            return std::find(alive.begin(), alive.end(), e.guid) == alive.end();
         }), dq.end());
     }
 
@@ -176,7 +179,7 @@ namespace cmangos_module
             ForArmy(player, false, [&](Unit* u) { u->CastCustomSpell(u, N_H_PESTE, &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED); });
         }
         else if (In(N_BERSERK, N_BERSERK_N, id))
-            ForArmy(player, true, [&](Unit* u) { player->CastSpell(u, N_H_BERSERK, TRIGGERED_OLD_TRIGGERED); });
+            ForArmy(player, true, [&](Unit* u) { u->CastSpell(u, N_H_BERSERK, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid()); });
         else if (In(N_MORTEXPLO, N_MORTEXPLO_N, id))
         {
             ForArmy(player, false, [&](Unit* u)
@@ -190,7 +193,7 @@ namespace cmangos_module
         else if (In(N_RENOVATION, N_RENOVATION_N, id))
         {
             int32 tick = std::max(1, (SpellValue(info) + int32(player->SpellBaseHealingBonusDone(SPELL_SCHOOL_MASK_NATURE) * 0.67f)) / 10);
-            ForArmy(player, true, [&](Unit* u) { player->CastCustomSpell(u, N_H_RENOV, &tick, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED); });
+            ForArmy(player, true, [&](Unit* u) { u->CastCustomSpell(u, N_H_RENOV, &tick, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid()); });
         }
         else if (In(N_SANG, N_SANG_N, id))
         {
@@ -207,13 +210,13 @@ namespace cmangos_module
                 Say(player, "Il vous faut un Chevalier de la mort.");
                 return;
             }
-            player->CastSpell(knight, N_H_BULLE, TRIGGERED_OLD_TRIGGERED);
+            knight->CastSpell(knight, N_H_BULLE, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid());
             if (Group* group = player->GetGroup())
             {
                 for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
                     if (Player* m = ref->getSource())
                         if (m->IsAlive() && m->IsWithinDistInMap(player, 40.0f))
-                            player->CastSpell(m, N_H_ABSORBE, TRIGGERED_OLD_TRIGGERED);
+                            m->CastSpell(m, N_H_ABSORBE, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid());
             }
             else
                 player->CastSpell(player, N_H_ABSORBE, TRIGGERED_OLD_TRIGGERED);
@@ -245,7 +248,7 @@ namespace cmangos_module
                     player->CastSpell(victim, r, TRIGGERED_OLD_TRIGGERED);
         }
         else if (In(N_CAMOUFLAGE, N_CAMOUFLAGE_N, id))
-            ForArmy(player, true, [&](Unit* u) { player->CastSpell(u, N_H_CAMOU, TRIGGERED_OLD_TRIGGERED); });
+            ForArmy(player, true, [&](Unit* u) { u->CastSpell(u, N_H_CAMOU, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid()); });
     }
 
     // ------------------------------------------------------------------ Sniper
@@ -267,7 +270,7 @@ namespace cmangos_module
             });
         }
         else if (In(S_ORDRE, S_ORDRE_N, id))
-            ForArmy(player, true, [&](Unit* u) { player->CastSpell(u, S_H_ENRAGE, TRIGGERED_OLD_TRIGGERED); });
+            ForArmy(player, true, [&](Unit* u) { u->CastSpell(u, S_H_ENRAGE, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid()); });
     }
 
     // ------------------------------------------------------------------ Métamorphe
@@ -302,25 +305,28 @@ namespace cmangos_module
     void ClassesModule::MetaPassives(Player* player)
     {
         // Esprit guérisseur : soins x2,5 et recharges -50 % sans buff de spé DPS ou tank
-        if (T_ESPRIT[0] && player->HasSpell(T_ESPRIT[0]))
-        {
-            bool combat = (M_RENFO[0] && player->HasAura(M_RENFO[0])) || (M_MASSIVE[0] && player->HasAura(M_MASSIVE[0]));
-            bool has = player->HasAura(M_H_ESPRIT);
-            if (!combat && !has)
-                player->CastSpell(player, M_H_ESPRIT, TRIGGERED_OLD_TRIGGERED);
-            else if (combat && has)
-                player->RemoveAurasDueToSpell(M_H_ESPRIT);
-        }
+        bool talent = T_ESPRIT[0] && player->HasSpell(T_ESPRIT[0]);
+        bool combat = (M_RENFO[0] && player->HasAura(M_RENFO[0])) || (M_MASSIVE[0] && player->HasAura(M_MASSIVE[0]));
+        bool has = player->HasAura(M_H_ESPRIT);
+        if (talent && !combat && !has)
+            player->CastSpell(player, M_H_ESPRIT, TRIGGERED_OLD_TRIGGERED);
+        else if ((!talent || combat) && has)
+            player->RemoveAurasDueToSpell(M_H_ESPRIT);
         // Force de l'esprit : une partie de l'Intelligence convertie en Force
         uint32 rank = TalentRank(player, T_FORCE, T_FORCE_N, 3);
         int32 value = rank ? int32(player->GetStat(STAT_INTELLECT) * (rank >= 3 ? 1.0f : 0.33f * rank)) : 0;
-        int32& last = forceValue[player->GetObjectGuid().GetRawValue()];
-        if (value != last)
+        int32 current = -1;
+        if (Aura* a = player->GetAura(M_H_FORCE, EFFECT_INDEX_0))
+            current = a->GetModifier()->m_amount;
+        if (value <= 0)
+        {
+            if (current >= 0)
+                player->RemoveAurasDueToSpell(M_H_FORCE);
+        }
+        else if (value != current)
         {
             player->RemoveAurasDueToSpell(M_H_FORCE);
-            if (value > 0)
-                player->CastCustomSpell(player, M_H_FORCE, &value, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
-            last = value;
+            player->CastCustomSpell(player, M_H_FORCE, &value, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
         }
     }
 
