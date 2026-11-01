@@ -1338,6 +1338,7 @@ TRAINERS = [
     (900, 990173, "Vol'kesh", "Maître nécromancien", 3324, 0, 0),                    # Orgrimmar, la Faille de l'ombre
     (900, 990190, "Morbius Fielgrise", "Maître nécromancien", 4563, 0, 0),         # Fossoyeuse, quartier des Magiciens
     (900, 990191, "Lucrèce Sombretombe", "Maître nécromancien", 2126, 0, 0),       # Clairière de Tirisfal (Deathknell)
+    (900, 990193, "Edgar Ossevide", "Maître nécromancien", 2127, 0, 0),            # Brill, à côté de Rupert Boch
     (901, 990174, "Thordin Visée-Sûre", "Maître sniper", 1231, 0, 0),               # Kharanos
     (901, 990192, "Brokk Poudre-Fine", "Maître sniper", 895, 0, 0),                # Val d'Est-Gel, Anvilmar (camp de départ)
     (901, 990175, "Dagna Poudrenoire", "Maître sniper", 5117, 0, 0),                # Forgefer, salle des Armes
