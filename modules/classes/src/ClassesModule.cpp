@@ -761,13 +761,13 @@ namespace cmangos_module
                     if (I4_KIND[j] == 2)
                     {
                         // la cible + les 2 alliés les plus blessés à 10 m d'elle
-                        std::vector<Unit*> near;
-                        GroupAround(player, victim, 10.0f, near);
-                        near.erase(std::remove(near.begin(), near.end(), victim), near.end());
-                        std::sort(near.begin(), near.end(), [](Unit* a, Unit* b) { return HpPct(a) < HpPct(b); });
+                        std::vector<Unit*> nearby;
+                        GroupAround(player, victim, 10.0f, nearby);
+                        nearby.erase(std::remove(nearby.begin(), nearby.end(), victim), nearby.end());
+                        std::sort(nearby.begin(), nearby.end(), [](Unit* a, Unit* b) { return HpPct(a) < HpPct(b); });
                         targets.push_back(victim);
-                        for (uint32 k = 0; k < near.size() && k < 2; ++k)
-                            targets.push_back(near[k]);
+                        for (uint32 k = 0; k < nearby.size() && k < 2; ++k)
+                            targets.push_back(nearby[k]);
                     }
                     else if (I4_KIND[j] == 3)
                     {
