@@ -10,7 +10,8 @@
 
 // 3 specialisations par personnage (talents + barres d'action).
 // 2e onglet debloque au niveau 20, 3e au niveau 30, chez le maitre de classe.
-// Changement : .spe 1 / .spe 2 / .spe 3 (ou chez le maitre de classe), 5 secondes hors combat.
+// Changement : sorts Spécialisation 1/2/3 (appris au déblocage), .spe 1 / .spe 2 / .spe 3 ou chez le maitre de classe,
+// 5 secondes d'incantation hors combat.
 
 namespace cmangos_module
 {
@@ -18,6 +19,7 @@ namespace cmangos_module
     #define SPECS_DELAY         5       // secondes
     #define SPECS_LEVEL_2       20
     #define SPECS_LEVEL_3       30
+    #define SPECS_SPELL         65500   // Spécialisation 1 / 2 / 3 (5 s d'incantation, générés par gen_sorts.py)
 
     struct SpecButton
     {
@@ -43,6 +45,8 @@ namespace cmangos_module
         bool OnGossipSelect(Player* player, Creature* creature, uint32 sender, uint32 action, const std::string& code, uint32 gossipListId) override;
         bool OnSaveActionButtons(Player* player, ActionButtonList& actionButtons) override;
         void OnDeleteFromDB(uint32 playerId) override;
+        void OnLoadFromDB(Player* player) override;
+        void OnCast(Spell* spell, Unit* caster, Unit* victim) override;
 
         const char* GetChatCommandPrefix() const override { return "spe"; }
         std::vector<ModuleChatCommand>* GetCommandTable() override;
@@ -53,6 +57,8 @@ namespace cmangos_module
         SpecStatus& GetStatus(uint32 guid);
         void SaveStatus(uint32 guid, const SpecStatus& st);
         bool RequestSwitch(Player* player, uint8 spec);
+        bool CanSwitch(Player* player, uint8 spec);
+        void LearnSpecSpells(Player* player, uint8 count);
         bool HandleSpec(WorldSession* session, uint8 spec);
         bool HandleInfo(WorldSession* session, const std::string& args);
         static bool IsClassTrainerFor(Player* player, Creature* creature);

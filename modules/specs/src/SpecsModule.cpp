@@ -11,6 +11,7 @@
 #include "Log/Log.h"
 #include "Maps/Map.h"
 #include "Server/DBCStores.h"
+#include "Spells/Spell.h"
 #include "Spells/SpellMgr.h"
 #include "World/World.h"
 
@@ -101,7 +102,7 @@ namespace cmangos_module
         std::lock_guard<std::recursive_mutex> guard(lock);
         SpecStatus& st = GetStatus(player->GetGUIDLow());
         Message(player, "spé active : " + std::to_string(st.active + 1) + " sur " + std::to_string(st.count)
-            + " débloquée(s). Changer : .spe 1, .spe 2 ou .spe 3 (5 s hors combat).");
+            + " débloquée(s). Changer : sorts Spécialisation 1/2/3 ou .spe 1, .spe 2, .spe 3 (5 s d'incantation hors combat).");
         return true;
     }
 
@@ -115,20 +116,18 @@ namespace cmangos_module
         return true;
     }
 
-    // apres 5 s, dans le thread de la carte
-    static void SwitchLater(Map* map, ObjectGuid guid, uint8 spec, time_t at)
+    // fin de l'incantation : le changement se fait au tick suivant de la carte (le sort en cours est terminé)
+    static void SwitchNextTick(Map* map, ObjectGuid guid, uint8 spec)
     {
-        if (time(nullptr) < at)
+        map->GetMessager().AddMessage([=](Map* m)
         {
-            map->GetMessager().AddMessage([=](Map* m) { SwitchLater(m, guid, spec, at); });
-            return;
-        }
-        if (Player* player = map->GetPlayer(guid))
-            if (instance)
-                instance->FinishSwitch(player, spec);
+            if (Player* player = m->GetPlayer(guid))
+                if (instance)
+                    instance->FinishSwitch(player, spec);
+        });
     }
 
-    bool SpecsModule::RequestSwitch(Player* player, uint8 spec)
+    bool SpecsModule::CanSwitch(Player* player, uint8 spec)
     {
         SpecStatus& st = GetStatus(player->GetGUIDLow());
         if (spec >= st.count)
@@ -141,18 +140,59 @@ namespace cmangos_module
             Message(player, "c'est déjà votre spé active.");
             return false;
         }
-        if (st.pending)
-            return false;
         if (player->IsInCombat() || !player->IsAlive())
         {
             Message(player, "impossible en combat ou mort.");
             return false;
         }
-        st.pending = true;
-        Message(player, "passage à la spé " + std::to_string(spec + 1) + " dans 5 secondes. Restez hors combat.");
-        Map* map = player->GetMap();
-        SwitchLater(map, player->GetObjectGuid(), spec, time(nullptr) + SPECS_DELAY);
         return true;
+    }
+
+    // .spe N et maître de classe : lance le sort Spécialisation N (barre d'incantation de 5 s)
+    bool SpecsModule::RequestSwitch(Player* player, uint8 spec)
+    {
+        if (!CanSwitch(player, spec))
+            return false;
+        if (player->IsNonMeleeSpellCasted(false))
+        {
+            Message(player, "vous êtes déjà en train d'incanter.");
+            return false;
+        }
+        player->CastSpell(player, SPECS_SPELL + spec, TRIGGERED_NONE);
+        return true;
+    }
+
+    void SpecsModule::OnCast(Spell* spell, Unit* caster, Unit* /*victim*/)
+    {
+        if (!spell || !caster || caster->GetTypeId() != TYPEID_PLAYER)
+            return;
+        const uint32 id = spell->m_spellInfo->Id;
+        if (id < SPECS_SPELL || id >= SPECS_SPELL + SPECS_MAX)
+            return;
+        Player* player = static_cast<Player*>(caster);
+        std::lock_guard<std::recursive_mutex> guard(lock);
+        const uint8 spec = uint8(id - SPECS_SPELL);
+        if (CanSwitch(player, spec))
+            SwitchNextTick(player->GetMap(), player->GetObjectGuid(), spec);
+    }
+
+    void SpecsModule::LearnSpecSpells(Player* player, uint8 count)
+    {
+        if (count < 2)
+            return;
+        for (uint8 s = 0; s < count && s < SPECS_MAX; ++s)
+            if (!player->HasSpell(SPECS_SPELL + s) && sSpellTemplate.LookupEntry<SpellEntry>(SPECS_SPELL + s))
+                player->learnSpell(SPECS_SPELL + s, false, false);
+    }
+
+    void SpecsModule::OnLoadFromDB(Player* player)
+    {
+        if (!player)
+            return;
+        std::lock_guard<std::recursive_mutex> guard(lock);
+        auto it = status.find(player->GetGUIDLow());
+        if (it != status.end())
+            LearnSpecSpells(player, it->second.count);
     }
 
     void SpecsModule::FinishSwitch(Player* player, uint8 spec)
@@ -160,7 +200,6 @@ namespace cmangos_module
         std::lock_guard<std::recursive_mutex> guard(lock);
         const uint32 guid = player->GetGUIDLow();
         SpecStatus& st = GetStatus(guid);
-        st.pending = false;
         if (player->IsInCombat() || !player->IsAlive())
         {
             Message(player, "changement de spé annulé (combat).");
@@ -340,13 +379,15 @@ namespace cmangos_module
         {
             st.count = 2;
             SaveStatus(player->GetGUIDLow(), st);
-            Message(player, "2e spécialisation débloquée. Elle commence sans talents : .spe 2 pour y passer.");
+            LearnSpecSpells(player, st.count);
+            Message(player, "2e spécialisation débloquée. Elle commence sans talents. Les sorts Spécialisation 1 et 2 sont dans votre grimoire (onglet Général).");
         }
         else if (action == ACTION_UNLOCK + 2 && st.count == 2 && player->GetLevel() >= SPECS_LEVEL_3)
         {
             st.count = 3;
             SaveStatus(player->GetGUIDLow(), st);
-            Message(player, "3e spécialisation débloquée. Elle commence sans talents : .spe 3 pour y passer.");
+            LearnSpecSpells(player, st.count);
+            Message(player, "3e spécialisation débloquée. Elle commence sans talents. Le sort Spécialisation 3 est dans votre grimoire (onglet Général).");
         }
         else if (action >= ACTION_SWITCH && action < ACTION_SWITCH + SPECS_MAX)
             RequestSwitch(player, uint8(action - ACTION_SWITCH));

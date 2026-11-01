@@ -80,6 +80,7 @@ namespace cmangos_module
         std::unordered_map<uint64, uint32> botTalentTick;           // bot -> secondes depuis la dernière vérification des talents
         std::unordered_map<uint64, ActionButtonList*> actionLists;  // joueur -> sa barre d'action (pour suivre les changements de sorts)
         uint32 botTimer = 0;
+        uint32 arbreTimer = 0;
     };
 }
 #endif

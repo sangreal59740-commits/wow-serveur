@@ -24,38 +24,49 @@
 
 namespace cmangos_module
 {
-    struct Combinaison { uint8 race; uint8 cls; };
+    // Composition d'une vague (275 bots : 137 Alliance, 138 Horde), validée avec Alexis.
+    // Spé imposée : soit une spé pré-faite d'aiplayerbot.conf (specNo), soit un arbre de talents (classes custom et 4e spé),
+    // géré par le module classes (table custom_bot_arbre).
+    struct Spe { int32 premade; int32 arbre; uint8 nombre; uint8 nombreAlliance; };
+    #define PRE(id, n)      { id, -1, n, n }
+    #define ARB(t, n)       { -1, t, n, n }
+    #define ARB2(t, n, a)   { -1, t, n, a }
 
-    // 19 combinaisons race / classe par faction (druide exclu : remplace par le Metamorphe, joueur uniquement)
-    static const Combinaison ALLIANCE[] =
-    {
-        { 1, 1 }, { 1, 2 }, { 1, 4 }, { 1, 5 }, { 1, 8 }, { 1, 9 },     // Humain
-        { 3, 1 }, { 3, 2 }, { 3, 3 }, { 3, 4 }, { 3, 5 },               // Nain
-        { 4, 1 }, { 4, 3 }, { 4, 4 }, { 4, 5 },                         // Elfe de la nuit
-        { 7, 1 }, { 7, 4 }, { 7, 8 }, { 7, 9 },                         // Gnome
-    };
-    static const Combinaison HORDE[] =
-    {
-        { 2, 1 }, { 2, 3 }, { 2, 4 }, { 2, 7 }, { 2, 9 },               // Orc
-        { 5, 1 }, { 5, 4 }, { 5, 5 }, { 5, 8 }, { 5, 9 },               // Mort-vivant
-        { 6, 1 }, { 6, 3 }, { 6, 7 },                                   // Tauren
-        { 8, 1 }, { 8, 3 }, { 8, 4 }, { 8, 5 }, { 8, 7 }, { 8, 8 },     // Troll
-    };
-
-    // Specialisations pre-faites d'aiplayerbot.conf (PremadeSpecName.<classe>.<id>), une par arbre
-    static void SpecsDeClasse(uint8 cls, uint32 out[3])
+    static std::vector<Spe> SpesDeClasse(uint8 cls)
     {
         switch (cls)
         {
-            case 1: out[0] = 0; out[1] = 1; out[2] = 2; break;     // armes, fureur, protection
-            case 2: out[0] = 2; out[1] = 9; out[2] = 0; break;     // sacre, protection, vindicte
-            case 3: out[0] = 3; out[1] = 4; out[2] = 5; break;     // betes, precision, survie
-            case 4: out[0] = 2; out[1] = 0; out[2] = 9; break;     // assassinat, combat, finesse
-            case 5: out[0] = 0; out[1] = 1; out[2] = 2; break;     // discipline, sacre, ombre
-            case 7: out[0] = 0; out[1] = 8; out[2] = 3; break;     // elementaire, amelioration, restauration
-            case 8: out[0] = 0; out[1] = 1; out[2] = 8; break;     // arcanes, feu, givre
-            case 9: out[0] = 4; out[1] = 0; out[2] = 2; break;     // affliction, demonologie, destruction
-            default: out[0] = 0; out[1] = 1; out[2] = 2; break;
+            case 1: return { PRE(0, 1), PRE(1, 1), PRE(2, 3), ARB(3, 1) };           // armes, fureur, protection (tank), Berserker
+            case 2: return { PRE(2, 2), PRE(9, 3), PRE(0, 2), ARB(3, 1) };           // sacré, protection (tank), vindicte, Soleil
+            case 3: return { PRE(3, 2), PRE(4, 2), PRE(5, 2), ARB(3, 1) };           // bêtes, précision, survie, Infirmier
+            case 4: return { PRE(2, 1), PRE(0, 1), PRE(9, 1), ARB(3, 1) };           // assassinat, combat, finesse, Fantôme
+            case 5: return { PRE(0, 2), PRE(1, 2), PRE(2, 2), ARB(3, 1) };           // discipline, sacré, ombre, Corrompu
+            case 7: return { PRE(0, 2), PRE(8, 2), PRE(3, 2), ARB(3, 3) };           // élémentaire, amélioration, restauration, Ruines (tank)
+            case 8: return { PRE(0, 2), PRE(1, 2), PRE(8, 2), ARB(3, 1) };           // arcanes, feu, givre, Nature
+            case 9: return { PRE(4, 2), PRE(0, 2), PRE(2, 2), ARB(3, 3) };           // affliction, démonologie, destruction, Transfuge (tank)
+            case 6: return { ARB2(0, 1, 2), ARB2(1, 1, 2), ARB2(2, 1, 2) };          // Nécromancien : Invocateur, Malédiction, Magicien
+            case 10: return { ARB2(0, 1, 2), ARB2(1, 1, 2), ARB2(2, 1, 2) };         // Sniper : Bestial, Tireur d'élite, Mécanisme
+            case 11: return { ARB2(0, 1, 2), ARB2(1, 1, 2), ARB(2, 3) };             // Métamorphe : Totémique, Druidique, Angélique (tank)
+            default: return {};
+        }
+    }
+
+    // paires race / classe jouables par faction (après les retraits : voir gen_classes.py)
+    static const uint8 RACES_ALLIANCE[] = { 1, 3, 4, 7 };
+    static const uint8 RACES_HORDE[] = { 2, 5, 6, 8 };
+    static std::vector<uint8> ClassesDeRace(uint8 race)
+    {
+        switch (race)
+        {
+            case 1: return { 1, 2, 5, 8, 9, 6 };        // Humain : guerrier, paladin, prêtre, mage, démoniste, nécromancien
+            case 3: return { 1, 2, 3, 7, 10 };          // Nain : guerrier, paladin, chasseur, chaman, sniper
+            case 4: return { 3, 4, 5, 11 };             // Elfe de la nuit : chasseur, voleur, prêtre, métamorphe
+            case 7: return { 1, 4, 8, 9, 11 };          // Gnome : guerrier, voleur, mage, démoniste, métamorphe
+            case 2: return { 1, 3, 4, 7, 9, 10 };       // Orc : guerrier, chasseur, voleur, chaman, démoniste, sniper
+            case 5: return { 2, 4, 5, 8, 9, 6 };        // Mort-vivant : paladin, voleur, prêtre, mage, démoniste, nécromancien
+            case 6: return { 1, 3, 7, 11 };             // Tauren : guerrier, chasseur, chaman, métamorphe
+            case 8: return { 4, 5, 7, 8, 6, 11 };       // Troll : voleur, prêtre, chaman, mage, nécromancien, métamorphe
+            default: return {};
         }
     }
 
@@ -92,6 +103,8 @@ namespace cmangos_module
             " `xp_mult` FLOAT NOT NULL,"
             " `react_mult` FLOAT NOT NULL,"
             " PRIMARY KEY (`guid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+        CharacterDatabase.Execute("CREATE TABLE IF NOT EXISTS `custom_bot_arbre` (`guid` INT UNSIGNED NOT NULL, `arbre` TINYINT UNSIGNED NOT NULL,"
+                                  " PRIMARY KEY (`guid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
         CharacterDatabase.Execute("CREATE TABLE IF NOT EXISTS `custom_bot_wave_delete` (`vague` TINYINT UNSIGNED NOT NULL, PRIMARY KEY (`vague`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
 
         // Suppression des vagues demandees avec .bots supprimer (faite au demarrage, avant la connexion des bots)
@@ -112,6 +125,7 @@ namespace cmangos_module
         CharacterDatabase.Execute("DELETE FROM `custom_bot_wave_delete`");
         CharacterDatabase.Execute("DELETE FROM `ai_playerbot_random_bots` WHERE `bot` <> 0 AND `bot` NOT IN (SELECT `guid` FROM `characters`)");
         CharacterDatabase.Execute("DELETE FROM `custom_bot_profile` WHERE `guid` NOT IN (SELECT `guid` FROM `characters`)");
+        CharacterDatabase.Execute("DELETE FROM `custom_bot_arbre` WHERE `guid` NOT IN (SELECT `guid` FROM `characters`)");
 
         if (auto result = CharacterDatabase.Query("SELECT `guid`, `vague`, `rythme`, `qualite`, `xp_mult`, `react_mult` FROM `custom_bot_profile`"))
         {
@@ -173,24 +187,24 @@ namespace cmangos_module
             return true;
         }
 
-        // Liste des bots a creer : chaque combinaison race / classe / spe, VAGUES_COPIES fois, pour les deux factions
-        struct Tache { uint8 race; uint8 cls; uint32 spec; };
+        // Liste des bots a creer, race par race (voir SpesDeClasse et ClassesDeRace)
+        struct Tache { uint8 race; uint8 cls; int32 premade; int32 arbre; };
         std::vector<Tache> taches;
+        uint32 parFaction[2] = { 0, 0 };
         for (int faction = 0; faction < 2; ++faction)
         {
-            const Combinaison* liste = faction == 0 ? ALLIANCE : HORDE;
-            uint32 n = faction == 0 ? sizeof(ALLIANCE) / sizeof(ALLIANCE[0]) : sizeof(HORDE) / sizeof(HORDE[0]);
-            for (uint32 i = 0; i < n; ++i)
-            {
-                uint32 specs[3];
-                SpecsDeClasse(liste[i].cls, specs);
-                for (uint32 s = 0; s < 3; ++s)
-                    for (uint32 c = 0; c < VAGUES_COPIES; ++c)
-                        taches.push_back({ liste[i].race, liste[i].cls, specs[s] });
-            }
+            for (uint8 race : (faction == 0 ? std::vector<uint8>(RACES_ALLIANCE, RACES_ALLIANCE + 4) : std::vector<uint8>(RACES_HORDE, RACES_HORDE + 4)))
+                for (uint8 cls : ClassesDeRace(race))
+                    for (Spe const& sp : SpesDeClasse(cls))
+                        for (uint8 c = 0; c < (faction == 0 ? sp.nombreAlliance : sp.nombre); ++c)
+                        {
+                            taches.push_back({ race, cls, sp.premade, sp.arbre });
+                            ++parFaction[faction];
+                        }
         }
 
-        Message(session, "Création de la vague " + std::to_string(vague) + " (" + std::to_string(taches.size()) + " bots niveau 1)...");
+        Message(session, "Création de la vague " + std::to_string(vague) + " (" + std::to_string(taches.size()) + " bots niveau 1 : "
+            + std::to_string(parFaction[0]) + " Alliance, " + std::to_string(parFaction[1]) + " Horde)...");
 
         std::set<uint64> avant;
         for (auto const& kv : sObjectAccessor.GetPlayers())
@@ -253,8 +267,14 @@ namespace cmangos_module
 
             CharacterDatabase.PExecute("REPLACE INTO `custom_bot_profile` (`guid`, `vague`, `rythme`, `qualite`, `xp_mult`, `react_mult`) VALUES (%u, %u, %u, %u, %f, %f)",
                 guid, vague, uint32(p.rythme), uint32(p.qualite), p.xpMult, p.reactMult);
-            // specialisation imposee (valable 10 ans)
-            sRandomPlayerbotMgr.SetValue(guid, "specNo", c.tache.spec + 1, "", 315360000);
+            // specialisation imposee : spe pre-faite (valable 10 ans) ou arbre de talents gere par le module classes
+            if (c.tache.premade >= 0)
+                sRandomPlayerbotMgr.SetValue(guid, "specNo", uint32(c.tache.premade) + 1, "", 315360000);
+            else
+            {
+                sRandomPlayerbotMgr.SetValue(guid, "specNo", 0, "", 315360000);
+                CharacterDatabase.PExecute("REPLACE INTO `custom_bot_arbre` (`guid`, `arbre`) VALUES (%u, %u)", guid, uint32(c.tache.arbre));
+            }
         }
 
         for (Cree& c : crees)

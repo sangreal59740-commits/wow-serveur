@@ -6,14 +6,13 @@
 #include <vector>
 
 // Vagues de bots niveau 1, lancees a la main avec la commande .bots vague
-// Une vague = chaque combinaison race / classe / specialisation x2, pour chaque faction (114 + 114 = 228 bots).
+// Une vague = 275 bots (137 Alliance, 138 Horde), spe imposee par bot : voir SpesDeClasse / ClassesDeRace.
 // Chaque bot recoit un rythme de progression (multiplicateur d'experience) et une qualite de jeu
 // (multiplicateur du temps de reaction de l'IA), tires au hasard.
 
 namespace cmangos_module
 {
     #define VAGUES_MAX              5
-    #define VAGUES_COPIES           2   // nombre de bots par combinaison race / classe / spe et par vague
 
     struct ProfilBot
     {

@@ -13,6 +13,8 @@
 #include "Log/Log.h"
 #include "Maps/Map.h"
 #include "Server/WorldSession.h"
+#include "Database/DatabaseEnv.h"
+#include "Server/DBCStores.h"
 #include "Spells/Spell.h"
 #include "Spells/SpellAuras.h"
 #include "Spells/SpellMgr.h"
@@ -23,6 +25,8 @@
 #include "Grids/CellImpl.h"
 
 #include <algorithm>
+#include <mutex>
+#include <unordered_map>
 #include <cmath>
 
 using namespace classes_data;
@@ -100,11 +104,46 @@ namespace cmangos_module
         return player->GetSession() && player->GetSession()->GetRemoteAddress() == "disconnected/bot";
     }
 
-    // un bot de classe vanilla sur quatre joue la 4e spé (choix fixe, selon son identifiant)
+    // arbre de talents imposé aux bots (table custom_bot_arbre, remplie par le module vagues ; relue toutes les 30 s)
+    static std::mutex arbreLock;
+    static std::unordered_map<uint32, uint8> arbreBots;
+
+    static void ChargerArbres()
+    {
+        std::unordered_map<uint32, uint8> m;
+        if (auto r = CharacterDatabase.Query("SELECT `guid`, `arbre` FROM `custom_bot_arbre`"))
+        {
+            do
+            {
+                Field* f = r->Fetch();
+                m[f[0].GetUInt32()] = f[1].GetUInt8();
+            }
+            while (r->NextRow());
+        }
+        std::lock_guard<std::mutex> g(arbreLock);
+        arbreBots.swap(m);
+    }
+
+    // onglet (0 à 3) que le bot doit remplir, -1 si les talents sont laissés à playerbot (spé pré-faite)
+    static int BotTab(Player* player)
+    {
+        uint8 cls = player->getClass();
+        {
+            std::lock_guard<std::mutex> g(arbreLock);
+            auto it = arbreBots.find(player->GetGUIDLow());
+            if (it != arbreBots.end())
+                return it->second;
+        }
+        if (cls == C_NECRO || cls == C_SNIPER || cls == C_META)
+            return int(player->GetGUIDLow() % 3);           // bots custom hors vague : un des 3 arbres, fixe
+        return -1;
+    }
+
+    // bots de classe vanilla qui jouent la 4e spé (imposée par la vague)
     static bool Is4thBot(Player* player)
     {
         uint8 cls = player->getClass();
-        return IsBot(player) && cls != C_NECRO && cls != C_SNIPER && cls != C_META && player->GetObjectGuid().GetCounter() % 4 == 0;
+        return IsBot(player) && cls != C_NECRO && cls != C_SNIPER && cls != C_META && BotTab(player) == 3;
     }
 
     static int32 SpellValue(SpellEntry const* info, uint32 eff = 0)
@@ -144,7 +183,10 @@ namespace cmangos_module
 
     void ClassesModule::OnInitialize()
     {
-        sLog.outString("Classes custom : %u invocations du Nécromancien, IA des bots active", INVOCATIONS_N);
+        CharacterDatabase.Execute("CREATE TABLE IF NOT EXISTS `custom_bot_arbre` (`guid` INT UNSIGNED NOT NULL, `arbre` TINYINT UNSIGNED NOT NULL,"
+                                  " PRIMARY KEY (`guid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+        ChargerArbres();
+        sLog.outString("Classes custom : %u invocations du Nécromancien, IA des bots active, %u bot(s) à arbre imposé", INVOCATIONS_N, uint32(arbreBots.size()));
     }
 
     // ------------------------------------------------------------------ Nécromancien : armée
@@ -1192,6 +1234,11 @@ namespace cmangos_module
         if (botTimer < 1000)
             return;
         botTimer = 0;
+        if (++arbreTimer >= 30)
+        {
+            arbreTimer = 0;
+            ChargerArbres();
+        }
 
         std::vector<std::pair<Map*, ObjectGuid>> todo;
         {
@@ -1237,10 +1284,10 @@ namespace cmangos_module
             if (u && u->AI() && !u->AI()->HasReactState(REACT_DEFENSIVE))
                 u->AI()->SetReactState(REACT_DEFENSIVE);
         }, CONTROLLED_GUARDIANS);
+        if (IsBot(player) && BotTab(player) >= 0)
+            BotTalents(player);
         if (cls != C_NECRO && cls != C_SNIPER && cls != C_META)
         {
-            if (Is4thBot(player))
-                BotTalents(player);
             Spe4Upkeep(player);
             return;
         }
@@ -1282,6 +1329,16 @@ namespace cmangos_module
         }
         else if (cls == C_SNIPER)
         {
+            // Aspect animal : familier et bêtes renforcés tant que l'aspect est actif
+            bool animal = S_ANIMAL[0] && player->HasAura(S_ANIMAL[0]);
+            ForArmy(player, true, [&](Unit* u)
+            {
+                bool has = u->HasAura(S_H_ANIMAL);
+                if (animal && !has)
+                    u->CastSpell(u, S_H_ANIMAL, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid());
+                else if (!animal && has)
+                    u->RemoveAurasDueToSpell(S_H_ANIMAL);
+            });
             Pet* pet = player->GetPet();
             bool petOk = pet && pet->IsAlive();
             // Meute / Grande meute : compagnons tant que le familier est là
@@ -1323,52 +1380,60 @@ namespace cmangos_module
 
     // ------------------------------------------------------------------ bots de 4e spé
     // tous les points vont dans le 4e arbre (dans l'ordre des paliers), le reste est laissé au système des bots
+    // remplit l'arbre imposé (BotTab), rang par rang et palier par palier ; les points ailleurs sont remis à zéro
     void ClassesModule::BotTalents(Player* bot)
     {
         uint32& tick = botTalentTick[bot->GetObjectGuid().GetRawValue()];
         if (++tick < 10)
             return;
         tick = 0;
-        int idx = -1;
-        for (uint32 i = 0; i < B4_CLASS_N; ++i)
-            if (B4_CLASS[i] == bot->getClass())
-                idx = int(i);
-        if (idx < 0 || bot->GetLevel() < 10)
+        int page = BotTab(bot);
+        if (page < 0 || bot->GetLevel() < 10)
             return;
-        uint32 total = bot->GetLevel() - 9, have = 0, treeMax = 0;
-        for (uint32 k = 0; k < B4_COUNT[idx]; ++k)
+        const uint32 mask = bot->getClassMask();
+        std::vector<TalentEntry const*> tree;
+        uint32 ailleurs = 0;
+        for (uint32 id = 0; id < sTalentStore.GetNumRows(); ++id)
         {
-            TalentEntry const* te = sTalentStore.LookupEntry(B4_TID[B4_START[idx] + k]);
+            TalentEntry const* te = sTalentStore.LookupEntry(id);
             if (!te)
                 continue;
-            treeMax += B4_RANKS[B4_START[idx] + k];
-            for (int r = MAX_TALENT_RANK - 1; r >= 0; --r)
-                if (te->RankID[r] && bot->HasSpell(te->RankID[r]))
-                {
-                    have += r + 1;
-                    break;
-                }
+            TalentTabEntry const* tab = sTalentTabStore.LookupEntry(te->TalentTab);
+            if (!tab || (tab->ClassMask & mask) == 0)
+                continue;
+            if (int(tab->tabpage) == page)
+                tree.push_back(te);
+            else
+                for (int r = MAX_TALENT_RANK - 1; r >= 0; --r)
+                    if (te->RankID[r] && bot->HasSpell(te->RankID[r]))
+                    {
+                        ailleurs += r + 1;
+                        break;
+                    }
         }
-        uint32 want = std::min(total, treeMax);
-        if (have >= want)
+        if (tree.empty())
             return;
-        if (bot->GetFreeTalentPoints() < want - have)
+        if (ailleurs)
             bot->resetTalents(true);
-        for (uint32 k = 0; k < B4_COUNT[idx]; ++k)
+        if (!bot->GetFreeTalentPoints())
+            return;
+        std::sort(tree.begin(), tree.end(), [](TalentEntry const* a, TalentEntry const* b)
         {
-            uint32 tid = B4_TID[B4_START[idx] + k];
-            TalentEntry const* te = sTalentStore.LookupEntry(tid);
-            if (!te)
-                continue;
-            for (uint32 r = 0; r < B4_RANKS[B4_START[idx] + k]; ++r)
-            {
-                if (te->RankID[r] && bot->HasSpell(te->RankID[r]))
-                    continue;
-                if (!bot->GetFreeTalentPoints())
-                    return;
-                bot->LearnTalent(tid, r);
-            }
-        }
+            return a->Row != b->Row ? a->Row < b->Row : a->Col < b->Col;
+        });
+        // plusieurs passes : un talent refusé (palier ou prérequis pas encore atteint) est repris à la passe suivante
+        for (int pass = 0; pass < 4 && bot->GetFreeTalentPoints(); ++pass)
+            for (TalentEntry const* te : tree)
+                for (uint32 r = 0; r < MAX_TALENT_RANK && bot->GetFreeTalentPoints(); ++r)
+                {
+                    if (!te->RankID[r])
+                        break;
+                    if (bot->HasSpell(te->RankID[r]))
+                        continue;
+                    bot->LearnTalent(te->TalentID, r);
+                    if (!bot->HasSpell(te->RankID[r]))
+                        break;
+                }
     }
 
     bool ClassesModule::TryCastAt(Player* bot, Unit* where, uint32 spellId)

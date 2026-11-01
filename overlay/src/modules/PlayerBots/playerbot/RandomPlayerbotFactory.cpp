@@ -37,7 +37,6 @@ RandomPlayerbotFactory::RandomPlayerbotFactory(uint32 accountId) : accountId(acc
     availableRaces[CLASS_WARRIOR].push_back(RACE_GNOME);
     availableRaces[CLASS_WARRIOR].push_back(RACE_DWARF);
     availableRaces[CLASS_WARRIOR].push_back(RACE_ORC);
-    availableRaces[CLASS_WARRIOR].push_back(RACE_UNDEAD);
     availableRaces[CLASS_WARRIOR].push_back(RACE_TAUREN);
 #ifndef MANGOSBOT_ZERO
     availableRaces[CLASS_WARRIOR].push_back(RACE_DRAENEI);
@@ -50,7 +49,6 @@ RandomPlayerbotFactory::RandomPlayerbotFactory(uint32 accountId) : accountId(acc
     availableRaces[CLASS_PALADIN].push_back(RACE_BLOODELF);
 #endif
 
-    availableRaces[CLASS_ROGUE].push_back(RACE_DWARF);
     availableRaces[CLASS_ROGUE].push_back(RACE_NIGHTELF);
     availableRaces[CLASS_ROGUE].push_back(RACE_GNOME);
     availableRaces[CLASS_ROGUE].push_back(RACE_ORC);
@@ -81,6 +79,7 @@ RandomPlayerbotFactory::RandomPlayerbotFactory(uint32 accountId) : accountId(acc
     // [custom] classes custom jouees par les bots
     availableRaces[CLASS_NECROMANCER].push_back(RACE_HUMAN);
     availableRaces[CLASS_NECROMANCER].push_back(RACE_TROLL);
+    availableRaces[CLASS_NECROMANCER].push_back(RACE_UNDEAD);
     availableRaces[CLASS_SNIPER].push_back(RACE_DWARF);
     availableRaces[CLASS_SNIPER].push_back(RACE_ORC);
     availableRaces[CLASS_SHAMAN].push_back(RACE_DWARF);
@@ -105,7 +104,6 @@ RandomPlayerbotFactory::RandomPlayerbotFactory(uint32 accountId) : accountId(acc
     availableRaces[CLASS_HUNTER].push_back(RACE_NIGHTELF);
     availableRaces[CLASS_HUNTER].push_back(RACE_ORC);
     availableRaces[CLASS_HUNTER].push_back(RACE_TAUREN);
-    availableRaces[CLASS_HUNTER].push_back(RACE_TROLL);
 #ifndef MANGOSBOT_ZERO
     availableRaces[CLASS_HUNTER].push_back(RACE_DRAENEI);
     availableRaces[CLASS_HUNTER].push_back(RACE_BLOODELF);

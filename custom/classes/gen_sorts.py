@@ -41,7 +41,7 @@ NSKILL = {'inv': 900, 'mal': 901, 'mag': 902}
 NSLA = []                           # (skill, sort)
 
 def common(lv, cd, cast, mpct, icon_sid=None, base_cls=9):
-    s = {'SpellLevel': lv, 'BaseLevel': lv, 'MaxLevel': 0, 'CastingTimeIndex': CAST[cast], 'RecoveryTime': cd,
+    s = {'SpellLevel': lv, 'BaseLevel': lv, 'MaxLevel': 0, 'CastingTimeIndex': CAST[cast], 'RecoveryTime': cd, 'PowerType': 0,
          'CategoryRecoveryTime': 0, 'Category': 0, 'ManaCost': mana(base_cls, mpct, lv) if mpct else 0,
          'ManaCostPercentage': 0, 'ManaCostPerlevel': 0, 'ManaPerSecond': 0, 'ManaPerSecondPerLevel': 0}
     if icon_sid:
@@ -347,9 +347,8 @@ GROUPS['aspect'].append(S['meca'])
 S['animal'] = SC.single('animal', 'bes', 13165, 28, "Aspect animal",
     "Votre familier inflige 15 % de dégâts en plus et son armure est augmentée de 25 %. Un seul aspect actif à la fois.",
     1000, 0, 5, icon_sid=13161, tooltip="Familier renforcé.",
-    Effect1=6, EffectApplyAuraName1=79, EffectMiscValue1=127, EffectBasePoints1=14, EffectDieSides1=1, EffectImplicitTargetA1=5,
-    Effect2=6, EffectApplyAuraName2=101, EffectMiscValue2=1, EffectBasePoints2=24, EffectDieSides2=1, EffectImplicitTargetA2=5,
-    EffectTriggerSpell2=0, ProcFlags=0, ProcChance=101, DurationIndex=DUR[-1])
+    Effect1=6, EffectApplyAuraName1=4, EffectMiscValue1=0, EffectBasePoints1=0, EffectDieSides1=1, EffectImplicitTargetA1=1,
+    Effect2=0, EffectApplyAuraName2=0, EffectTriggerSpell2=0, ProcFlags=0, ProcChance=101, DurationIndex=DUR[-1])
 GROUPS['aspect'].append(S['animal'])
 AFFECT = []
 AFFECT.append((S['meca'], 1, SG.mask('long') | SG.mask('precision') | SG.mask('bombe') | SG.mask('dynamite')))
@@ -714,7 +713,7 @@ creature(C_SANG, "Sanglier", 607, 1.0, 1, 0.5, 0.6, 1.0, 1, [(b['sa_charge'], 1,
 creature(C_TIGRE, "Tigre blanc", 9953, 1.0, 1, 0.5, 0.6, 1.0, 1, [(b['ti_griffe'], 1, 500, 1500), (b['ti_cri'], 2, 0, 10000)])
 creature(C_OURS, "Ours brun", 3201, 1.0, 1, 0.7, 0.5, 1.5, 1, [(b['ou_morsure'], 1, 1000, 2000), (b['ou_cri'], 2, 0, 8000)])
 creature(C_DINO, "Dinosaure", 5239, 0.45, 1, 0.6, 0.7, 1.0, 1, [(b['di_arrach'], 1, 500, 1500), (b['di_cri'], 2, 0, 10000)])
-creature(C_TOUR, "Tourelle", 10753, 0.5, 1, 0.3, 0.1, 1.0, 9, [(b['to_tir'], 1, 0, 500)], ranged=True)
+creature(C_TOUR, "Tourelle", 6978, 0.6, 1, 0.3, 0.1, 1.0, 9, [(b['to_tir'], 1, 0, 500)], ranged=True)
 creature(C_CANON, "Canon à boulets", 10753, 0.8, 1, 0.4, 0.1, 1.0, 9, [(b['ca_tir'], 1, 0, 2000)], ranged=True)
 creature(C_ROBOT, "Robot", 5926, 0.4, 1, 0.2, 0.35, 1.0, 9, [(b['ro_elec'], 1, 1000, 3000)])
 BEAST_CAT = 1270
@@ -762,6 +761,8 @@ GROUPS['balle'].append(S['magique'])
 hs = {}
 hs['enrage'] = cspell(SCX, 'ordre', 12042, "Ordre", DurationIndex=DUR[20000],
                       **merge(auraf(1, 61, 0, 25), auraf(2, 79, 127, 25), auraf(3, 138, 0, 25)))
+hs['animal'] = cspell(SCX, 'animal_pet', 12042, "Aspect animal", DurationIndex=DUR[-1], SpellIconID=icon(13161),
+                      **merge(auraf(1, 79, 127, 15), auraf(2, 101, 1, 25), none(3)))
 hs['affaibli'] = cspell(SCX, 'appel', 12042, "Puissance réduite", DurationIndex=DUR[-1], **merge(auraf(1, 79, 127, -50), none(2), none(3)))
 MODULE['sniper'] = dict(beasts=[S[k] for k, *_ in BEASTS], beast_hidden=BEAST_HIDDEN, hidden=hs,
                         bullets={'feu': S['feu'], 'eau': S['eau'], 'givre': S['givre'], 'roche': S['roche']})
@@ -1313,6 +1314,8 @@ TRAINERS = [
     (900, 990171, "Séraphine Noirsuaire", "Maître nécromancien", 461, 0, 10427),   # Hurlevent, l'Agneau égorgé
     (900, 990172, "Zul'gash", "Maître nécromancien", 3156, 0, 0),                    # Vallée des Épreuves
     (900, 990173, "Vol'kesh", "Maître nécromancien", 3324, 0, 0),                    # Orgrimmar, la Faille de l'ombre
+    (900, 990190, "Morbius Fielgrise", "Maître nécromancien", 4563, 0, 0),         # Fossoyeuse, quartier des Magiciens
+    (900, 990191, "Lucrèce Sombretombe", "Maître nécromancien", 2126, 0, 0),       # Clairière de Tirisfal (Deathknell)
     (901, 990174, "Thordin Visée-Sûre", "Maître sniper", 1231, 0, 0),               # Val d'Est-Gel (Coldridge)
     (901, 990175, "Dagna Poudrenoire", "Maître sniper", 5117, 0, 0),                # Forgefer, salle des Armes
     (901, 990176, "Grok Œil-de-Fer", "Maître sniper", 3154, 0, 0),                  # Vallée des Épreuves
@@ -1331,7 +1334,7 @@ def trainer_sql():
     L = ["-- Maîtres de classe des classes custom",
          "DELETE FROM npc_trainer_template WHERE entry BETWEEN 900 AND 909;",
          "DELETE FROM creature WHERE guid BETWEEN 9903000 AND 9903099;",
-         "DELETE FROM creature_template WHERE Entry BETWEEN 990170 AND 990199;"]
+         "DELETE FROM creature_template WHERE Entry BETWEEN 990170 AND 990185 OR Entry BETWEEN 990190 AND 990199;"]
     for tpl, lst in sorted(TRAINER_SPELLS.items()):
         for tid, cost, lv in lst:
             L.append("INSERT INTO npc_trainer_template (entry, spell, spellcost, reqskill, reqskillvalue, reqlevel) VALUES (%d, %d, %d, 0, 0, %d);" % (tpl, tid, cost, lv))
@@ -1357,6 +1360,49 @@ def trainer_sql():
     L.append("DROP TEMPORARY TABLE tmp_ct;")
     return L
 
+# ======================================================================== sorts de changement de spécialisation (module specs)
+# appris au déblocage de la 2e spé chez le maître de classe ; 5 s d'incantation, hors combat
+from spellgen import dbc_col as _dcs
+dc_attr = _dcs('Attributes')
+SPG = Gen(0, [])
+SPEC_SPELLS = [65500, 65501, 65502]
+for _i, (_sid, _icon) in enumerate(zip(SPEC_SPELLS, (776, 1553, 1575))):
+    SPG.add(_sid, 8690, "Spécialisation %d" % (_i + 1),
+            "Active votre %s spécialisation : talents et barres d'action. Hors combat uniquement." % ("1re", "2e", "3e")[_i],
+            family=False, sets={'Effect1': 3, 'Effect2': 0, 'EffectImplicitTargetA1': 1, 'EffectBasePoints1': 0, 'EffectMiscValue1': 0,
+                                'CastingTimeIndex': 6, 'Category': 0, 'RecoveryTime': 0, 'CategoryRecoveryTime': 0,
+                                'Attributes': SPR[8690][dc_attr] | 0x10000000, 'SpellIconID': _icon, 'SpellLevel': 0, 'BaseLevel': 0})
+
+# ======================================================================== corrections générales des sorts clonés
+from spellgen import dbc_col as _dc
+_ATTR, _ATTRX = _dc('Attributes'), _dc('AttributesEx')
+for _g in [NG, SG, MG] + [g for g, a, b in V4_GENS]:
+    for _sp in _g.spells:
+        st = _sp['sets']
+        base = SPR[_sp['base']]
+        # bit « renvoie le familier » (sorts clonés depuis Invocation d'un diablotin) : seulement pour les vraies invocations de familier
+        ax = st.get('AttributesEx', base[_ATTRX])
+        if ax & 1 and st.get('Effect1', base[_dc('Effect1')]) != 56:
+            st['AttributesEx'] = ax & ~1
+        # tirs du Sniper avec incantation : sans l'attribut « emplacement à distance », le client affiche la barre d'incantation
+        # (les dégâts restent ceux de l'arme à distance et les munitions sont consommées : classe de dégâts « distance »)
+        if _g is SG and st.get('CastingTimeIndex', base[_dc('CastingTimeIndex')]) not in (0, 1):
+            at = st.get('Attributes', base[_ATTR])
+            if at & 2:
+                st['Attributes'] = at & ~2
+
+# pas d'objet totem exigé (sorts clonés depuis des totems de Chaman) ; buffs permanents : icône seulement, pas d'effet sur le personnage
+_PERMA = {DUR[-1], DUR[300000], DUR[600000], DUR[1800000], DUR[3600000], DUR[7200000]}
+for _g in [NG, SG, MG, TALG, T4G] + [g for g, a, b in V4_GENS]:
+    for _sp in _g.spells:
+        st = _sp['sets']
+        base = SPR[_sp['base']]
+        st['Totem1'] = 0
+        st['Totem2'] = 0
+        effs = [st.get('Effect%d' % n, base[_dc('Effect%d' % n)]) for n in (1, 2, 3)]
+        if any(e in (6, 35) for e in effs) and 56 not in effs and st.get('DurationIndex', base[_dc('DurationIndex')]) in _PERMA:
+            st['SpellVisual'] = 0
+
 # ======================================================================== sorties
 def all_ids(d):
     out = []
@@ -1371,7 +1417,7 @@ L += TALG.sql(63500, 64499)
 L += trainer_sql()
 # sorts de départ du Nécromancien (remplacent Trait de l'ombre et Peau de démon)
 L.append("DELETE FROM playercreateinfo_spell WHERE class=%d AND Spell IN (686, 687);" % NECRO)
-for race in (1, 8):
+for race in (1, 5, 8):
     for sp in START_SPELLS[NECRO]:
         L.append("INSERT IGNORE INTO playercreateinfo_spell (race, class, Spell, Note) VALUES (%d, %d, %d, 'Necromancien');" % (race, NECRO, sp))
 L.append("UPDATE playercreateinfo_action SET action=%d WHERE class=%d AND type=0 AND action=686;" % (N['trait'][0], NECRO))
@@ -1387,6 +1433,7 @@ L += MG.sql(63000, 63499)
 for _g, _a, _b in V4_GENS:
     L += _g.sql(_a, _b)
 L += T4G.sql(56000, 56999)
+L += SPG.sql(65500, 65509)
 from spellgen import dbc_col as _dbc_col
 SPELL_PATCH = {}
 for _sid, _cols in sorted(VPATCH.items()):
@@ -1493,6 +1540,70 @@ MET = json.load(open('/home/claude/wow/metiers/metiers_rows.json', encoding='utf
 open(OUT + 'out/SkillLineAbility.dbc', 'wb').write(
     append_rows(open('/home/claude/wow/dbc_extra/SkillLineAbility.dbc', 'rb').read(), MET['sla'] + SLA_ROWS))
 
+def layout_tab(rows):
+    byid = {r[0]: r for r in rows}
+    for _pass in range(12):
+        changed = False
+        grid = {(r[2], r[3]): r for r in rows}
+        reserved = set()
+        for r in sorted([r for r in rows if r[13]], key=lambda r: r[2]):
+            p = byid.get(r[13])
+            if not p or p[2] == r[2]:
+                continue
+            col = p[3]
+            for t in range(p[2] + 1, r[2]):
+                reserved.add((t, col))
+        for r in sorted([r for r in rows if r[13]], key=lambda r: r[2]):
+            p = byid.get(r[13])
+            if not p or p[2] == r[2]:
+                continue
+            col = p[3]
+            if r[3] != col:
+                other = grid.get((r[2], col))
+                old_c = r[3]
+                r[3] = col
+                if other is not None:
+                    other[3] = old_c
+                    grid[(r[2], old_c)] = other
+                else:
+                    grid.pop((r[2], old_c), None)
+                grid[(r[2], col)] = r
+                changed = True
+            for t in range(p[2] + 1, r[2]):
+                x = grid.get((t, col))
+                if x is None:
+                    continue
+                free = [c for c in range(4) if (t, c) not in grid and (t, c) not in reserved]
+                if not free:
+                    free = [c for c in range(4) if c != col and grid.get((t, c)) is not None and (t, c) not in reserved]
+                if not free:
+                    print('ATTENTION mise en page bloquée', x[0])
+                    continue
+                c = free[0]
+                y = grid.get((t, c))
+                x[3], grid[(t, c)] = c, x
+                if y is not None:
+                    y[3], grid[(t, col)] = col, y
+                else:
+                    grid.pop((t, col), None)
+                changed = True
+        if not changed:
+            break
+    # vérification
+    grid = {(r[2], r[3]): r for r in rows}
+    for r in rows:
+        p = byid.get(r[13]) if r[13] else None
+        if p and p[2] != r[2]:
+            bad = p[3] != r[3] or any((t, r[3]) in grid for t in range(p[2] + 1, r[2]))
+            if bad:
+                print('ATTENTION prérequis mal placé', r[0], p[0])
+from collections import defaultdict as _dd
+_tabs = _dd(list)
+for _r in TALENT_ROWS:
+    _tabs[_r[1]].append(_r)
+for _t, _rows in _tabs.items():
+    layout_tab(_rows)
+
 # talents : Talent.dbc (sans les talents du druide) et TalentTab.dbc (serveur), lignes pour le client
 tt = DBC(OUT + 'srv/TalentTab.dbc')
 TT = {r[0]: r for r in tt.rows}
@@ -1524,7 +1635,7 @@ print('talents', len(TALENT_ROWS), 'sorts de talent', len(TALG.spells), 'sans ef
 json.dump(DUMMY_TALENTS, open(OUT + 'talents_a_coder.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=0)
 
 json.dump({'talenttab_new': tab_new, 'talenttab_meta': {str(k): v for k, v in META_TABS.items()},
-           'spell': NG.dbc_rows() + SG.dbc_rows() + MG.dbc_rows() + TG.dbc_rows() + TALG.dbc_rows() + sum((_g.dbc_rows() for _g, _a, _b in V4_GENS), []) + T4G.dbc_rows(),
+           'spell': NG.dbc_rows() + SG.dbc_rows() + MG.dbc_rows() + TG.dbc_rows() + TALG.dbc_rows() + sum((_g.dbc_rows() for _g, _a, _b in V4_GENS), []) + T4G.dbc_rows() + SPG.dbc_rows(),
            'spell_patch': SPELL_PATCH, 'form_patch': {str(k): v for k, v in globals().get('FORM_PATCH', {}).items()}, 'sla': SLA_ROWS, 'skilllines': sk_new, 'rename_skill': RENAME_SKILL,
            'masks': {'necro': NG.masks, 'sniper': SG.masks, 'meta': MG.masks}, 'ids': {'necro': N, 'sniper': S, 'meta': M}},
           open(OUT + 'sorts_rows.json', 'w', encoding='utf-8'), ensure_ascii=False)
@@ -1567,7 +1678,7 @@ sd = MODULE['sniper']
 arr("S_BEASTS", sd['beasts']); arr("S_BEAST_HIDDEN", sd['beast_hidden'])
 for k, v in sd['hidden'].items():
     one("S_H_" + k.upper(), v)
-for k in ['recul', 'appel', 'ordre', 'magique']:
+for k in ['recul', 'appel', 'ordre', 'magique', 'animal']:
     arr("S_" + k.upper(), ranks(k, SG))
 for k, ids in sd['bullets'].items():
     arr("S_BALLE_" + k.upper(), ids)

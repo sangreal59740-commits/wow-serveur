@@ -20,7 +20,7 @@ RACEMASK = {r: 1 << (r - 1) for r in range(1, 9)}
 NECRO, SNIPER, META = 6, 10, 11
 # nouvelle classe -> (classe de base, race de base, races)
 NEW = {
-    NECRO: (9, HUMAN, [HUMAN, TROLL]),
+    NECRO: (9, HUMAN, [HUMAN, TROLL, UD]),
     SNIPER: (3, DWARF, [DWARF, ORC]),
     META: (11, NE, [NE, GNOME, TROLL, TAUREN]),
 }
@@ -28,7 +28,7 @@ NAMES = {NECRO: "Nécromancien", SNIPER: "Sniper", META: "Métamorphe"}
 # classes vanilla ouvertes à une race de plus : (race, classe, race modèle de la classe)
 EXTRA = [(3, 7, 2), (5, 2, 1)]       # Nain chaman (modèle : Orc), Mort-vivant paladin (modèle : Humain)
 # paires vanilla retirées (race, classe) : Elfe de la nuit et Troll guerriers, Humain voleur, Nain prêtre
-REMOVED = [(4, 1), (8, 1), (1, 4), (3, 5)]
+REMOVED = [(4, 1), (8, 1), (1, 4), (3, 5), (8, 3), (5, 1), (3, 4)]   # + Troll chasseur, Mort-vivant guerrier, Nain voleur
 CBIT = {c: 1 << (c - 1) for c in range(1, 12)}
 
 # ---------------------------------------------------------------- ChrClasses
@@ -197,7 +197,7 @@ for c, (bc, br, races) in NEW.items():
         if c == META and race in (NE, TAUREN):
             continue                                   # druides existants : création inchangée
         w("INSERT INTO playercreateinfo (race, class, map, zone, position_x, position_y, position_z, orientation) "
-          "SELECT %d, %d, map, zone, position_x, position_y, position_z, orientation FROM playercreateinfo WHERE race=%d AND class=1;" % (race, c, race))
+          "SELECT %d, %d, map, zone, position_x, position_y, position_z, orientation FROM playercreateinfo WHERE race=%d AND class<>%d ORDER BY class LIMIT 1;" % (race, c, race, c))
         for sp in sorted(racial(race) | classSpells):
             w("INSERT IGNORE INTO playercreateinfo_spell (race, class, Spell, Note) VALUES (%d, %d, %d, 'Custom');" % (race, c, sp))
         w("INSERT INTO playercreateinfo_action (race, class, button, action, type) SELECT %d, %d, button, action, type FROM playercreateinfo_action WHERE race=%d AND class=%d;" % (race, c, br, bc))
@@ -221,7 +221,7 @@ for race, c, src in EXTRA:
     for t in ('playercreateinfo', 'playercreateinfo_spell', 'playercreateinfo_action', 'playercreateinfo_item', 'player_levelstats'):
         w("DELETE FROM %s WHERE race=%d AND class=%d;" % (t, race, c))
     w("INSERT INTO playercreateinfo (race, class, map, zone, position_x, position_y, position_z, orientation) "
-      "SELECT %d, %d, map, zone, position_x, position_y, position_z, orientation FROM playercreateinfo WHERE race=%d AND class=1;" % (race, c, race))
+      "SELECT %d, %d, map, zone, position_x, position_y, position_z, orientation FROM playercreateinfo WHERE race=%d AND class<>%d ORDER BY class LIMIT 1;" % (race, c, race, c))
     for sp in sorted(racial(race) | (spells[(src, c)] - racial(src))):
         w("INSERT IGNORE INTO playercreateinfo_spell (race, class, Spell, Note) VALUES (%d, %d, %d, 'Custom race');" % (race, c, sp))
     w("INSERT INTO playercreateinfo_action (race, class, button, action, type) SELECT %d, %d, button, action, type FROM playercreateinfo_action WHERE race=%d AND class=%d;" % (race, c, src, c))
