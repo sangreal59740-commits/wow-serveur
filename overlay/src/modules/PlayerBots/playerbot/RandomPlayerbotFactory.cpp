@@ -87,6 +87,8 @@ RandomPlayerbotFactory::RandomPlayerbotFactory(uint32 accountId) : accountId(acc
     availableRaces[CLASS_NECROMANCER].push_back(RACE_TROLL);
     availableRaces[CLASS_SNIPER].push_back(RACE_DWARF);
     availableRaces[CLASS_SNIPER].push_back(RACE_ORC);
+    availableRaces[CLASS_SHAMAN].push_back(RACE_DWARF);
+    availableRaces[CLASS_PALADIN].push_back(RACE_UNDEAD);
 
     availableRaces[CLASS_WARLOCK].push_back(RACE_HUMAN);
     availableRaces[CLASS_WARLOCK].push_back(RACE_GNOME);

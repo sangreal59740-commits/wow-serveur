@@ -25,6 +25,8 @@ NEW = {
     META: (11, NE, [HUMAN, DWARF, NE, GNOME, ORC, TROLL, TAUREN, UD]),
 }
 NAMES = {NECRO: "Nécromancien", SNIPER: "Sniper", META: "Métamorphe"}
+# classes vanilla ouvertes à une race de plus : (race, classe, race modèle de la classe)
+EXTRA = [(3, 7, 2), (5, 2, 1)]       # Nain chaman (modèle : Orc), Mort-vivant paladin (modèle : Humain)
 CBIT = {c: 1 << (c - 1) for c in range(1, 12)}
 
 # ---------------------------------------------------------------- ChrClasses
@@ -63,6 +65,9 @@ for c, (_, _, races) in NEW.items():
     for r in races:
         if (r, c) not in pairs:
             pairs.append((r, c))
+for r, c, _ in EXTRA:
+    if (r, c) not in pairs:
+        pairs.append((r, c))
 pairs.sort()
 out = b'WDBC' + struct.pack('<4I', len(pairs), nf, rs, 1) + b''.join(bytes(p) for p in pairs) + b'\0'
 open(OUT + 'CharBaseInfo.dbc', 'wb').write(out)
@@ -92,6 +97,15 @@ for c, (bc, br, races) in NEW.items():
             r[4], r[5], r[6] = race, c, g
             recs.append(r)
             nextid += 1
+for race, c, src in EXTRA:
+    for g in (0, 1):
+        if (race, c, g) in have:
+            continue
+        r = bytearray(outfit(src, c, g))
+        struct.pack_into('<I', r, 0, nextid)
+        r[4], r[5], r[6] = race, c, g
+        recs.append(r)
+        nextid += 1
 out = b'WDBC' + struct.pack('<4I', len(recs), nf, rs, len(strings)) + b''.join(bytes(r) for r in recs) + strings
 open(OUT + 'CharStartOutfit.dbc', 'wb').write(out)
 
@@ -121,6 +135,10 @@ for r in srows:
 for r in srows:
     if r[1] == 293 and r[2] == ALLRACES:
         r[3] |= CBIT[SNIPER]
+for race, c, src in EXTRA:
+    for r in srows:
+        if r[3] & CBIT[c] and r[2] != ALLRACES and r[2] & RACEMASK[src] and not r[2] & RACEMASK[race]:
+            r[2] |= RACEMASK[race]
 # onglets de sorts : les classes custom ont leurs propres lignes de compétence (900 à 905)
 for r in srows:
     if r[1] in (354, 355, 593):
@@ -195,6 +213,49 @@ w("DELETE FROM playercreateinfo_skills WHERE classMask=%d AND skill IN (50, 51, 
 for sk, note in ((903, 'Sniper: Tireur'), (904, 'Sniper: Bestial'), (905, 'Sniper: Mecanisme')):
     w("INSERT INTO playercreateinfo_skills (raceMask, classMask, skill, step, note) VALUES (0, %d, %d, 0, '%s');" % (CBIT[SNIPER], sk, note))
 w("UPDATE playercreateinfo_skills SET raceMask=0 WHERE classMask=%d AND raceMask<>0;" % CBIT[META])
+# Nain chaman, Mort-vivant paladin : création, sorts, barres, stats, totems
+for race, c, src in EXTRA:
+    for t in ('playercreateinfo', 'playercreateinfo_spell', 'playercreateinfo_action', 'playercreateinfo_item', 'player_levelstats'):
+        w("DELETE FROM %s WHERE race=%d AND class=%d;" % (t, race, c))
+    w("INSERT INTO playercreateinfo (race, class, map, zone, position_x, position_y, position_z, orientation) "
+      "SELECT %d, %d, map, zone, position_x, position_y, position_z, orientation FROM playercreateinfo WHERE race=%d AND class=1;" % (race, c, race))
+    for sp in sorted(racial(race) | (spells[(src, c)] - racial(src))):
+        w("INSERT IGNORE INTO playercreateinfo_spell (race, class, Spell, Note) VALUES (%d, %d, %d, 'Custom race');" % (race, c, sp))
+    w("INSERT INTO playercreateinfo_action (race, class, button, action, type) SELECT %d, %d, button, action, type FROM playercreateinfo_action WHERE race=%d AND class=%d;" % (race, c, src, c))
+    w("INSERT INTO player_levelstats (race, class, level, str, agi, sta, inte, spi) "
+      "SELECT %d, %d, b.level, GREATEST(1, CAST(b.str AS SIGNED) + CAST(wr.str AS SIGNED) - CAST(wb.str AS SIGNED)), "
+      "GREATEST(1, CAST(b.agi AS SIGNED) + CAST(wr.agi AS SIGNED) - CAST(wb.agi AS SIGNED)), "
+      "GREATEST(1, CAST(b.sta AS SIGNED) + CAST(wr.sta AS SIGNED) - CAST(wb.sta AS SIGNED)), "
+      "GREATEST(1, CAST(b.inte AS SIGNED) + CAST(wr.inte AS SIGNED) - CAST(wb.inte AS SIGNED)), "
+      "GREATEST(1, CAST(b.spi AS SIGNED) + CAST(wr.spi AS SIGNED) - CAST(wb.spi AS SIGNED)) FROM player_levelstats b "
+      "JOIN player_levelstats wb ON wb.race=%d AND wb.class=1 AND wb.level=b.level "
+      "JOIN player_levelstats wr ON wr.race=%d AND wr.class=1 AND wr.level=b.level WHERE b.race=%d AND b.class=%d;"
+      % (race, c, src, race, src, c))
+# le chaman nain reçoit les 4 totems (leurs quêtes sont réservées à la Horde)
+for item in (5175, 5176, 5177, 5178):
+    w("INSERT INTO playercreateinfo_item (race, class, itemid, amount) VALUES (3, 7, %d, 1);" % item)
+# maîtres : chaman à Forgefer et au Val d'Est-Gel, paladin à Fossoyeuse et à la Clairière de Tirisfal
+w("DELETE FROM npc_trainer WHERE entry BETWEEN 990186 AND 990189;")
+w("DELETE FROM creature WHERE guid BETWEEN 9903100 AND 9903109;")
+w("DELETE FROM creature_template WHERE Entry BETWEEN 990186 AND 990189;")
+w("DROP TEMPORARY TABLE IF EXISTS tmp_ct2;")
+w("CREATE TEMPORARY TABLE tmp_ct2 LIKE creature_template;")
+for i, (entry, nom, sous, cls, src_npc, src_list) in enumerate([
+        (990186, "Brenna Totem-de-Pierre", "Maître chaman", 7, 5113, 3344),
+        (990187, "Durgan Chant-du-Roc", "Maître chaman", 7, 912, 3344),
+        (990188, "Sire Malroth", "Maître paladin", 2, 4593, 928),
+        (990189, "Dame Ysera Nuitpâle", "Maître paladin", 2, 2119, 928)]):
+    w("INSERT INTO tmp_ct2 SELECT * FROM creature_template WHERE Entry=%d;" % src_npc)
+    w("UPDATE tmp_ct2 SET Entry=%d, Name='%s', SubName='%s', TrainerType=0, TrainerClass=%d, TrainerTemplateId=0, NpcFlags=17, "
+      "GossipMenuId=0, ScriptName='' WHERE Entry=%d;" % (entry, nom.replace("'", "\\'"), sous, cls, src_npc))
+    w("INSERT INTO npc_trainer (entry, spell, spellcost, reqskill, reqskillvalue, reqlevel) "
+      "SELECT %d, spell, spellcost, reqskill, reqskillvalue, reqlevel FROM npc_trainer WHERE entry=%d;" % (entry, src_list))
+    w("INSERT INTO creature (guid, id, map, spawnMask, position_x, position_y, position_z, orientation, spawntimesecsmin, "
+      "spawntimesecsmax, spawndist, MovementType) SELECT %d, %d, map, spawnMask, position_x + 2 * COS(orientation - PI() / 2), "
+      "position_y + 2 * SIN(orientation - PI() / 2), position_z + 0.3, orientation, 300, 300, 0, 0 FROM creature WHERE id=%d LIMIT 1;"
+      % (9903100 + i, entry, src_npc))
+w("INSERT INTO creature_template SELECT * FROM tmp_ct2;")
+w("DROP TEMPORARY TABLE tmp_ct2;")
 w("SELECT 'Classes OK' AS resultat;")
 open('/home/claude/wow/classes/classes.sql', 'w', encoding='utf-8').write("\n".join(L) + "\n")
 print('paires', len(pairs), 'tenues', len(recs), 'compétences ajoutées', len(extra))

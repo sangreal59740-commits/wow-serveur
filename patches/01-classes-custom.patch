@@ -177,6 +177,29 @@ index 003a5b382..a505759a9 100644
  constexpr uint32 const CLASSMASK_ALL_CREATURES = convertEnumToFlag(CLASS_WARRIOR, CLASS_PALADIN, CLASS_MAGE);
  
  #define MAX_CREATURE_CLASS 3
+diff --git a/src/game/Server/DBCStores.cpp b/src/game/Server/DBCStores.cpp
+index ba4794b7b..50def6b8a 100644
+--- a/src/game/Server/DBCStores.cpp
++++ b/src/game/Server/DBCStores.cpp
+@@ -144,7 +144,7 @@ DBCStorage <TalentTabEntry> sTalentTabStore(TalentTabEntryfmt);
+ typedef std::map<uint32, uint32> TalentInspectMap;
+ static TalentInspectMap sTalentPosInInspect;
+ static TalentInspectMap sTalentTabSizeInInspect;
+-static uint32 sTalentTabPages[12/*MAX_CLASSES*/][3];
++static uint32 sTalentTabPages[12/*MAX_CLASSES*/][5];   // [custom] 4e arbre de talents (5 onglets max cote client)
+ 
+ DBCStorage <TaxiNodesEntry> sTaxiNodesStore(TaxiNodesEntryfmt);
+ TaxiMask sTaxiNodesMask;
+@@ -463,7 +463,8 @@ void LoadDBCStores(const std::string& dataPath)
+             uint32 cls = 1;
+             for (uint32 m = 1; !(m & talentTabInfo->ClassMask) && cls < MAX_CLASSES; m <<= 1, ++cls) {}
+ 
+-            sTalentTabPages[cls][talentTabInfo->tabpage] = talentTabId;
++            if (talentTabInfo->tabpage < 5)
++                sTalentTabPages[cls][talentTabInfo->tabpage] = talentTabId;
+ 
+             // add total amount bits for first rank starting from talent tab first talent rank pos.
+             uint32 pos = 0;
 diff --git a/src/game/Spells/Spell.cpp b/src/game/Spells/Spell.cpp
 index cd4957b20..f0cdb3ede 100644
 --- a/src/game/Spells/Spell.cpp
