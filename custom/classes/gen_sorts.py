@@ -164,7 +164,7 @@ N['tempete'] = n_single('tempete', 'mag', 12042, 60, "Tempête du néant",
                         EffectApplyAuraName2=108, EffectMiscValue2=11, EffectBasePoints2=-51, EffectDieSides2=1,
                         EffectApplyAuraName3=79, EffectMiscValue3=126, EffectBasePoints3=19, EffectDieSides3=1,
                         DurationIndex=DUR[15000])
-_m = NG.masks['trait'] | NG.masks['eclair'] | NG.masks['boule'] | NG.masks['tirombre']
+_m = NG.mask('trait') | NG.mask('eclair') | NG.mask('boule') | NG.mask('tirombre')
 AFFECT_N = [(N['tempete'], 0, _m), (N['tempete'], 1, _m)]
 
 # ======================================================================== outils communs Sniper / Métamorphe
@@ -351,7 +351,7 @@ S['animal'] = SC.single('animal', 'bes', 13165, 28, "Aspect animal",
     EffectTriggerSpell2=0, ProcFlags=0, ProcChance=101, DurationIndex=DUR[-1])
 GROUPS['aspect'].append(S['animal'])
 AFFECT = []
-AFFECT.append((S['meca'], 1, sum(v for v in SG.masks.values())))
+AFFECT.append((S['meca'], 1, SG.mask('long') | SG.mask('precision') | SG.mask('bombe') | SG.mask('dynamite')))
 
 # sorts vanilla du chasseur ouverts au Sniper (familier, Feindre la mort) : (sort, niveau, onglet)
 SNIPER_VANILLA = [(1515, 10, 'bes'), (883, 10, 'bes'), (2641, 10, 'bes'), (982, 10, 'bes'), (6991, 10, 'bes'),
@@ -517,6 +517,311 @@ M['don'] = ms('don', 'tot', 21562, 60, "Don des esprits",
               tooltip="Caractéristiques augmentées.", EffectMiscValue1=-1, EffectBasePoints1=29, EffectDieSides1=1,
               Reagent1=0, ReagentCount1=0, DurationIndex=DUR[7200000])
 
+# ======================================================================== talents (étape 6)
+NOTEACH = set()                     # sorts appris par talent (grimoire oui, maître de classe non)
+
+# sorts débloqués par talent
+N['maudit'] = n_dot('maudit', 'mal', 172, 30, 1, "Maudit", 5, 500, 10000, 0.67, 10000, 14, icon_sid=603)
+NOTEACH.update(N['maudit'])
+N['explosion'] = n_direct('explosion', 'mag', 686, 40, 1, "Explosion d'énergie", 5, 750, 820, 1.14, 4000, 120000, 30,
+                          icon_sid=25311, desc_extra=" Combine la puissance de Trait d'ombre, Éclair de givre et Boule de feu.")
+NOTEACH.update(N['explosion'])
+_heals = ['remous', 'recup', 'salve', 'pluie', 'belem', 'vague']
+M['vague'] = ms('vague', 'tot', 8936, 35, "Vague salvatrice", "Rend instantanément 1200 points de vie à la cible.", 60000, 0, 15,
+                icon_sid=25297, Effect2=0, EffectApplyAuraName2=0, EffectBasePoints1=1199, EffectDieSides1=1,
+                EffectBonusCoefficient1=0.43, CastingTimeIndex=1)
+M['rapidite'] = ms('rapidite', 'tot', 12042, 30, "Rapidité de la nature",
+                   "Votre prochain soin avec un temps d'incantation est instantané.", 180000, 0, 0, icon_sid=17116,
+                   tooltip="Prochain soin instantané.", EffectApplyAuraName1=108, EffectMiscValue1=10, EffectBasePoints1=-101,
+                   EffectDieSides1=1, Effect2=0, EffectApplyAuraName2=0, Effect3=0, EffectApplyAuraName3=0, ProcCharges=1,
+                   DurationIndex=DUR[-1])
+M['brecup'] = ms('brecup', 'ang', 12042, 25, "Bouclier de récupération",
+                 "Réduit les dégâts subis de 50 % pendant 5 s et vous rend 85 points de vie en 5 s.", 45000, 0, 5, icon_sid=498,
+                 tooltip="Dégâts subis réduits de 50 %.",
+                 EffectApplyAuraName1=87, EffectMiscValue1=127, EffectBasePoints1=-51, EffectDieSides1=1,
+                 EffectApplyAuraName2=8, EffectBasePoints2=16, EffectDieSides2=1, EffectAmplitude2=1000, EffectMiscValue2=0,
+                 Effect3=0, EffectApplyAuraName3=0, DurationIndex=DUR[5000], EffectBonusCoefficient2=0.066)
+M['sanctuaire'] = ms('sanctuaire', 'ang', 20911, 30, "Aura du sanctuaire",
+                     "Pendant 10 min, les dégâts subis par la cible à chaque coup sont réduits de 24.", 0, 0, 6, icon_sid=20911,
+                     EffectBasePoints1=-25, EffectDieSides1=1, DurationIndex=DUR[600000])
+NOTEACH.update([M['vague'], M['rapidite'], M['brecup'], M['sanctuaire']])
+S['instinct_buff'] = SC.trig('instinct', 13165, "Instinct sauvage", "", tooltip="Vitesse de tir augmentée de 30 %.",
+                             Effect1=6, EffectApplyAuraName1=140, EffectBasePoints1=29, EffectDieSides1=1, EffectImplicitTargetA1=1,
+                             Effect2=0, EffectApplyAuraName2=0, Effect3=0, EffectApplyAuraName3=0, ProcFlags=0, ProcChance=101,
+                             DurationIndex=DUR[12000], ManaCost=0, SpellLevel=10)
+
+TALG = Gen(0, [])
+TAL_ID = [63500]
+TAL_AFFECT = []
+TALENT_ROWS = []
+TAB_ROWS = []
+DUMMY_TALENTS = []                  # talents sans effet serveur pour l'instant (code à venir)
+PASSIVE_BASE = 17810
+
+def kmask(gen, keys):
+    m = 0
+    for k in keys:
+        m |= gen.mask(k)
+    return m
+
+def talent_spell(gen, name, rk, nranks, effects, desc, icon_sid):
+    sid = TAL_ID[0]; TAL_ID[0] += 1
+    sets = {'SpellIconID': icon(icon_sid), 'DurationIndex': DUR[-1], 'SpellLevel': 10, 'BaseLevel': 10, 'ManaCost': 0,
+            'RecoveryTime': 0, 'Category': 0, 'CategoryRecoveryTime': 0, 'ProcFlags': 0, 'ProcChance': 101}
+    for i in range(3):
+        sets.update({'Effect%d' % (i + 1): 0, 'EffectApplyAuraName%d' % (i + 1): 0, 'EffectMiscValue%d' % (i + 1): 0,
+                     'EffectBasePoints%d' % (i + 1): 0, 'EffectDieSides%d' % (i + 1): 1, 'EffectImplicitTargetA%d' % (i + 1): 1,
+                     'EffectTriggerSpell%d' % (i + 1): 0, 'EffectItemType%d' % (i + 1): 0})
+    for i, e in enumerate(effects):
+        n = i + 1
+        if e[0] == 'mod':          # ('mod', type, pct, keys, valeur)
+            _, typ, pct, keys, v = e
+            sets.update({'Effect%d' % n: 6, 'EffectApplyAuraName%d' % n: 108 if pct else 107, 'EffectMiscValue%d' % n: typ,
+                         'EffectBasePoints%d' % n: int(v) - 1})
+            TAL_AFFECT.append((sid, i, kmask(gen, keys)))
+        elif e[0] == 'aura':       # ('aura', aura, misc, valeur)
+            _, aura, misc, v = e
+            sets.update({'Effect%d' % n: 6, 'EffectApplyAuraName%d' % n: aura, 'EffectMiscValue%d' % n: misc,
+                         'EffectBasePoints%d' % n: int(v) - 1})
+        elif e[0] == 'proc':       # ('proc', sort déclenché, chance, flags)
+            _, trig, chance, flags = e
+            sets.update({'Effect%d' % n: 6, 'EffectApplyAuraName%d' % n: 42, 'EffectTriggerSpell%d' % n: trig,
+                         'ProcFlags': flags, 'ProcChance': chance})
+        elif e[0] == 'dummy':
+            sets.update({'Effect%d' % n: 6, 'EffectApplyAuraName%d' % n: 4})
+    TALG.add(sid, PASSIVE_BASE, name, desc, "Rang %d" % (rk + 1) if nranks > 1 else "", family=False, sets=sets)
+    return sid
+
+def tree(gen, tab_id, tab_name, classmask, order, bg, icon_sid, talents):
+    TAB_ROWS.append((tab_id, tab_name, icon(icon_sid), classmask, order, bg))
+    col = {}
+    tid_of = {}
+    for t in talents:
+        tier, name, ranks, ic, spec, desc = t[:6]
+        prereq = t[6] if len(t) > 6 else None
+        c = col.get(tier, 0); col[tier] = c + 1
+        ids = []
+        if spec[0] == 'vanilla':
+            ids = list(spec[1])
+        elif spec[0] == 'spell':
+            ids = [spec[1]]
+        else:
+            for rk in range(ranks):
+                effs = spec[1](rk + 1) if callable(spec[1]) else spec[1]
+                if spec[0] == 'dummy':
+                    effs = [('dummy',)]
+                ids.append(talent_spell(gen, name, rk, ranks, effs, desc(rk + 1) if callable(desc) else desc, ic))
+            if spec[0] == 'dummy':
+                DUMMY_TALENTS.append((tab_name, name))
+        talent_id = 3000 + len(TALENT_ROWS)
+        tid_of[name] = (talent_id, ranks)
+        pre = tid_of.get(prereq) if prereq else None
+        row = [talent_id, tab_id, tier - 1, c] + (ids + [0] * 9)[:9] + [pre[0] if pre else 0, 0, 0, (pre[1] - 1) if pre else 0, 0, 0, 0, 0]
+        TALENT_ROWS.append(row)
+
+def P(v):                           # pourcentage par rang
+    return lambda r: v * r
+def mod(typ, pct, keys, per):
+    return lambda r: [('mod', typ, pct, keys, per * r)]
+def aura(a, misc, per):
+    return lambda r: [('aura', a, misc, per * r)]
+D = ('dummy', None)
+
+N_SUMMONS = ['inv_squelette', 'inv_goule', 'inv_abo', 'inv_givre', 'inv_chien', 'inv_chevalier', 'inv_wyrm']
+N_SHADOW = ['trait', 'tirombre', 'mot', 'corruption', 'vol', 'malediction', 'peste', 'maudit', 'mort', 'explosion']
+N_DOTS = ['mot', 'corruption', 'vol', 'malediction', 'peste', 'maudit']
+N_MAG = ['trait', 'eclair', 'boule', 'tirombre', 'javelot', 'meteorite', 'tempete', 'explosion']
+CM_N, CM_S, CM_M = CBIT[NECRO], CBIT[SNIPER], CBIT[META]
+
+tree(NG, 400, "Invocateur", CM_N, 0, "WarlockSummoning", 688, [
+    (1, "Étreinte de la tombe", 5, 18698, D, lambda r: "Augmente l'Endurance de vos invocations de %d %% et leurs attaques de mêlée de %.1f %%." % (2 * r, 1.5 * r)),
+    (1, "Squelettes aguerris", 3, 18694, D, lambda r: "Augmente les dégâts du Coup d'épée et du Saignement du squelette de %d %%." % (10 * r)),
+    (1, "Rénovation améliorée", 2, 18692, ('fx', mod(0, True, ['renovation'], 10)), lambda r: "Augmente les soins de Rénovation de %d %%." % (10 * r)),
+    (2, "Horde grandissante", 1, 18710, D, "Vous donne 1 point d'invocation supplémentaire."),
+    (2, "Goule vorace", 3, 18705, D, lambda r: "Augmente les dégâts du Croc et les soins de la goule de %d %%." % (10 * r)),
+    (2, "Chair putride", 5, 18731, D, lambda r: "Augmente l'Endurance de vos invocations de %d %%." % (3 * r)),
+    (3, "Maîtrise de l'invocation", 1, 18708, D, "Vous permet de porter toutes les armes."),
+    (3, "Abomination améliorée", 3, 18754, D, lambda r: "Augmente l'armure et les dégâts du Vomi de l'abomination de %d %%." % (10 * r)),
+    (3, "Réanimation rapide", 1, 18708, D, "Votre prochaine invocation dans les 15 s est instantanée. Recharge 5 min."),
+    (4, "Armée des morts", 1, 18709, D, "Vous donne 1 point d'invocation supplémentaire.", "Horde grandissante"),
+    (4, "Pouvoir impie", 5, 18769, D, lambda r: "Augmente les dégâts de vos invocations de %d %%." % (3 * r)),
+    (4, "Maître invocateur", 2, 18709, ('fx', lambda r: [('mod', 10, False, N_SUMMONS, -2000 * r), ('mod', 14, True, N_SUMMONS, -20 * r)]),
+     lambda r: "Réduit le temps d'invocation de vos invocations de %d s et leur coût de %d %%." % (2 * r, 20 * r)),
+    (5, "Invocation : Chevalier de la mort", 1, 18788, D, "Débloque le Chevalier de la mort (2 points d'invocation).", "Pouvoir impie"),
+    (5, "Chiens de la crypte", 3, 18769, D, lambda r: "Augmente l'étourdissement de la Charge de %.1f s et la réduction d'armure du Cri de %d %%." % (0.5 * r, 3 * r)),
+    (5, "Givre éternel", 2, 116, D, lambda r: "Augmente le Bouclier du squelette de givre de %d %% des PV max et son Blizzard de %d %%." % (r, 15 * r)),
+    (6, "Légion", 1, 18710, D, "Vous donne 1 point d'invocation supplémentaire.", "Armée des morts"),
+    (6, "Maître nécromancien", 5, 23785, D, lambda r: "Chaque type d'invocation différent actif augmente vos dégâts et ceux de l'armée de %.1f %% et réduit les dégâts subis d'autant." % (0.3 * r)),
+    (6, "Berserk amélioré", 2, 18788, ('fx', mod(1, False, ['berserk'], 2000)), lambda r: "Augmente la durée de Berserk de %d s." % (2 * r)),
+    (7, "Invocation : Wyrm de givre", 1, 116, D, "Débloque le Wyrm de givre (2 points d'invocation)."),
+    (7, "Annihilation prolongée", 2, 18788, ('fx', mod(1, False, ['annihilation'], 1500)), lambda r: "Augmente la durée d'Annihilation de %.1f s." % (1.5 * r)),
+    (7, "Lien des morts", 1, 19028, D, "20 % des dégâts que vous subissez sont transférés à votre invocation principale."),
+])
+tree(NG, 401, "Malédiction", CM_N, 1, "WarlockCurses", 172, [
+    (1, "Emprise", 5, 18174, ('fx', mod(16, False, N_SHADOW, 2)), lambda r: "Augmente de %d %% la chance de toucher de vos DoT et sorts d'Ombre." % (2 * r)),
+    (1, "Corruption améliorée", 5, 17810, ('fx', mod(22, True, ['corruption'], 4)), lambda r: "Augmente les dégâts de Corruption de %d %%." % (4 * r)),
+    (2, "Mot de l'ombre amélioré", 3, 589, ('fx', mod(22, True, ['mot'], 5)), lambda r: "Augmente les dégâts de Mot de l'ombre de %d %%." % (5 * r)),
+    (2, "Vol de vie amélioré", 5, 18265, ('fx', mod(22, True, ['vol'], 2)), lambda r: "Augmente les dégâts de Vol de vie de %d %%." % (2 * r)),
+    (2, "Récolte d'âme", 2, 18213, D, lambda r: "Tuer une cible affectée par une de vos DoT vous rend %d %% de votre mana maximum." % (5 * r)),
+    (3, "Malédiction améliorée", 3, 980, ('fx', mod(22, True, ['malediction'], 5)), lambda r: "Augmente les dégâts de Malédiction de %d %%." % (5 * r)),
+    (3, "Concentration funeste", 4, 18182, ('fx', mod(10, False, ['mort'], -500)), lambda r: "Réduit le temps d'incantation de Trait de la mort de %.1f s." % (0.5 * r)),
+    (3, "Amplification", 1, 18288, D, "Votre prochaine DoT inflige 50 % de dégâts en plus. Recharge 3 min."),
+    (4, "Portée sinistre", 1, 18218, ('fx', mod(5, True, N_DOTS, 10)), "Augmente la portée de vos DoT de 10 %."),
+    (4, "Crépuscule", 4, 18094, D, lambda r: "Chaque tick de Corruption ou Mot de l'ombre a %d %% de chance de rendre instantané votre prochain Trait d'ombre." % (2 * r)),
+    (4, "Peste améliorée", 2, 2944, ('fx', mod(22, True, ['peste'], 7)), lambda r: "Augmente les dégâts de Peste de %d %%." % (7 * r)),
+    (5, "Maudit", 1, 603, ('spell', N['maudit'][0]), "Débloque le sort Maudit : 500 points de dégâts d'Ombre en 10 s, recharge 10 s."),
+    (5, "Fléau rampant", 1, 18223, D, "Peste ralentit la cible de 30 %."),
+    (5, "Contagion", 4, 18265, D, lambda r: "À la mort d'une cible, %d %% de chance que ses DoT se propagent à l'ennemi le plus proche." % (25 * r)),
+    (6, "Maîtrise de l'ombre", 5, 18271, ('fx', aura(79, 32, 2)), lambda r: "Augmente vos dégâts d'Ombre de %d %%." % (2 * r)),
+    (6, "Trait de la mort amélioré", 2, 18265, ('fx', mod(11, False, ['mort'], -10000)), lambda r: "Réduit la recharge de Trait de la mort de %d s." % (10 * r)),
+    (7, "Fléau double", 1, 18220, D, "Les DoT posées par Trait de la mort se cumulent avec la DoT d'origine (2 par cible).", "Maîtrise de l'ombre"),
+    (7, "Maléfice amélioré", 2, 18220, ('fx', mod(11, False, ['malefice'], -30000)), lambda r: "Réduit la recharge de Maléfice de %d s." % (30 * r)),
+])
+tree(NG, 402, "Magicien", CM_N, 2, "WarlockDestruction", 686, [
+    (1, "Trait d'ombre amélioré", 5, 17793, D, lambda r: "Un critique de Trait d'ombre ou Tir d'ombre augmente de %d %% les dégâts d'Ombre subis par la cible pour 4 sorts." % (4 * r)),
+    (1, "Cataclysme", 5, 17778, ('fx', mod(14, True, N_MAG, -2)), lambda r: "Réduit le coût en mana de vos sorts Magicien de %d %%." % (2 * r)),
+    (2, "Fléau", 5, 17788, ('fx', lambda r: [('mod', 10, False, ['trait', 'eclair', 'boule'], -100 * r), ('mod', 10, False, ['tirombre'], -200 * r)]),
+     lambda r: "Réduit le temps d'incantation de Trait d'ombre, Éclair de givre et Boule de feu de %.1f s, et de Tir d'ombre de %.1f s." % (0.1 * r, 0.2 * r)),
+    (2, "Morsure du froid", 5, 116, D, lambda r: "Augmente le ralentissement d'Éclair de givre de %d %%." % (4 * r)),
+    (3, "Dévastation", 5, 18130, ('fx', mod(7, False, N_MAG, 1)), lambda r: "Augmente de %d %% la chance de coup critique de vos sorts Magicien." % r),
+    (3, "Synergie givrée", 2, 116, D, lambda r: "Javelot de glace augmente de %d %% les dégâts de votre prochain Éclair de givre." % (15 * r)),
+    (3, "Synergie gelée", 2, 8056, ('fx', lambda r: [('mod', 0, True, ['javelot'], 12.5 * r), ('mod', 0, True, ['eclair'], 5 * r)]),
+     lambda r: "Augmente les dégâts de Javelot de glace de %d %% et d'Éclair de givre de %d %%." % (12.5 * r, 5 * r)),
+    (4, "Intensité", 2, 18135, ('fx', mod(9, True, N_MAG, 35)), lambda r: "Réduit de %d %% le recul de vos sorts quand vous subissez des dégâts." % (35 * r)),
+    (4, "Portée destructrice", 1, 17917, ('fx', mod(5, True, N_MAG, 10)), "Augmente la portée de vos sorts Magicien de 10 %."),
+    (4, "Boule de feu améliorée", 5, 133, ('fx', mod(22, True, ['boule'], 10)), lambda r: "Augmente les dégâts sur la durée de Boule de feu de %d %%." % (10 * r)),
+    (5, "Pyroclasme", 2, 18096, D, lambda r: "Météorite a %d %% de chance d'étourdir la cible pendant 3 s." % (13 * r)),
+    (5, "Tir d'ombre amélioré", 3, 17877, ('fx', mod(11, False, ['tirombre'], -1000)), lambda r: "Réduit la recharge de Tir d'ombre de %d s." % r),
+    (5, "Ruine", 1, 17959, ('fx', mod(15, True, N_MAG, 100)), "Les coups critiques de vos sorts Magicien infligent 200 % des dégâts au lieu de 150 %.", "Dévastation"),
+    (6, "Tempête élémentaire", 5, 18459, ('fx', aura(79, 4 | 16 | 32, 2)), lambda r: "Augmente vos dégâts de Feu, de Givre et d'Ombre de %d %%." % (2 * r)),
+    (7, "Explosion d'énergie", 1, 25311, ('spell', N['explosion'][0]), "Débloque Explosion d'énergie : Trait d'ombre, Éclair de givre et Boule de feu réunis à 80 %. Incantation 4 s, recharge 2 min."),
+    (7, "Néant prolongé", 2, 12042, ('fx', mod(1, False, ['tempete'], 2500)), lambda r: "Augmente la durée de Tempête du néant de %.1f s." % (2.5 * r)),
+])
+
+S_SHOTS = ['arcanes', 'saignant', 'long', 'multiple', 'precision', 'bestial', 'explosif', 'dynamite', 'bombe', 'cri', 'marque']
+S_SUMMONS = ['inv_sanglier', 'inv_tigre', 'inv_ours', 'inv_dino', 'inv_griffon']
+tree(SG, 403, "Bestial", CM_S, 0, "HunterBeastMastery", 1515, [
+    (1, "Endurance des bêtes", 5, 19583, ('vanilla', [19583, 19584, 19585, 19586, 19587]), ""),
+    (1, "Instinct sauvage", 5, 19552, ('fx', lambda r: [('proc', S['instinct_buff'], r, PROC_RANGED)]),
+     lambda r: "Vos tirs ont %d %% de chance d'augmenter votre vitesse de tir de 30 %% pendant 12 s." % r),
+    (2, "Cuir épais", 3, 19609, ('vanilla', [19609, 19610, 19612]), ""),
+    (2, "Meute", 1, 19621, D, "Vous donne un familier permanent supplémentaire, à 30 % des caractéristiques du familier principal."),
+    (2, "Tir au contact", 1, 19503, D, "Supprime la zone morte de 8 m : vous pouvez tirer au corps à corps."),
+    (2, "Balle d'eau maîtrisée", 1, 10497, D, "Balle d'eau a sa propre recharge de 15 s et sa DoT passe à 10 % de la PA."),
+    (3, "Fureur déchaînée", 5, 19616, ('vanilla', [19616, 19617, 19618, 19619, 19620]), ""),
+    (3, "Tir bestial amélioré", 2, 19574, ('fx', lambda r: [('mod', 11, False, ['bestial'], -1000 * r), ('mod', 0, True, ['bestial'], 14 * r)]),
+     lambda r: "Tir bestial inflige %d %% de dégâts en plus et sa recharge est réduite de %d s." % (14 * r, r)),
+    (3, "Cri bestial amélioré", 3, 1160, D, lambda r: "Augmente la réduction d'armure de Cri bestial de %d %%." % (3 * r)),
+    (4, "Férocité", 5, 19598, ('vanilla', [19598, 19599, 19600, 19601, 19602]), ""),
+    (4, "Instinct partagé", 3, 19621, D, lambda r: "Augmente la durée des bêtes invoquées de %d s." % (2 * r)),
+    (5, "Lien animal", 2, 19578, ('vanilla', [19578, 20895]), ""),
+    (5, "Intimidation", 1, 19577, ('spell', 19577), ""),
+    (5, "Discipline bestiale", 2, 19590, ('fx', mod(11, False, S_SUMMONS, -5000)), lambda r: "Réduit la recharge des bêtes invoquées de %d s." % (5 * r)),
+    (6, "Frénésie", 5, 19621, ('vanilla', [19621, 19622, 19623, 19624, 19625]), ""),
+    (6, "Grande meute", 1, 19621, D, "Vous donne un deuxième familier permanent supplémentaire.", "Meute"),
+    (6, "Combattant sauvage", 3, 19574, ('fx', aura(79, 1, 1)), lambda r: "Augmente vos dégâts physiques de %d %%." % r),
+    (7, "Invocation : Griffon", 1, 19574, D, "Débloque le Griffon."),
+    (7, "Ordre amélioré", 2, 19574, D, lambda r: "Réduit la recharge d'Ordre de %d s." % (60 * r)),
+])
+tree(SG, 404, "Tireur d'élite", CM_S, 1, "HunterMarksmanship", 19434, [
+    (1, "Efficacité", 5, 19416, ('fx', mod(14, True, S_SHOTS, -2)), lambda r: "Réduit le coût de vos tirs de %d %%." % (2 * r)),
+    (1, "Marque améliorée", 5, 19421, ('fx', mod(8, True, ['marque'], 3)), lambda r: "Augmente le bonus de Marque de %d %%." % (3 * r)),
+    (2, "Tirs létaux", 5, 19426, ('vanilla', [19426, 19427, 19429, 19430, 19431]), ""),
+    (2, "Balle de feu maîtrisée", 1, 13795, D, "Balle de feu a sa propre recharge de 20 s et sa DoT passe à 10 % de la PA."),
+    (2, "Tir des arcanes amélioré", 2, 3044, ('fx', mod(11, False, ['arcanes'], -500)), lambda r: "Réduit la recharge de Tir des arcanes de %.1f s." % (0.5 * r)),
+    (3, "Œil de faucon", 3, 19498, ('fx', mod(5, False, S_SHOTS, 4)), lambda r: "Augmente la portée de vos tirs de %d m." % (4 * r)),
+    (3, "Tir saignant amélioré", 5, 1978, ('fx', mod(22, True, ['saignant'], 5)), lambda r: "Augmente les dégâts sur la durée de Tir saignant de %d %%." % (5 * r)),
+    (4, "Tirs dévastateurs", 5, 19485, ('fx', mod(15, True, S_SHOTS, 3)), lambda r: "Augmente les dégâts critiques de vos tirs de %d %%." % (3 * r)),
+    (4, "Tireur solitaire", 5, 19434, D, lambda r: "Sans familier permanent, les dégâts de vos tirs sont augmentés de %d %%." % (4 * r)),
+    (5, "Visée parfaite", 1, 19434, ('fx', mod(10, True, ['precision'], -100)), "Tir de précision devient instantané."),
+    (5, "Barrage", 3, 19461, ('fx', mod(0, True, ['multiple', 'explosif'], 5)), lambda r: "Augmente les dégâts de Tir multiple et Tir explosif de %d %%." % (5 * r)),
+    (5, "Tir de dispersion", 1, 19503, ('spell', 19503), ""),
+    (6, "Spécialisation armes à feu", 5, 19507, ('vanilla', [19507, 19508, 19509, 19510, 19511]), ""),
+    (6, "Triple aspect amélioré", 2, 20043, D, lambda r: "Réduit la recharge de Triple aspect de %d s." % (30 * r)),
+    (7, "Tir d'élite", 1, 19434, D, "Tir long, Tir de précision, Tir saignant et Tir des arcanes en un seul tir à 75 %, puis Concentré. Recharge 5 min."),
+    (7, "Tir d'élite amélioré", 2, 19434, D, lambda r: "Réduit la recharge de Tir d'élite de %d s." % (30 * r)),
+])
+tree(SG, 405, "Mécanisme", CM_S, 2, "HunterSurvival", 12749, [
+    (1, "Pièges ingénieux", 3, 19239, ('fx', mod(1, False, ['glace'], 500)), lambda r: "Augmente la durée de Piège de glace de %.1f s." % (0.5 * r)),
+    (1, "Mécanique de précision", 5, 12749, D, lambda r: "Augmente les dégâts de vos invocations méca de %d %%." % (3 * r)),
+    (2, "Piégeage", 5, 19184, D, lambda r: "Bombe méca et Dynamite ont %d %% de chance d'immobiliser les cibles pendant 4 s." % (5 * r)),
+    (2, "Balle de givre maîtrisée", 1, 116, D, "Balle de givre a sa propre recharge de 15 s et sa DoT passe à 10 % de la PA."),
+    (2, "Survivant", 5, 19255, ('fx', aura(133, 0, 2)), lambda r: "Augmente vos points de vie maximum de %d %%." % (2 * r)),
+    (3, "Mécanique avancée", 3, 12749, ('fx', mod(11, False, ['tourelle'], -10000)), lambda r: "Réduit la recharge de Tourelle de %d s." % (10 * r)),
+    (3, "Dissuasion", 1, 19263, ('spell', 19263), ""),
+    (3, "Canon renforcé", 3, 12749, D, lambda r: "Augmente les dégâts par tir du Canon à boulets de %d %%." % (5 * r)),
+    (4, "Mécafusil", 1, 12749, D, "Arme et invocations méca : hâte et dégâts x1,25 pendant 15 s. Recharge 2 min."),
+    (4, "Maîtrise des explosifs", 3, 4068, ('fx', mod(0, True, ['bombe', 'dynamite', 'tirmeca'], 5)), lambda r: "Augmente les dégâts de Bombe méca, Dynamite et Tir méca de %d %%." % (5 * r)),
+    (4, "Pied sûr", 3, 19290, ('vanilla', [19290, 19294, 24283]), ""),
+    (5, "Instinct de tueur", 3, 19370, ('vanilla', [19370, 19371, 19373]), ""),
+    (5, "Robots améliorés", 3, 12749, D, lambda r: "Augmente les caractéristiques des robots de Tir méca de %d %%." % (5 * r)),
+    (5, "Contre-attaque", 1, 19306, ('spell', 19306), ""),
+    (6, "Réflexes éclair", 5, 19168, ('vanilla', [19168, 19180, 19181, 24296, 24297]), ""),
+    (6, "Familier blindé", 3, 19609, D, lambda r: "Augmente la menace et l'armure de votre familier de %d %%." % (10 * r)),
+    (7, "Inventeur", 1, 12749, D, "Robot 20 s : armure x2, incantations -1 s, recharges -50 %, 6 mini-robots et une tourelle. Recharge 8 min."),
+    (7, "Inventeur amélioré", 2, 12749, D, lambda r: "Réduit la recharge d'Inventeur de %d s." % (90 * r)),
+])
+
+M_TOTEMS = ['totem_feu', 'totem_eau', 'totem_roche', 'totem_givre']
+tree(MG, 283, "Totémique", CM_M, 0, "ShamanRestoration", 10497, [
+    (1, "Esprit guérisseur", 1, 774, D, "Soins et absorptions x2,5 et recharges des soins -50 %, si ni Renforcement ni Armure massive n'est actif."),
+    (1, "Salve améliorée", 5, 1064, ('fx', mod(10, False, ['salve'], -200)), lambda r: "Réduit le temps d'incantation de Salve de guérison de %.1f s." % (0.2 * r)),
+    (1, "Concentration des marées", 5, 16179, ('fx', mod(14, True, _heals, -1)), lambda r: "Réduit le coût de vos soins de %d %%." % r),
+    (2, "Guérison ancestrale", 3, 16176, D, lambda r: "Après un soin critique, l'armure de la cible est augmentée de %d %% pendant 15 s." % (8 * r)),
+    (2, "Focalisation totémique", 5, 16173, ('fx', mod(14, True, M_TOTEMS, -5)), lambda r: "Réduit le coût de vos totems de %d %%." % (5 * r)),
+    (2, "Remous amélioré", 2, 774, ('fx', mod(22, True, ['remous'], 5)), lambda r: "Augmente les soins de Remous de %d %%." % (5 * r)),
+    (3, "Focalisation des soins", 5, 16181, ('fx', mod(9, True, _heals, 14)), lambda r: "Réduit de %d %% le recul de vos soins quand vous subissez des dégâts." % (14 * r)),
+    (3, "Maîtrise totémique", 2, 16189, D, lambda r: "Augmente le rayon de vos totems de %d %%." % (25 * r)),
+    (3, "Grâce curative", 2, 29187, ('fx', mod(2, True, _heals, -7.5)), lambda r: "Réduit de %.1f %% la menace générée par vos soins." % (7.5 * r)),
+    (4, "Totems restaurateurs", 5, 16187, D, lambda r: "Augmente les soins du Totem d'eau de %d %%." % (5 * r)),
+    (4, "Maîtrise des marées", 5, 16194, ('fx', mod(7, False, _heals, 1)), lambda r: "Augmente de %d %% la chance de coup critique de vos soins." % r),
+    (5, "Voie de la guérison", 3, 8936, D, lambda r: "Chaque Récupération augmente de %d %% les Récupérations suivantes sur la même cible." % (6 * r)),
+    (5, "Rapidité de la nature", 1, 17116, ('spell', M['rapidite']), ""),
+    (6, "Purification", 5, 16178, ('fx', mod(0, True, _heals, 2)), lambda r: "Augmente vos soins de %d %%." % (2 * r)),
+    (6, "Vague salvatrice", 1, 25297, ('spell', M['vague']), ""),
+    (7, "Totem suprême", 1, 16190, D, "Centaure 20 s : régénération de mana x1,5, coût des sorts -50 %, soins x1,5, hâte x1,5. Recharge 10 min.", "Purification"),
+])
+tree(MG, 281, "Druidique", CM_M, 1, "DruidFeralCombat", 5487, [
+    (1, "Savoir ancestral", 5, 17485, ('fx', aura(132, 0, 1)), lambda r: "Augmente votre mana maximum de %d %%." % r),
+    (1, "Guidance de l'esprit", 3, 16180, ('fx', aura(54, 0, 1)), lambda r: "Augmente votre chance de toucher de %d %%." % r),
+    (2, "Frappes tonitruantes", 5, 16305, ('fx', aura(52, 0, 1)), lambda r: "Augmente votre chance de coup critique de %d %%." % r),
+    (2, "Totems de guerre", 2, 8190, D, lambda r: "Augmente les dégâts des totems de feu et de givre de %.1f %%." % (12.5 * r)),
+    (2, "Fougue lunaire", 3, 8921, D, lambda r: "Augmente la hâte par cumul d'Éclair lunaire de %d %%." % r),
+    (3, "Force de l'esprit", 3, 16294, D, lambda r: "Convertit %d %% de votre Intelligence en Force." % (33 * r if r < 3 else 100)),
+    (3, "Totems renforçants", 2, 8075, D, lambda r: "Augmente le bonus de Force du Totem de roche de %d %%." % (15 * r)),
+    (3, "Spécialisation ambidextre", 5, 674, D, lambda r: "Augmente les dégâts de votre main gauche de %d %%." % (5 * r)),
+    (4, "Rafale", 5, 12319, ('vanilla', [12319, 12971, 12972, 12973, 12974]), ""),
+    (4, "Robustesse", 5, 16252, ('fx', aura(142, 1, 2)), lambda r: "Augmente votre armure de %d %%." % (2 * r)),
+    (5, "Massacre amélioré", 1, 12294, ('fx', mod(0, True, ['massacre'], 25)), "Massacre inflige 25 % de dégâts en plus."),
+    (5, "Armes élémentaires", 4, 16266, ('fx', mod(0, True, ['colere', 'lunaire', 'stellaire'], 3)), lambda r: "Augmente les dégâts de Colère, Éclair lunaire et Feu stellaire de %d %%." % (3 * r)),
+    (5, "Parade", 1, 3127, ('spell', 3127), ""),
+    (6, "Maîtrise des armes", 5, 16538, ('fx', aura(79, 1, 1)), lambda r: "Augmente vos dégâts physiques de %d %%." % r),
+    (7, "Monstre totémique", 1, 9634, D, "Ours du berceau 20 s : PA, Agilité, Force et hâte x1,5, Massacre toutes les 4 s. Recharge 10 min.", "Massacre amélioré"),
+    (7, "Enragé amélioré", 2, 12292, ('fx', mod(11, False, ['enrage'], -60000)), lambda r: "Réduit la recharge d'Enragé de %d s." % (60 * r)),
+])
+tree(MG, 282, "Angélique", CM_M, 2, "PaladinProtection", 25780, [
+    (1, "Redoute", 5, 20127, ('vanilla', [20127, 20130, 20135, 20136, 20137]), ""),
+    (1, "Précision", 3, 20189, ('fx', aura(54, 0, 1)), lambda r: "Augmente votre chance de toucher de %d %%." % r),
+    (2, "Robustesse", 5, 16252, ('fx', aura(142, 1, 2)), lambda r: "Augmente votre armure de %d %%." % (2 * r)),
+    (2, "Défense anticipée", 5, 16254, ('fx', aura(49, 0, 1)), lambda r: "Augmente votre chance d'esquive de %d %%." % r),
+    (2, "Cri d'appel amélioré", 1, 1160, ('fx', mod(8, False, ['appel'], -5)), "Augmente de 5 % la baisse de puissance d'attaque de Cri d'appel."),
+    (3, "Force de l'esprit", 3, 16294, D, lambda r: "Convertit %d %% de votre Intelligence en Force." % (33 * r if r < 3 else 100)),
+    (3, "Armure céleste", 1, 750, ('spell', 750), "Vous permet de porter des armures en plaques."),
+    (3, "Spécialisation bouclier", 3, 20148, ('fx', aura(150, 0, 10)), lambda r: "Augmente de %d %% le montant bloqué par votre bouclier." % (10 * r)),
+    (3, "Coup de tonnerre amélioré", 2, 6343, ('fx', mod(11, False, ['ctonnerre'], -2500)), lambda r: "Réduit la recharge de Coup de tonnerre de %.1f s." % (2.5 * r)),
+    (4, "Entrave améliorée", 2, 853, ('fx', mod(11, False, ['entrave'], -1000)), lambda r: "Réduit la recharge d'Entrave de %d s." % r),
+    (4, "Bouclier de récupération", 1, 498, ('spell', M['brecup']), ""),
+    (4, "Courroux protecteur amélioré", 3, 19746, ('fx', mod(11, False, ['courroux'], -20000)), lambda r: "Réduit la recharge de Courroux protecteur de %d s." % (20 * r)),
+    (4, "Jugement du gardien", 2, 20271, D, lambda r: "Augmente le soin sur la durée de Jugement de %d %%." % (25 * r)),
+    (5, "Aura du sanctuaire", 1, 20911, ('spell', M['sanctuaire']), ""),
+    (5, "Riposte", 2, 20177, ('vanilla', [20177, 20179]), ""),
+    (5, "Égide angélique", 3, 9800, D, lambda r: "Quand vos points de vie passent sous 35 %%, un bouclier absorbe %d %% de vos PV max. Une fois par minute." % [3, 6, 10][r - 1]),
+    (6, "Spécialisation arme à une main", 5, 20196, ('vanilla', [20196, 20197, 20198, 20199, 20200]), ""),
+    (6, "Sol consacré", 1, 20924, ('fx', lambda r: [('mod', 22, True, ['consecration'], 20), ('mod', 2, True, ['consecration'], 20)]), "Augmente les dégâts et la menace de Consécration de 20 %."),
+    (7, "Bouclier totémique", 1, 9800, D, "Golem 20 s : dégâts subis -60 %, vie x1,5, Agilité et Force x1,5. Recharge 10 min.", "Aura du sanctuaire"),
+    (7, "Golem renforcé", 2, 9800, D, lambda r: "Augmente la durée de Bouclier totémique de %.1f s." % (2.5 * r)),
+])
+
 # ======================================================================== maîtres de classe (étape 2)
 import math
 TEACH_BASE = 1296                   # sort d'apprentissage vanilla (effet 36) servant de modèle
@@ -528,7 +833,7 @@ START_SPELLS = {}                   # classe -> sorts donnés à la création
 
 def teach_all(gen, template, skip):
     for sp in gen.spells:
-        if sp['id'] in skip or sp['id'] in TRIGGERED:
+        if sp['id'] in skip or sp['id'] in TRIGGERED or sp['id'] in NOTEACH:
             continue
         lv = sp['sets'].get('SpellLevel', 1)
         tid = TEACH[0]; TEACH[0] += 1
@@ -614,6 +919,7 @@ def all_ids(d):
 L = ["-- Sorts des classes custom (généré par gen_sorts.py)", "SET NAMES utf8mb4;"]
 L += NG.sql(62000, 62499)
 L += TG.sql(64500, 65499)
+L += TALG.sql(63500, 64499)
 L += trainer_sql()
 # sorts de départ du Nécromancien (remplacent Trait de l'ombre et Peau de démon)
 L.append("DELETE FROM playercreateinfo_spell WHERE class=%d AND Spell IN (686, 687);" % NECRO)
@@ -651,7 +957,7 @@ for gid, (gname, ids) in zip((900, 901, 902), [('Sniper balles', GROUPS.get('bal
     for sid in ids:
         L.append("INSERT INTO spell_group_spell (Id, SpellId) VALUES (%d, %d);" % (gid, sid))
 L.append("DELETE FROM spell_affect WHERE entry BETWEEN 62000 AND 64499;")
-for sid, e, m in AFFECT_N + AFFECT:
+for sid, e, m in AFFECT_N + AFFECT + TAL_AFFECT:
     L.append("INSERT INTO spell_affect (entry, effectId, SpellFamilyMask) VALUES (%d, %d, %d);" % (sid, e, m))
 
 # lignes de compétence (onglets du grimoire)
@@ -682,7 +988,38 @@ MET = json.load(open('/home/claude/wow/metiers/metiers_rows.json', encoding='utf
 open(OUT + 'out/SkillLineAbility.dbc', 'wb').write(
     append_rows(open('/home/claude/wow/dbc_extra/SkillLineAbility.dbc', 'rb').read(), MET['sla'] + SLA_ROWS))
 
-json.dump({'spell': NG.dbc_rows() + SG.dbc_rows() + MG.dbc_rows() + TG.dbc_rows(), 'sla': SLA_ROWS, 'skilllines': sk_new, 'rename_skill': RENAME_SKILL,
+# talents : Talent.dbc (sans les talents du druide) et TalentTab.dbc (serveur), lignes pour le client
+tt = DBC(OUT + 'srv/TalentTab.dbc')
+TT = {r[0]: r for r in tt.rows}
+META_TABS = {}
+tab_new = []
+for tab_id, nom, ic, cmask, order, bg in TAB_ROWS:
+    if tab_id in TT:
+        META_TABS[tab_id] = (nom, ic, bg)
+        continue
+    r = list(TT[302]); r[0] = tab_id; r[1] = nom
+    for c in range(2, 9): r[c] = 0
+    r[10] = ic; r[11] = 511; r[12] = cmask; r[13] = order; r[14] = bg
+    tab_new.append(r)
+rows2 = [list(r) for r in tt.rows]
+rs2 = {}
+for i, r in enumerate(rows2):
+    if r[0] in META_TABS:
+        nom, ic, bg = META_TABS[r[0]]
+        rs2[(i, 1)] = nom; rs2[(i, 14)] = bg; r[10] = ic
+tt.rows = rows2
+data, _ = rebuild(tt, {}, rs2)
+open(OUT + 'out/TalentTab.dbc', 'wb').write(append_rows(data, tab_new))
+tl = DBC(OUT + 'srv/Talent.dbc')
+keep = [r for r in tl.rows if r[1] not in (283, 281, 282)]
+data = b'WDBC' + struct.pack('<4I', len(keep) + len(TALENT_ROWS), tl.nf, tl.rs, len(tl.sb)) + \
+       b''.join(struct.pack('<%dI' % tl.nf, *[v & 0xffffffff for v in r]) for r in keep + TALENT_ROWS) + tl.sb
+open(OUT + 'out/Talent.dbc', 'wb').write(data)
+print('talents', len(TALENT_ROWS), 'sorts de talent', len(TALG.spells), 'sans effet serveur', len(DUMMY_TALENTS))
+json.dump(DUMMY_TALENTS, open(OUT + 'talents_a_coder.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=0)
+
+json.dump({'talenttab_new': tab_new, 'talenttab_meta': {str(k): v for k, v in META_TABS.items()},
+           'spell': NG.dbc_rows() + SG.dbc_rows() + MG.dbc_rows() + TG.dbc_rows() + TALG.dbc_rows(), 'sla': SLA_ROWS, 'skilllines': sk_new, 'rename_skill': RENAME_SKILL,
            'masks': {'necro': NG.masks, 'sniper': SG.masks, 'meta': MG.masks}, 'ids': {'necro': N, 'sniper': S, 'meta': M}},
           open(OUT + 'sorts_rows.json', 'w', encoding='utf-8'), ensure_ascii=False)
 open(OUT + 'sorts.sql', 'w', encoding='utf-8').write("\n".join(L) + "\n")

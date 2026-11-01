@@ -80,14 +80,21 @@ class Gen:
         sets = dict(sets or {})
         if family:
             sets.setdefault('SpellFamilyName', self.family)
-            sets.setdefault('SpellFamilyFlags', self.mask(key or name))
-        self.spells.append(dict(id=sid, base=base, name=name, desc=desc, rank=rank, tooltip=tooltip, sets=sets))
+            sets.setdefault('SpellFamilyFlags', 0)     # bit attribué à la sortie si la clé sert à un masque
+        self.spells.append(dict(id=sid, base=base, name=name, desc=desc, rank=rank, tooltip=tooltip, sets=sets,
+                                key=(key or name) if family else None))
         if key:
             self.by_key.setdefault(key, []).append(sid)
         return sid
 
     # ---------------------------------------------------------------- sorties
+    def _resolve(self):
+        for s in self.spells:
+            if s.get('key') and s['key'] in self.masks:
+                s['sets']['SpellFamilyFlags'] = self.masks[s['key']]
+
     def sql(self, first, last):
+        self._resolve()
         L = ["DELETE FROM spell_template WHERE Id BETWEEN %d AND %d;" % (first, last),
              "DELETE FROM spell_chain WHERE spell_id BETWEEN %d AND %d;" % (first, last),
              "DROP TEMPORARY TABLE IF EXISTS tmp_sp;", "CREATE TEMPORARY TABLE tmp_sp LIKE spell_template;"]
@@ -107,6 +114,7 @@ class Gen:
         return L
 
     def dbc_rows(self):
+        self._resolve()
         rows = []
         for s in self.spells:
             r = list(SPR[s['base']])
