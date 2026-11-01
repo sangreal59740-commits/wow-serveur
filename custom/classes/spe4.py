@@ -511,5 +511,94 @@ V4H += [('A4_FIRE', A_FIRE), ('A4_HEAL', A_HEAL), ('A4_KEEP', A_KEEP), ('A4_ARMU
 V4T += [('T4_COEUR', "Cœur de la nature"), ('T4_ECORCE', "Écorce protectrice"), ('T4_SYLV', "Intelligence sylvestre"),
         ('T4_LIEN_V', "Lien de vie"), ('T4_LIEN_VAM', "Lien de vie amélioré")]
 
+# ======================================================================== Voleur : Fantôme
+ROGUE = 4
+RG = Gen(8, range(36, 64))
+V4_GENS.append((RG, 55700, 55824))
+RC = Ctx(RG, 55700, {'finesse': 39}, ROGUE, ROGUE)
+R = {}
+C_FANTOME = 990590
+
+_b, _pl = sc(35, 10)
+R['lames_dmg'] = cspell(RC, 'lames_dmg', 11976, "Lames spectrales", School=5, SpellLevel=10, BaseLevel=10, DmgClass=1, SpellVisual=visual(686),
+                        **merge({'Effect1': 2, 'EffectBasePoints1': _b, 'EffectDieSides1': 1, 'EffectRealPointsPerLevel1': _pl,
+                                 'EffectImplicitTargetA1': 6, 'EffectApplyAuraName1': 0, 'EffectBonusCoefficient1': 0}, none3(2, 3)))
+R['lames'] = RC.single('lames', 'finesse', 12042, 10, "Lames spectrales",
+                       "Imprègne vos armes d'ombre pendant 30 min : chacun de vos coups inflige 35 points de dégâts d'Ombre "
+                       "supplémentaires.", 0, 0, 0, icon_sid=18174, tooltip="Coups +35 dégâts d'Ombre.", School=5, PowerType=3,
+                       ManaCost=0, DurationIndex=DUR[1800000], ProcFlags=0x4 | 0x10, ProcChance=100,
+                       **merge({'Effect1': 6, 'EffectApplyAuraName1': 42, 'EffectTriggerSpell1': R['lames_dmg'], 'EffectImplicitTargetA1': 1,
+                                'EffectBasePoints1': 0, 'EffectMiscValue1': 0}, none3(2, 3)))
+NOTEACH.add(R['lames'])
+
+_b, _pl = sc(90, 15)
+R['entaille'] = RC.single('entaille', 'finesse', 11294, 15, "Entaille d'ombre",
+                          "Une entaille chargée d'ombre : 60 % des dégâts de l'arme, puis 360 points de dégâts d'Ombre en 12 s. "
+                          "Ajoute 1 point de combo.", 0, 0, 0, icon_sid=1752, tooltip="Dégâts d'Ombre toutes les 3 s.",
+                          PowerType=3, ManaCost=45, School=5, MaxLevel=60, DurationIndex=DUR[12000],
+                          **merge(weapon(1, 60), {'EffectRealPointsPerLevel1': 0},
+                                  {'Effect3': 6, 'EffectApplyAuraName3': 3, 'EffectBasePoints3': _b, 'EffectDieSides3': 1,
+                                   'EffectRealPointsPerLevel3': _pl, 'EffectImplicitTargetA3': 6, 'EffectAmplitude3': 3000,
+                                   'EffectMiscValue3': 0, 'EffectTriggerSpell3': 0}))
+NOTEACH.add(R['entaille'])
+_b, _pl = sc(142, 20)
+R['murmure'] = RC.single('murmure', 'finesse', 10894, 20, "Murmure d'ombre",
+                         "Murmure une malédiction d'ombre : 852 points de dégâts d'Ombre en 18 s.", 0, 0, 0, icon_sid=589,
+                         tooltip="Dégâts d'Ombre toutes les 3 s.", PowerType=3, ManaCost=30, School=5, MaxLevel=60, RangeIndex=RANGE[20],
+                         EffectBasePoints1=_b, EffectRealPointsPerLevel1=_pl, EffectBonusCoefficient1=0)
+NOTEACH.add(R['murmure'])
+_b, _pl = sc(60, 25)
+R['supplice'] = RC.single('supplice', 'finesse', 11275, 25, "Supplice",
+                          "Coup de grâce qui inflige des dégâts d'Ombre en 15 s, selon les points de combo : 1 point : 400, "
+                          "2 points : 500, 3 points : 600, 4 points : 700, 5 points : 800.", 0, 0, 0, icon_sid=1943,
+                          tooltip="Dégâts d'Ombre toutes les 3 s.", PowerType=3, ManaCost=25, School=5, MaxLevel=60,
+                          DurationIndex=DUR[15000], EffectBasePoints1=_b, EffectRealPointsPerLevel1=_pl, EffectPointsPerComboPoint1=20.0,
+                          EffectAmplitude1=3000, EffectMechanic1=0, Mechanic=0, **none3(2, 3))
+NOTEACH.add(R['supplice'])
+
+a['fant_frappe'] = cspell(RC, 'k_fantome', 11976, "Frappe d'ombre", School=5, **merge(weapon(1, 100), dmg(2, 40)))
+creature(C_FANTOME, "Fantôme", 10935, 1.0, 1, 0.3, 0.4, 0.8, 6, [(a['fant_frappe'], 1, 1000, 3000)])
+R['spectre'] = RC.single('spectre', 'finesse', 12740, 20, "Spectre",
+                         "Invoque un fantôme qui combat à vos côtés pendant 15 s.", 120000, 0, 0, icon_sid=19028,
+                         PowerType=3, ManaCost=25, School=5, DurationIndex=DUR[15000], CastingTimeIndex=1,
+                         EffectMiscValue1=C_FANTOME, EffectBasePoints1=0, EffectDieSides1=1, EffectImplicitTargetA1=1, EffectRadiusIndex1=RADIUS[3])
+NOTEACH.add(R['spectre'])
+R['horde'] = RC.single('horde', 'finesse', 12740, 30, "Horde spectrale",
+                       "Invoque 3 fantômes qui combattent à vos côtés pendant 12 s.", 120000, 0, 0, icon_sid=19028,
+                       PowerType=3, ManaCost=40, School=5, DurationIndex=DUR[12000], CastingTimeIndex=1,
+                       EffectMiscValue1=C_FANTOME, EffectBasePoints1=2, EffectDieSides1=1, EffectImplicitTargetA1=1, EffectRadiusIndex1=RADIUS[3])
+NOTEACH.add(R['horde'])
+R['crit'] = cspell(RC, 'r_crit', 12042, "Pénombre", DurationIndex=DUR[-1], **merge(aur(1, 52, 0, 1), none3(2, 3)))
+R['forme'] = RC.single('forme', 'finesse', 12042, 40, "Forme spectrale",
+                       "Vous devenez à demi spectral pendant 20 s : dégâts +30 %, Lames spectrales infligent le double de dégâts et "
+                       "la recharge de Spectre est remise à zéro.", 180000, 0, 0, icon_sid=19028,
+                       tooltip="Dégâts +30 %, Lames spectrales x2.", PowerType=3, ManaCost=0, School=5, DurationIndex=DUR[20000],
+                       **merge(aur(1, 79, 127, 30), aur(2, 108, 0, 100), aur(3, 4, 0, 1)))
+AFFECT.append((R['forme'], 1, RG.mask('lames_dmg')))
+NOTEACH.add(R['forme'])
+
+tree(RG, 411, "Fantôme", CBIT[ROGUE], 3, "RogueSubtlety", 19028, [
+    (1, "Lames spectrales", 1, 18174, ('spell', R['lames']), "Vos coups infligent 35 points de dégâts d'Ombre supplémentaires pendant 30 min."),
+    (1, "Froid du néant", 5, 18271, ('fx', aura(79, 32, 2)), lambda r: "Augmente vos dégâts d'Ombre de %d %%." % (2 * r)),
+    (2, "Entaille d'ombre", 1, 1752, ('spell', R['entaille']), "60 % des dégâts de l'arme et 360 points de dégâts d'Ombre en 12 s. 1 point de combo."),
+    (2, "Lames affûtées", 5, 18174, ('fx', mod(0, True, ['lames_dmg'], 5)), lambda r: "Augmente les dégâts de Lames spectrales de %d %%." % (5 * r)),
+    (3, "Spectre", 1, 19028, ('spell', R['spectre']), "Invoque un fantôme pendant 15 s. Recharge 2 min."),
+    (3, "Murmure d'ombre", 1, 589, ('spell', R['murmure']), "852 points de dégâts d'Ombre en 18 s, à 20 m."),
+    (3, "Pas de l'ombre", 3, 13750, ('fx', aura(49, 0, 1)), lambda r: "Augmente votre chance d'esquiver de %d %%." % r),
+    (4, "Supplice", 1, 1943, ('spell', R['supplice']), "Coup de grâce : dégâts d'Ombre sur 15 s selon les points de combo."),
+    (4, "Hantise", 3, 589, ('fx', lambda r: [('mod', 22, True, ['entaille', 'supplice', 'murmure'], 10 * r)]),
+     lambda r: "Augmente les dégâts sur la durée d'Entaille d'ombre, de Murmure d'ombre et de Supplice de %d %%." % (10 * r)),
+    (5, "Horde spectrale", 1, 19028, ('spell', R['horde']), "Invoque 3 fantômes pendant 12 s. Recharge 2 min."),
+    (5, "Pénombre", 3, 14278, D, lambda r: "Augmente de %d %% vos chances de coup critique contre les cibles qui ne vous attaquent pas." % r),
+    (6, "Lien spectral", 2, 19028, ('fx', mod(1, False, ['spectre', 'horde'], 3000)), lambda r: "Vos fantômes restent %d s de plus." % (3 * r)),
+    (6, "Âme errante", 5, 14278, ('fx', aura(87, 127, -1)), lambda r: "Réduit les dégâts que vous subissez de %d %%." % r),
+    (7, "Forme spectrale", 1, 19028, ('spell', R['forme']), "20 s : dégâts +30 %, Lames spectrales x2, recharge de Spectre remise à zéro. Recharge 3 min."),
+    (7, "Spectre durable", 2, 19028, ('fx', mod(1, False, ['forme'], 2500)), lambda r: "Augmente la durée de Forme spectrale de %.1f s." % (2.5 * r)),
+])
+for _sid in RC.sla:
+    V4_SLA.append((ROGUE,) + _sid)
+V4H += [('R4_CRIT', [R['crit']]), ('R4_FORME', [R['forme']]), ('R4_SPECTRE', [R['spectre']])]
+V4T += [('T4_PENOMBRE', "Pénombre")]
+
 # ======================================================================== fin : on rend la main au générateur principal
 TALG, TAL_ID = TALG_MAIN, TAL_ID_MAIN

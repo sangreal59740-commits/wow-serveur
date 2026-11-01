@@ -427,6 +427,12 @@ namespace cmangos_module
             if (In(K4_ABSORB, K4_ABSORB_N, id))
                 player->CastSpell(player, K4_ABSORB2[0], TRIGGERED_OLD_TRIGGERED);
         }
+        else if (cls == CLASS_ROGUE)
+        {
+            // Forme spectrale : recharge de Spectre remise à zéro
+            if (In(R4_FORME, R4_FORME_N, id))
+                player->RemoveSpellCooldown(*sSpellTemplate.LookupEntry<SpellEntry>(R4_SPECTRE[0]), true);
+        }
         else if (cls == CLASS_MAGE)
         {
             // Lien de vie : un seul allié lié à la fois
@@ -497,6 +503,16 @@ namespace cmangos_module
                 player->CastSpell(player, K4_INCANT[0], TRIGGERED_OLD_TRIGGERED);
             else if (!incant && player->HasAura(K4_INCANT[0]))
                 player->RemoveAurasDueToSpell(K4_INCANT[0]);
+        }
+        else if (cls == CLASS_ROGUE)
+        {
+            // Pénombre : critique contre une cible qui ne vous attaque pas
+            int32 crit = 0;
+            if (uint32 r = TRank(player, T4_PENOMBRE, T4_PENOMBRE_N))
+                if (Unit* v = player->GetVictim())
+                    if (v->GetVictim() != player)
+                        crit = int32(r);
+            SetHiddenAura(player, R4_CRIT[0], crit, 0);
         }
         else if (cls == CLASS_MAGE)
         {

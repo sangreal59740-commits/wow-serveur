@@ -359,6 +359,12 @@ namespace classes_data
     static const uint32_t A4_LIEN_N = 1;
     static const uint32_t A4_LIEN_SOIN[] = { 55557 };
     static const uint32_t A4_LIEN_SOIN_N = 1;
+    static const uint32_t R4_CRIT[] = { 55708 };
+    static const uint32_t R4_CRIT_N = 1;
+    static const uint32_t R4_FORME[] = { 55709 };
+    static const uint32_t R4_FORME_N = 1;
+    static const uint32_t R4_SPECTRE[] = { 55706 };
+    static const uint32_t R4_SPECTRE_N = 1;
     static const uint32_t T4_INSTINCT[] = { 56038 };
     static const uint32_t T4_INSTINCT_N = 1;
     static const uint32_t T4_FUREUR_AV[] = { 56052, 56053, 56054, 56055, 56056 };
@@ -391,4 +397,6 @@ namespace classes_data
     static const uint32_t T4_LIEN_V_N = 0;
     static const uint32_t T4_LIEN_VAM[] = { 56166, 56167 };
     static const uint32_t T4_LIEN_VAM_N = 2;
+    static const uint32_t T4_PENOMBRE[] = { 56184, 56185, 56186 };
+    static const uint32_t T4_PENOMBRE_N = 3;
 }
