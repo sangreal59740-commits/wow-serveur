@@ -164,9 +164,358 @@ N['tempete'] = n_single('tempete', 'mag', 12042, 60, "Tempête du néant",
                         EffectApplyAuraName2=108, EffectMiscValue2=11, EffectBasePoints2=-51, EffectDieSides2=1,
                         EffectApplyAuraName3=79, EffectMiscValue3=126, EffectBasePoints3=19, EffectDieSides3=1,
                         DurationIndex=DUR[15000])
-AFFECT = []        # (sort, effet, masque)
 _m = NG.masks['trait'] | NG.masks['eclair'] | NG.masks['boule'] | NG.masks['tirombre']
-AFFECT += [(N['tempete'], 0, _m), (N['tempete'], 1, _m)]
+AFFECT_N = [(N['tempete'], 0, _m), (N['tempete'], 1, _m)]
+
+# ======================================================================== outils communs Sniper / Métamorphe
+TRIGGERED = set()                   # sorts déclenchés (ni grimoire, ni maître de classe)
+GROUPS = {}                         # groupe d'exclusivité -> [sorts]
+
+class Ctx:
+    def __init__(self, gen, first, skills, mcls, cls):
+        self.g, self.next, self.skills, self.mcls, self.cls, self.sla = gen, first, skills, mcls, cls, []
+    def nid(self):
+        self.next += 1
+        return self.next - 1
+    def ranked(self, key, tree, base, lv0, nranks, name, mpct, cd, cast, per_rank, icon_sid=None):
+        ids = []
+        for k, L in enumerate(rank_levels(lv0, nranks)):
+            sets = common(L, cd, cast, mpct, icon_sid, base_cls=self.mcls)
+            extra, desc, tip = per_rank(L, k)
+            sets.update(extra)
+            ids.append(self.g.add(self.nid(), base, name, desc, "Rang %d" % (k + 1), tooltip=tip, key=key, sets=sets))
+            self.sla.append((self.skills[tree], ids[-1]))
+        self.g.chain_ranks(ids)
+        return ids
+    def single(self, key, tree, base, lv, name, desc, cd, cast, mpct, icon_sid=None, tooltip='', **sets):
+        s = common(lv, cd, cast, mpct, icon_sid, base_cls=self.mcls)
+        s.update(sets)
+        sid = self.g.add(self.nid(), base, name, desc, "", tooltip=tooltip, key=key, sets=s)
+        self.sla.append((self.skills[tree], sid))
+        return sid
+    def trig(self, key, base, name, desc, tooltip='', **sets):
+        sid = self.g.add(self.nid(), base, name, desc, "", tooltip=tooltip, key=key, sets=sets)
+        TRIGGERED.add(sid)
+        return sid
+
+def rv(v, L):
+    return max(1, round(rank_value(v, L)))
+
+PROC_RANGED = 0x40 | 0x100          # tir automatique et tirs à distance réussis
+
+# ======================================================================== Sniper
+SG = Gen(9, range(32, 64))          # famille chasseur
+SC = Ctx(SG, 62500, {'tir': 903, 'bes': 904, 'mec': 905}, 3, SNIPER)
+S = {}
+RANGED = {'RangeIndex': 114}
+
+S['arcanes'] = SC.ranked('arcanes', 'tir', 3044, 1, 9, "Tir des arcanes", 6, 5000, 0, lambda L, k: (
+    {'EffectBasePoints1': rv(170, L) - 1, 'EffectDieSides1': 1, 'EffectBonusCoefficient1': 0, 'EffectBonusCoefficientFromAP1': 0.15},
+    "Un tir instantané qui inflige %d points de dégâts d'Arcanes." % rv(170, L), ''))
+S['marque'] = SC.ranked('marque', 'tir', 1130, 2, 9, "Marque", 4, 1000, 0, lambda L, k: (
+    {'EffectBasePoints2': rv(110, L) - 1, 'EffectDieSides2': 1, 'DurationIndex': DUR[120000]},
+    "Marque la cible pendant 2 min : les attaques à distance contre elle gagnent %d points de puissance d'attaque." % rv(110, L),
+    "Marqué."), icon_sid=1130)
+S['saignant'] = SC.ranked('saignant', 'tir', 19503, 4, 8, "Tir saignant", 5, 6000, 0, lambda L, k: (
+    dict(RANGED, EffectBasePoints1=49, EffectApplyAuraName2=3, School=0, EffectBasePoints2=rv(180, L) // 5 - 1, EffectDieSides2=1,
+         EffectAmplitude2=1000, DurationIndex=DUR[5000], EffectMechanic2=15, Mechanic=0, EffectBonusCoefficientFromAP2=0.01),
+    "Inflige 50 %% des dégâts de l'arme et fait saigner la cible : %d points de dégâts en 5 s." % (rv(180, L) // 5 * 5),
+    "Saigne."), icon_sid=1978)
+S['fauve'] = SC.single('fauve', 'tir', 13165, 8, "Aspect du fauve",
+    "Augmente votre puissance d'attaque et vos dégâts physiques de 10 %. Un seul aspect actif à la fois.", 1000, 0, 5,
+    tooltip="Puissance d'attaque et dégâts physiques augmentés de 10 %.",
+    Effect1=6, EffectApplyAuraName1=166, EffectBasePoints1=9, EffectDieSides1=1, EffectImplicitTargetA1=1,
+    Effect2=6, EffectApplyAuraName2=167, EffectBasePoints2=9, EffectDieSides2=1, EffectImplicitTargetA2=1, EffectTriggerSpell2=0,
+    Effect3=6, EffectApplyAuraName3=79, EffectMiscValue3=1, EffectBasePoints3=9, EffectDieSides3=1, EffectImplicitTargetA3=1,
+    ProcFlags=0, ProcChance=101, DurationIndex=DUR[-1])
+GROUPS.setdefault('aspect', []).append(S['fauve'])
+S['glace'] = SC.single('glace', 'mec', 853, 14, "Piège de glace",
+    "Gèle instantanément la cible pendant 1 s. Les dégâts ne brisent pas la glace.", 10000, 0, 4, icon_sid=13809,
+    tooltip="Gelé.", DurationIndex=DUR[1000], RangeIndex=114)
+S['long'] = SC.ranked('long', 'tir', 19434, 18, 7, "Tir long", 8, 10000, 4000, lambda L, k: (
+    dict(RANGED, Effect1=31, EffectBasePoints1=119, EffectDieSides1=1,
+         Effect2=2, EffectBasePoints2=rv(550, L) - 1, EffectDieSides2=1, EffectImplicitTargetA2=6, School=0,
+         EffectBonusCoefficientFromAP2=0.15,
+         Effect3=6, EffectApplyAuraName3=3, EffectBasePoints3=rv(200, L) // 5 - 1, EffectDieSides3=1, EffectImplicitTargetA3=6,
+         EffectAmplitude3=1000, DurationIndex=DUR[5000], EffectBonusCoefficientFromAP3=0.01),
+    "Un tir puissant : 120 %% des dégâts de l'arme plus %d, puis %d points de dégâts en 5 s." % (rv(550, L), rv(200, L) // 5 * 5),
+    "Blessure profonde."))
+
+# balles : buff de 10 s, recharge partagée de 30 s, une seule active (groupe exclusif)
+BULLET_CAT = 1250
+def bullet(key, lv0, nranks, name, icon_sid, dmg_pct, dot_name, dot_base, dot_school, dot60, dot_extra, desc_fn, proc_chance=100):
+    def per(L, k):
+        tick = max(1, rv(dot60, L) // 5)
+        ds = dict(SpellLevel=L, School=dot_school, Effect1=6, EffectApplyAuraName1=3,
+                  EffectBasePoints1=tick - 1, EffectDieSides1=1, EffectAmplitude1=1000, EffectImplicitTargetA1=6,
+                  DurationIndex=DUR[5000], ManaCost=0, RecoveryTime=0, CastingTimeIndex=1, EffectBonusCoefficientFromAP1=0.01,
+                  EffectBonusCoefficient1=0, Category=0, CategoryRecoveryTime=0,
+                  Effect2=0, EffectApplyAuraName2=0, Effect3=0, EffectApplyAuraName3=0)
+        ds.update(dot_extra)
+        d = SC.trig(key + '_dot', dot_base, dot_name, "", tooltip="%d points de dégâts %s par seconde." % (tick, ecole(dot_school)), **ds)
+        sets = {'Effect1': 6, 'EffectApplyAuraName1': 79, 'EffectMiscValue1': 1, 'EffectBasePoints1': dmg_pct - 1,
+                'EffectDieSides1': 1, 'EffectImplicitTargetA1': 1,
+                'Effect2': 6, 'EffectApplyAuraName2': 42, 'EffectTriggerSpell2': d, 'EffectImplicitTargetA2': 1,
+                'EffectBasePoints2': 0, 'EffectDieSides2': 1, 'Effect3': 0, 'EffectApplyAuraName3': 0,
+                'ProcFlags': PROC_RANGED, 'ProcChance': proc_chance, 'ProcCharges': 0, 'DurationIndex': DUR[10000],
+                'Category': BULLET_CAT, 'CategoryRecoveryTime': 30000, 'RecoveryTime': 0}
+        if dmg_pct <= 0:
+            sets.update({'Effect1': 0, 'EffectApplyAuraName1': 0})
+        return sets, desc_fn(L, tick), name + " chargée."
+    ids = SC.ranked(key, 'tir', 13165, lv0, nranks, name, 6, 0, 0, per, icon_sid=icon_sid)
+    GROUPS.setdefault('balle', []).extend(ids)
+    return ids
+
+S['feu'] = bullet('feu', 10, 8, "Balle de feu", 13795, 25, "Brûlure", 133, 2, 60, {'StackAmount': 3},
+    lambda L, t: "Pendant 10 s, vos dégâts physiques sont augmentés de 25 %% et chaque tir brûle la cible : %d points de "
+                 "dégâts de Feu par seconde pendant 5 s, cumulable 3 fois. Recharge partagée avec les autres balles." % t)
+S['eau'] = bullet('eau', 20, 6, "Balle d'eau", 10497, 0, "Drain aqueux", 18265, 3, 120, {'EffectApplyAuraName1': 53},
+    lambda L, t: "Pendant 10 s, chaque tir draine la vie de la cible : %d points de dégâts de Nature par seconde pendant 5 s, "
+                 "qui vous soignent. Recharge partagée avec les autres balles." % t)
+S['givre'] = bullet('givre', 30, 5, "Balle de givre", 116, 0, "Morsure du givre", 116, 4, 50,
+    {'StackAmount': 3, 'Effect2': 6, 'EffectApplyAuraName2': 33, 'EffectBasePoints2': -31, 'EffectDieSides2': 1,
+     'EffectImplicitTargetA2': 6, 'EffectAmplitude2': 0},
+    lambda L, t: "Pendant 10 s, chaque tir ralentit la cible de 30 %% et lui inflige %d points de dégâts de Givre par seconde "
+                 "pendant 5 s, cumulable 3 fois. Recharge partagée avec les autres balles." % t)
+S['roche'] = bullet('roche', 50, 3, "Balle de roche", 8071, 10, "Éclat de roche", 853, 3, 100,
+    {'StackAmount': 3, 'Effect2': 6, 'EffectApplyAuraName2': 12, 'EffectBasePoints2': 0, 'EffectDieSides2': 1,
+     'EffectImplicitTargetA2': 6, 'EffectAmplitude2': 0, 'DurationIndex': DUR[5000]},
+    lambda L, t: "Pendant 10 s, vos dégâts physiques sont augmentés de 10 %% et chaque tir a 25 %% de chance d'étourdir la "
+                 "cible et de lui infliger %d points de dégâts de Nature par seconde pendant 5 s, cumulable 3 fois." % t,
+    proc_chance=25)
+
+S['bombe'] = SC.ranked('bombe', 'mec', 2120, 34, 5, "Bombe méca", 12, 10000, 1000, lambda L, k: (
+    {'Effect2': 0, 'EffectApplyAuraName2': 0, 'EffectBasePoints1': rv(220, L) - 1, 'EffectDieSides1': rv(280, L) - rv(220, L) + 1,
+     'EffectRadiusIndex1': RADIUS[20], 'EffectBonusCoefficient1': 0, 'EffectBonusCoefficient2': 0,
+     'EffectBonusCoefficientFromAP1': 0.10, 'School': 2},
+    "Lance une bombe qui explose dans la zone ciblée : %d à %d points de dégâts de Feu dans un rayon de 20 mètres." % (rv(220, L), rv(280, L)),
+    ''), icon_sid=4068)
+S['multiple'] = SC.ranked('multiple', 'tir', 2643, 36, 4, "Tir multiple", 9, 6000, 0, lambda L, k: (
+    dict(RANGED, Effect1=31, EffectBasePoints1=69, EffectDieSides1=1, EffectImplicitTargetA1=24, EffectRadiusIndex1=RADIUS[20],
+         EffectChainTarget1=0, Effect2=6, EffectApplyAuraName2=3, EffectBasePoints2=rv(80, L) // 5 - 1, EffectDieSides2=1,
+         EffectImplicitTargetA2=24, EffectRadiusIndex2=RADIUS[20], EffectAmplitude2=1000, DurationIndex=DUR[5000],
+         EffectBonusCoefficientFromAP2=0.01, School=0),
+    "Tire sur tous les ennemis devant vous à moins de 20 mètres : 70 %% des dégâts de l'arme plus %d points de dégâts en 5 s." % (rv(80, L) // 5 * 5),
+    "Blessé."))
+S['cri'] = SC.ranked('cri', 'bes', 1160, 38, 4, "Cri bestial", 10, 10000, 0, lambda L, k: (
+    {'EffectApplyAuraName1': 101, 'EffectMiscValue1': 1, 'EffectBasePoints1': -16, 'EffectDieSides1': 1,
+     'EffectRadiusIndex1': RADIUS[20],
+     'Effect2': 2, 'EffectBasePoints2': rv(150, L) - 1, 'EffectDieSides2': rv(180, L) - rv(150, L) + 1,
+     'EffectImplicitTargetA2': 22, 'EffectImplicitTargetB2': 15, 'EffectRadiusIndex2': RADIUS[20], 'EffectBonusCoefficientFromAP2': 0.10,
+     'Effect3': 6, 'EffectApplyAuraName3': 3, 'EffectBasePoints3': rv(80, L) // 6 - 1, 'EffectDieSides3': 1,
+     'EffectImplicitTargetA3': 22, 'EffectImplicitTargetB3': 15, 'EffectRadiusIndex3': RADIUS[20], 'EffectAmplitude3': 1000,
+     'EffectBonusCoefficientFromAP3': 0.005, 'DurationIndex': DUR[6000], 'School': 0},
+    "Un cri terrifiant : les ennemis à moins de 20 mètres subissent %d à %d points de dégâts et %d points de dégâts en 6 s, "
+    "et leur armure est réduite de 15 %% pendant 6 s." % (rv(150, L), rv(180, L), rv(80, L) // 6 * 6),
+    "Armure réduite."), icon_sid=1160)
+S['precision'] = SC.ranked('precision', 'tir', 19434, 42, 4, "Tir de précision", 9, 15000, 3000, lambda L, k: (
+    dict(RANGED, Effect1=31, EffectBasePoints1=139, EffectDieSides1=1,
+         Effect2=6, EffectApplyAuraName2=3, EffectBasePoints2=rv(200, L) // 5 - 1, EffectDieSides2=1, EffectImplicitTargetA2=6,
+         EffectAmplitude2=1000, DurationIndex=DUR[5000], EffectMechanic2=15, School=0, EffectBonusCoefficientFromAP2=0.01),
+    "Un tir précis : 140 %% des dégâts de l'arme et %d points de dégâts de saignement en 5 s." % (rv(200, L) // 5 * 5),
+    "Saigne."), icon_sid=19434)
+S['bestial'] = SC.ranked('bestial', 'bes', 19503, 46, 3, "Tir bestial", 7, 5000, 0, lambda L, k: (
+    dict(RANGED, EffectBasePoints1=69, EffectApplyAuraName2=3, School=3, EffectBasePoints2=rv(60, L) // 5 - 1,
+         EffectDieSides2=1, EffectAmplitude2=1000, DurationIndex=DUR[5000], StackAmount=3, Mechanic=0, EffectMechanic2=0,
+         EffectBonusCoefficientFromAP2=0.01),
+    "Inflige 70 %% des dégâts de l'arme et %d points de dégâts de Nature en 5 s, cumulable 3 fois." % (rv(60, L) // 5 * 5),
+    "Empoisonné."), icon_sid=19574)
+S['explosif'] = SC.ranked('explosif', 'tir', 2643, 52, 2, "Tir explosif", 10, 10000, 0, lambda L, k: (
+    dict(RANGED, Effect1=31, EffectBasePoints1=99, EffectDieSides1=1, EffectChainTarget1=0, EffectImplicitTargetA1=6,
+         Effect2=2, EffectBasePoints2=rv(120, L) - 1, EffectDieSides2=rv(150, L) - rv(120, L) + 1, EffectImplicitTargetA2=6,
+         EffectChainTarget2=6, EffectBonusCoefficientFromAP2=0.10,
+         Effect3=6, EffectApplyAuraName3=3, EffectBasePoints3=rv(100, L) // 5 - 1, EffectDieSides3=1, EffectImplicitTargetA3=6,
+         EffectChainTarget3=6, EffectAmplitude3=1000, DurationIndex=DUR[5000], EffectBonusCoefficientFromAP3=0.01, School=2),
+    "Inflige 100 %% des dégâts de l'arme, puis la charge explose : %d à %d points de dégâts de Feu et %d en 5 s à la cible "
+    "et aux ennemis proches." % (rv(120, L), rv(150, L), rv(100, L) // 5 * 5), "Brûle."), icon_sid=13813)
+S['dynamite'] = SC.ranked('dynamite', 'mec', 2120, 54, 2, "Dynamite", 12, 30000, 2000, lambda L, k: (
+    {'Effect1': 31, 'EffectBasePoints1': 99, 'EffectDieSides1': 1, 'DmgClass': 3, 'EffectRadiusIndex1': RADIUS[8],
+     'Effect2': 6, 'EffectApplyAuraName2': 3, 'EffectBasePoints2': rv(100, L) // 5 - 1, 'EffectDieSides2': 1,
+     'EffectImplicitTargetA2': 16, 'EffectImplicitTargetB2': 0, 'EffectRadiusIndex2': RADIUS[8], 'EffectAmplitude2': 1000,
+     'DurationIndex': DUR[5000], 'EffectBonusCoefficient1': 0, 'EffectBonusCoefficient2': 0, 'EffectBonusCoefficientFromAP2': 0.01,
+     'EquippedItemClass': 2, 'EquippedItemSubClassMask': 1 << 3, 'School': 2},
+    "Lance un bâton de dynamite : 100 %% des dégâts de l'arme à tous les ennemis de la zone et %d points de dégâts de Feu en 5 s." % (rv(100, L) // 5 * 5),
+    "Brûle."), icon_sid=4062)
+S['meca'] = SC.single('meca', 'mec', 13165, 22, "Aspect méca",
+    "Augmente votre armure de 25 % et réduit le temps d'incantation de vos sorts de 0,5 s. Un seul aspect actif à la fois.",
+    1000, 0, 5, icon_sid=12749, tooltip="Armure augmentée, incantations accélérées.",
+    Effect1=6, EffectApplyAuraName1=101, EffectMiscValue1=1, EffectBasePoints1=24, EffectDieSides1=1, EffectImplicitTargetA1=1,
+    Effect2=6, EffectApplyAuraName2=107, EffectMiscValue2=10, EffectBasePoints2=-501, EffectDieSides2=1, EffectImplicitTargetA2=1,
+    EffectTriggerSpell2=0, ProcFlags=0, ProcChance=101, DurationIndex=DUR[-1])
+GROUPS['aspect'].append(S['meca'])
+S['animal'] = SC.single('animal', 'bes', 13165, 28, "Aspect animal",
+    "Votre familier inflige 15 % de dégâts en plus et son armure est augmentée de 25 %. Un seul aspect actif à la fois.",
+    1000, 0, 5, icon_sid=13161, tooltip="Familier renforcé.",
+    Effect1=6, EffectApplyAuraName1=79, EffectMiscValue1=127, EffectBasePoints1=14, EffectDieSides1=1, EffectImplicitTargetA1=5,
+    Effect2=6, EffectApplyAuraName2=101, EffectMiscValue2=1, EffectBasePoints2=24, EffectDieSides2=1, EffectImplicitTargetA2=5,
+    EffectTriggerSpell2=0, ProcFlags=0, ProcChance=101, DurationIndex=DUR[-1])
+GROUPS['aspect'].append(S['animal'])
+AFFECT = []
+AFFECT.append((S['meca'], 1, sum(v for v in SG.masks.values())))
+
+# sorts vanilla du chasseur ouverts au Sniper (familier, Feindre la mort) : (sort, niveau, onglet)
+SNIPER_VANILLA = [(1515, 10, 'bes'), (883, 10, 'bes'), (2641, 10, 'bes'), (982, 10, 'bes'), (6991, 10, 'bes'),
+                  (5149, 10, 'bes'), (5384, 22, 'tir')]
+
+# ======================================================================== Métamorphe
+MG = Gen(7, range(36, 64))          # famille druide
+MC = Ctx(MG, 63000, {'tot': 573, 'dru': 134, 'ang': 574}, 7, META)
+M = {}
+NOFORM = {'Stances': 0, 'StancesNot': 0, 'PowerType': 0}
+SHOCK_CAT = 1260
+
+def mr(key, tree, base, lv0, n, name, mpct, cd, cast, per, icon_sid=None):
+    def per2(L, k):
+        sets, d, t = per(L, k)
+        out = dict(NOFORM); out.update(sets)
+        return out, d, t
+    return MC.ranked(key, tree, base, lv0, n, name, mpct, cd, cast, per2, icon_sid=icon_sid)
+
+def ms(key, tree, base, lv, name, desc, cd, cast, mpct, icon_sid=None, tooltip='', **sets):
+    out = dict(NOFORM); out.update(sets)
+    return MC.single(key, tree, base, lv, name, desc, cd, cast, mpct, icon_sid=icon_sid, tooltip=tooltip, **out)
+
+def lohi(a, b, L):
+    lo, hi = rv(a, L), rv(b, L)
+    return lo, hi, lo - 1, hi - lo + 1
+
+def _terre(L, k):
+    lo, hi, bp, ds = lohi(480, 510, L)
+    return ({'EffectBasePoints1': bp, 'EffectDieSides1': ds, 'EffectBonusCoefficient1': 0.43, 'EffectBonusCoefficientFromAP1': 0.15,
+             'Category': SHOCK_CAT, 'CategoryRecoveryTime': 10000, 'RecoveryTime': 0, 'DurationIndex': DUR[2000]},
+            "Inflige %d à %d points de dégâts de Nature et interrompt l'incantation de la cible pendant 2 s. "
+            "Recharge partagée avec Horion de feu." % (lo, hi), '')
+M['terre'] = mr('terre', 'tot', 8042, 1, 9, "Horion de terre", 9, 0, 0, _terre)
+M['remous'] = mr('remous', 'tot', 774, 1, 9, "Remous", 8, 3000, 0, lambda L, k: (
+    {'EffectBasePoints1': rv(250, L) // 10 - 1, 'EffectDieSides1': 1, 'EffectAmplitude1': 1000, 'DurationIndex': DUR[10000],
+     'EffectBonusCoefficient1': 0.067},
+    "Rend %d points de vie à la cible en 10 s." % (rv(250, L) // 10 * 10), "Récupère des points de vie."), icon_sid=774)
+M['lien'] = mr('lien', 'tot', 21562, 2, 9, "Lien spirituel", 12, 0, 0, lambda L, k: (
+    {'EffectBasePoints1': rv(54, L) - 1, 'EffectDieSides1': 1, 'Reagent1': 0, 'ReagentCount1': 0, 'DurationIndex': DUR[7200000]},
+    "Augmente l'Endurance de tous les membres du groupe de %d pendant 2 h." % rv(54, L), "Endurance augmentée."), icon_sid=21562)
+M['tonnerre'] = mr('tonnerre', 'tot', 8921, 4, 8, "Tonnerre", 10, 1000, 0, lambda L, k: (
+    {'Effect1': 6, 'EffectApplyAuraName1': 101, 'EffectMiscValue1': 1, 'EffectBasePoints1': -11, 'EffectDieSides1': 1,
+     'Effect2': 6, 'EffectApplyAuraName2': 3, 'EffectBasePoints2': rv(300, L) // 10 - 1, 'EffectDieSides2': 1,
+     'EffectAmplitude2': 1000, 'DurationIndex': DUR[10000], 'School': 3, 'EffectBonusCoefficient2': 0.067,
+     'EffectBonusCoefficientFromAP2': 0.02, 'EffectBonusCoefficient1': 0},
+    "Inflige %d points de dégâts de Nature en 10 s et réduit l'armure de la cible de 10 %%." % (rv(300, L) // 10 * 10),
+    "Armure réduite, subit des dégâts de Nature."), icon_sid=403)
+M['feu'] = mr('hfeu', 'dru', 8050, 6, 8, "Horion de feu", 9, 0, 0, lambda L, k: (
+    {'EffectBasePoints1': rv(280, L) - 1, 'EffectDieSides1': rv(300, L) - rv(280, L) + 1,
+     'EffectBasePoints2': rv(200, L) // 10 - 1, 'EffectDieSides2': 1, 'EffectAmplitude2': 1000, 'DurationIndex': DUR[10000],
+     'EffectBonusCoefficient1': 0.43, 'EffectBonusCoefficientFromAP1': 0.15, 'EffectBonusCoefficient2': 0.067,
+     'EffectBonusCoefficientFromAP2': 0.02, 'Category': SHOCK_CAT, 'CategoryRecoveryTime': 10000, 'RecoveryTime': 0},
+    "Inflige %d à %d points de dégâts de Feu puis %d en 10 s. Recharge partagée avec Horion de terre." % (rv(280, L), rv(300, L), rv(200, L) // 10 * 10),
+    "Brûle."))
+M['perçant'] = ms('percant', 'ang', 355, 8, "Cri perçant", "Provoque la cible, qui vous attaque pendant 3 s.", 3000, 0, 3,
+                  icon_sid=355, tooltip="Provoqué.", Category=0, CategoryRecoveryTime=0)
+M['appel'] = ms('appel', 'ang', 1160, 10, "Cri d'appel",
+                "Réduit de 10 % la puissance d'attaque des ennemis à moins de 20 mètres pendant 6 s.", 15000, 0, 5,
+                tooltip="Puissance d'attaque réduite.", EffectApplyAuraName1=166, EffectBasePoints1=-11, EffectDieSides1=1,
+                EffectRadiusIndex1=RADIUS[20], DurationIndex=DUR[6000])
+M['recup'] = mr('recup', 'tot', 8936, 12, 7, "Récupération", 14, 3000, 2000, lambda L, k: (
+    {'EffectBasePoints1': rv(320, L) - 1, 'EffectDieSides1': rv(360, L) - rv(320, L) + 1, 'EffectBonusCoefficient1': 0.57,
+     'EffectBasePoints2': rv(85, L) // 5 - 1, 'EffectDieSides2': 1, 'EffectAmplitude2': 1000, 'DurationIndex': DUR[5000],
+     'EffectBonusCoefficient2': 0.066},
+    "Rend %d à %d points de vie à la cible, puis %d en 5 s." % (rv(320, L), rv(360, L), rv(85, L) // 5 * 5), "Récupère."))
+M['massive'] = ms('massive', 'ang', 25780, 14, "Armure massive",
+                  "Double la menace que vous générez et augmente votre armure de 10 %. Buff de spé, exclusif.", 1000, 0, 5,
+                  tooltip="Menace doublée, armure augmentée.", EffectBasePoints1=99, EffectDieSides1=1, EffectMiscValue1=127,
+                  Effect2=6, EffectApplyAuraName2=101, EffectMiscValue2=1, EffectBasePoints2=9, EffectDieSides2=1, EffectImplicitTargetA2=1,
+                  DurationIndex=DUR[-1])
+M['lunaire'] = mr('lunaire', 'dru', 8921, 16, 7, "Éclair lunaire", 7, 3000, 0, lambda L, k: (
+    {'School': 6, 'Effect1': 2, 'EffectApplyAuraName1': 0, 'EffectImplicitTargetA1': 6,
+     'EffectBasePoints1': rv(100, L) - 1, 'EffectDieSides1': rv(115, L) - rv(100, L) + 1,
+     'EffectBonusCoefficient1': 0, 'EffectBonusCoefficientFromAP1': 0.075,
+     'Effect2': 6, 'EffectApplyAuraName2': 3, 'EffectBasePoints2': rv(100, L) // 10 - 1, 'EffectDieSides2': 1,
+     'EffectAmplitude2': 1000, 'DurationIndex': DUR[10000], 'StackAmount': 2, 'EffectBonusCoefficient2': 0,
+     'EffectBonusCoefficientFromAP2': 0.02},
+    "Inflige %d à %d points de dégâts d'Arcanes puis %d en 10 s, cumulable 2 fois. Basé sur la puissance d'attaque." % (rv(100, L), rv(115, L), rv(100, L) // 10 * 10),
+    "Brûlure lunaire."))
+M['renfo'] = ms('renfo', 'dru', 12042, 18, "Renforcement",
+                "Augmente de 20 % votre puissance d'attaque, votre vitesse d'attaque et les dégâts de vos sorts. Buff de spé, exclusif.",
+                1000, 0, 5, icon_sid=12880, tooltip="Puissance, vitesse et dégâts augmentés de 20 %.",
+                EffectApplyAuraName1=166, EffectBasePoints1=19, EffectDieSides1=1, EffectMiscValue1=0,
+                EffectApplyAuraName2=138, EffectBasePoints2=19, EffectDieSides2=1, EffectMiscValue2=0,
+                EffectApplyAuraName3=79, EffectBasePoints3=19, EffectDieSides3=1, EffectMiscValue3=126, DurationIndex=DUR[-1])
+M['bouclier_eau'] = ms('beau', 'tot', 12042, 22, "Bouclier d'eau",
+                       "Augmente de 25 % votre Intelligence et vos soins, et vous permet de conserver 25 % de votre régénération "
+                       "de mana pendant les incantations. Buff de spé, exclusif.", 1000, 0, 5, icon_sid=24398,
+                       tooltip="Intelligence, soins et régénération augmentés.",
+                       EffectApplyAuraName1=137, EffectMiscValue1=3, EffectBasePoints1=24, EffectDieSides1=1,
+                       EffectApplyAuraName2=134, EffectMiscValue2=0, EffectBasePoints2=24, EffectDieSides2=1,
+                       EffectApplyAuraName3=136, EffectMiscValue3=127, EffectBasePoints3=24, EffectDieSides3=1, DurationIndex=DUR[-1])
+GROUPS['meta'] = [M['massive'], M['renfo'], M['bouclier_eau']]
+M['epuration'] = ms('epuration', 'tot', 4987, 22, "Épuration",
+                    "Dissipe un effet de magie, une malédiction et un poison de la cible.", 0, 0, 6,
+                    EffectMiscValue1=1, EffectMiscValue2=2, EffectMiscValue3=4)
+M['stellaire'] = mr('stellaire', 'dru', 2912, 24, 6, "Feu stellaire", 11, 12000, 0, lambda L, k: (
+    {'EffectBasePoints1': rv(384, L) - 1, 'EffectDieSides1': rv(432, L) - rv(384, L) + 1, 'EffectBonusCoefficient1': 0,
+     'EffectBonusCoefficientFromAP1': 0.15,
+     'Effect2': 6, 'EffectApplyAuraName2': 3, 'EffectImplicitTargetA2': 6, 'EffectBasePoints2': rv(156, L) // 5 - 1,
+     'EffectDieSides2': 1, 'EffectAmplitude2': 1000, 'DurationIndex': DUR[5000], 'EffectBonusCoefficientFromAP2': 0.03},
+    "Inflige %d à %d points de dégâts d'Arcanes puis %d en 5 s. Basé sur la puissance d'attaque." % (rv(384, L), rv(432, L), rv(156, L) // 5 * 5),
+    "Brûlure stellaire."))
+M['coup_bouclier'] = mr('cbouclier', 'ang', 23922, 26, 6, "Coup de bouclier", 8, 6000, 0, lambda L, k: (
+    {'Effect1': 2, 'EffectImplicitTargetA1': 24, 'EffectRadiusIndex1': RADIUS[8], 'EffectMiscValue1': 0,
+     'EffectBasePoints1': rv(280, L) - 1, 'EffectDieSides1': rv(320, L) - rv(280, L) + 1, 'EffectBonusCoefficientFromAP1': 0.15,
+     'Effect2': 0, 'EffectBonusCoefficient1': 0, 'School': 0, 'Category': 0, 'CategoryRecoveryTime': 0},
+    "Frappe de votre bouclier tous les ennemis devant vous : %d à %d points de dégâts et une menace élevée. Nécessite un bouclier." % (rv(280, L), rv(320, L)),
+    ''))
+M['coup_tonnerre'] = mr('ctonnerre', 'ang', 6343, 26, 6, "Coup de tonnerre", 8, 12000, 0, lambda L, k: (
+    {'EffectBasePoints1': rv(180, L) - 1, 'EffectDieSides1': rv(210, L) - rv(180, L) + 1, 'EffectRadiusIndex1': RADIUS[10],
+     'Effect2': 0, 'EffectApplyAuraName2': 0, 'School': 3, 'EffectBonusCoefficientFromAP1': 0.10, 'EffectBonusCoefficient1': 0,
+     'Category': 0, 'CategoryRecoveryTime': 0},
+    "Inflige %d à %d points de dégâts de Nature aux ennemis à moins de 10 mètres." % (rv(180, L), rv(210, L)), ''))
+M['salve'] = mr('salve', 'tot', 1064, 32, 5, "Salve de guérison", 14, 18000, 3500, lambda L, k: (
+    {'EffectBasePoints1': rv(215, L) - 1, 'EffectDieSides1': rv(240, L) - rv(215, L) + 1, 'EffectChainTarget1': 4,
+     'DmgMultiplier1': 0.75, 'EffectBonusCoefficient1': 1.0},
+    "Rend %d à %d points de vie à la cible, puis rebondit sur 3 autres alliés (75, 50 et 25 %%)." % (rv(215, L), rv(240, L)), ''))
+M['enrage'] = ms('enrage', 'dru', 12042, 34, "Enragé", "Augmente vos dégâts de mêlée de 20 % pendant 15 s.", 300000, 0, 5,
+                 icon_sid=12292, tooltip="Dégâts de mêlée augmentés de 20 %.",
+                 EffectApplyAuraName1=79, EffectMiscValue1=1, EffectBasePoints1=19, EffectDieSides1=1,
+                 Effect2=0, EffectApplyAuraName2=0, Effect3=0, EffectApplyAuraName3=0, DurationIndex=DUR[15000])
+M['bouclier_elem'] = mr('belem', 'tot', 17, 36, 4, "Bouclier élémentaire", 12, 6000, 0, lambda L, k: (
+    {'EffectBasePoints1': rv(335, L) - 1, 'EffectDieSides1': 1, 'DurationIndex': DUR[8000], 'EffectBonusCoefficient1': 0.10,
+     'Category': 0, 'CategoryRecoveryTime': 0},
+    "Entoure la cible d'un bouclier qui absorbe %d points de dégâts pendant 8 s." % rv(335, L), "Absorbe des dégâts."))
+M['courroux'] = ms('courroux', 'ang', 12042, 38, "Courroux protecteur",
+                   "Pendant 15 s, augmente vos points de vie maximum et votre armure de 30 %, et vos résistances de 60.",
+                   180000, 0, 5, icon_sid=498, tooltip="Vie, armure et résistances augmentées.",
+                   EffectApplyAuraName1=133, EffectBasePoints1=29, EffectDieSides1=1, EffectMiscValue1=0,
+                   EffectApplyAuraName2=101, EffectMiscValue2=1, EffectBasePoints2=29, EffectDieSides2=1,
+                   EffectApplyAuraName3=22, EffectMiscValue3=126, EffectBasePoints3=59, EffectDieSides3=1, DurationIndex=DUR[15000])
+M['colere'] = mr('colere', 'dru', 78, 42, 4, "Colère", 8, 6000, 0, lambda L, k: (
+    {'Effect1': 31, 'EffectBasePoints1': 49, 'EffectDieSides1': 1,
+     'Effect2': 2, 'EffectImplicitTargetA2': 6, 'EffectBasePoints2': rv(150, L) - 1, 'EffectDieSides2': 1,
+     'EffectBonusCoefficientFromAP2': 0.10,
+     'Effect3': 6, 'EffectApplyAuraName3': 33, 'EffectImplicitTargetA3': 6, 'EffectBasePoints3': -21, 'EffectDieSides3': 1,
+     'DurationIndex': DUR[6000], 'School': 3, 'PowerType': 0},
+    "Un coup d'arme électrique : 50 %% des dégâts de l'arme plus %d points de dégâts de Nature, et ralentit la cible de 20 %% pendant 6 s." % rv(150, L),
+    "Ralenti."), icon_sid=8042)
+M['entrave'] = ms('entrave', 'ang', 853, 42, "Entrave", "Étourdit la cible pendant 3 s.", 15000, 0, 5, icon_sid=853,
+                  tooltip="Étourdi.", DurationIndex=DUR[3000], Category=0, CategoryRecoveryTime=0)
+M['jugement'] = mr('jugement', 'ang', 585, 44, 3, "Jugement", 8, 15000, 0, lambda L, k: (
+    {'EffectBasePoints1': rv(350, L) - 1, 'EffectDieSides1': rv(400, L) - rv(350, L) + 1, 'EffectBonusCoefficient1': 0.43,
+     'EffectBonusCoefficientFromAP1': 0.15},
+    "Inflige %d à %d points de dégâts du Sacré à la cible." % (rv(350, L), rv(400, L)), ''), icon_sid=20271)
+M['pluie'] = mr('pluie', 'tot', 596, 46, 3, "Pluie de guérison", 20, 60000, 2000, lambda L, k: (
+    {'EffectBasePoints1': rv(160, L) - 1, 'EffectDieSides1': rv(175, L) - rv(160, L) + 1, 'EffectBonusCoefficient1': 0.75,
+     'Effect2': 6, 'EffectApplyAuraName2': 8, 'EffectImplicitTargetA2': 20, 'EffectBasePoints2': rv(85, L) // 5 - 1,
+     'EffectDieSides2': 1, 'EffectAmplitude2': 1000, 'DurationIndex': DUR[5000], 'EffectBonusCoefficient2': 0.03,
+     'EffectRadiusIndex1': RADIUS[20], 'EffectRadiusIndex2': RADIUS[20]},
+    "Rend %d à %d points de vie aux membres du groupe à moins de 20 mètres, puis %d en 5 s." % (rv(160, L), rv(175, L), rv(85, L) // 5 * 5),
+    "Récupère."), icon_sid=10460)
+M['massacre'] = ms('massacre', 'dru', 78, 52, "Massacre",
+                   "Frappe avec une puissance terrible : 200 % des dégâts de l'arme.", 12000, 0, 8, icon_sid=12294,
+                   Effect1=31, EffectBasePoints1=199, EffectDieSides1=1, PowerType=0)
+M['consecration'] = mr('consecration', 'ang', 20924, 56, 2, "Consécration", 12, 8000, 0, lambda L, k: (
+    {'EffectBasePoints1': rv(384, L) // 8 - 1, 'EffectDieSides1': 1, 'Category': 0, 'CategoryRecoveryTime': 0},
+    "Consacre le sol sous vous : %d points de dégâts du Sacré en 8 s aux ennemis qui s'y trouvent." % (rv(384, L) // 8 * 8), ''))
+M['don'] = ms('don', 'tot', 21562, 60, "Don des esprits",
+              "Augmente toutes les caractéristiques des membres du groupe de 30 pendant 2 h.", 0, 0, 20, icon_sid=21849,
+              tooltip="Caractéristiques augmentées.", EffectMiscValue1=-1, EffectBasePoints1=29, EffectDieSides1=1,
+              Reagent1=0, ReagentCount1=0, DurationIndex=DUR[7200000])
 
 # ======================================================================== maîtres de classe (étape 2)
 import math
@@ -179,7 +528,7 @@ START_SPELLS = {}                   # classe -> sorts donnés à la création
 
 def teach_all(gen, template, skip):
     for sp in gen.spells:
-        if sp['id'] in skip:
+        if sp['id'] in skip or sp['id'] in TRIGGERED:
             continue
         lv = sp['sets'].get('SpellLevel', 1)
         tid = TEACH[0]; TEACH[0] += 1
@@ -191,12 +540,38 @@ def teach_all(gen, template, skip):
 START_SPELLS[NECRO] = [N['armure'], N['trait'][0]]
 teach_all(NG, 900, set(START_SPELLS[NECRO]))
 
+START_SPELLS[SNIPER] = [S['arcanes'][0]]
+teach_all(SG, 901, set(START_SPELLS[SNIPER]))
+VANILLA_FR = {1515: "Dompter une bête", 883: "Appel du familier", 2641: "Renvoyer le familier", 982: "Ressusciter le familier",
+              6991: "Nourrir le familier", 5149: "Dressage des bêtes", 5384: "Feindre la mort"}
+for vs, lv, tree in SNIPER_VANILLA:
+    tid = TEACH[0]; TEACH[0] += 1
+    TG.add(tid, TEACH_BASE, VANILLA_FR[vs], "", "", family=False,
+           sets={'EffectTriggerSpell1': vs, 'SpellLevel': lv, 'BaseLevel': lv, 'MaxLevel': 0, 'SpellIconID': icon(vs)})
+    TRAINER_SPELLS.setdefault(901, []).append((tid, max(10, 9 * lv * lv), lv))
+    SC.sla.append((SC.skills[tree], vs))
+
+START_SPELLS[META] = [M['terre'][0], M['remous'][0]]
+teach_all(MG, 902, set(START_SPELLS[META]))
+
 # (gabarit, entrée, nom, sous-titre, PNJ modèle, décalage, modèle 3D ou 0)
 TRAINERS = [
     (900, 990170, "Mortis Valcendre", "Maître nécromancien", 459, 0, 10427),       # Comté du Nord
     (900, 990171, "Séraphine Noirsuaire", "Maître nécromancien", 461, 0, 10427),   # Hurlevent, l'Agneau égorgé
     (900, 990172, "Zul'gash", "Maître nécromancien", 3156, 0, 0),                    # Vallée des Épreuves
     (900, 990173, "Vol'kesh", "Maître nécromancien", 3324, 0, 0),                    # Orgrimmar, la Faille de l'ombre
+    (901, 990174, "Thordin Visée-Sûre", "Maître sniper", 1231, 0, 0),               # Val d'Est-Gel (Coldridge)
+    (901, 990175, "Dagna Poudrenoire", "Maître sniper", 5117, 0, 0),                # Forgefer, salle des Armes
+    (901, 990176, "Grok Œil-de-Fer", "Maître sniper", 3154, 0, 0),                  # Vallée des Épreuves
+    (901, 990177, "Mazgar Longuevue", "Maître sniper", 3352, 0, 0),                 # Orgrimmar, vallée de l'Honneur
+    (902, 990178, "Eldra Changeforme", "Maître métamorphe", 911, 0, 0),             # Comté du Nord
+    (902, 990179, "Oswin Racinebrune", "Maître métamorphe", 928, 0, 0),             # Hurlevent, cathédrale
+    (902, 990180, "Hilda Peaudours", "Maître métamorphe", 912, 0, 0),               # Val d'Est-Gel
+    (902, 990181, "Torvin Gardepierre", "Maître métamorphe", 5113, 0, 0),           # Forgefer
+    (902, 990182, "Ruzga Peau-de-Loup", "Maître métamorphe", 3153, 0, 0),           # Vallée des Épreuves
+    (902, 990183, "Tok'jin", "Maître métamorphe", 3354, 0, 0),                      # Orgrimmar
+    (902, 990184, "Mathias Voile-d'Os", "Maître métamorphe", 2119, 0, 0),           # Clairière de Tirisfal (Deathknell)
+    (902, 990185, "Ysolde Murmure-des-Tombes", "Maître métamorphe", 4593, 0, 0),    # Fossoyeuse
 ]
 
 def trainer_sql():
@@ -247,8 +622,36 @@ for race in (1, 8):
         L.append("INSERT IGNORE INTO playercreateinfo_spell (race, class, Spell, Note) VALUES (%d, %d, %d, 'Necromancien');" % (race, NECRO, sp))
 L.append("UPDATE playercreateinfo_action SET action=%d WHERE class=%d AND type=0 AND action=686;" % (N['trait'][0], NECRO))
 L.append("UPDATE playercreateinfo_action SET action=%d WHERE class=%d AND type=0 AND action=687;" % (N['armure'], NECRO))
+L += SG.sql(62500, 62999)
+L.append("DELETE FROM playercreateinfo_spell WHERE class=%d AND Spell IN (2973);" % SNIPER)
+for race in (2, 3):
+    for sp in START_SPELLS[SNIPER]:
+        L.append("INSERT IGNORE INTO playercreateinfo_spell (race, class, Spell, Note) VALUES (%d, %d, %d, 'Sniper');" % (race, SNIPER, sp))
+L.append("UPDATE playercreateinfo_action SET action=%d WHERE class=%d AND type=0 AND action=2973;" % (S['arcanes'][0], SNIPER))
+L += MG.sql(63000, 63499)
+# Métamorphe : les sorts du druide disparaissent de la création ; les maîtres druides deviennent maîtres métamorphes
+L.append("DELETE FROM playercreateinfo_spell WHERE class=%d AND Spell IN (5176, 5185);" % META)
+for race in (1, 2, 3, 4, 5, 6, 7, 8):
+    for sp in START_SPELLS[META]:
+        L.append("INSERT IGNORE INTO playercreateinfo_spell (race, class, Spell, Note) VALUES (%d, %d, %d, 'Metamorphe');" % (race, META, sp))
+L.append("UPDATE playercreateinfo_action SET action=%d WHERE class=%d AND type=0 AND action=5176;" % (M['terre'][0], META))
+L.append("UPDATE playercreateinfo_action SET action=%d WHERE class=%d AND type=0 AND action=5185;" % (M['remous'][0], META))
+L.append("CREATE TABLE IF NOT EXISTS custom_backup_npc_trainer_druide SELECT * FROM npc_trainer WHERE entry IN "
+         "(SELECT Entry FROM creature_template WHERE TrainerType=0 AND TrainerClass=11);")
+L.append("DELETE FROM npc_trainer WHERE entry IN (SELECT Entry FROM creature_template WHERE TrainerType=0 AND TrainerClass=11);")
+L.append("UPDATE creature_template SET TrainerTemplateId=902, SubName='Maître métamorphe' WHERE TrainerType=0 AND TrainerClass=11 AND Entry < 990000;")
+# groupes exclusifs : balles, aspects
+L.append("DELETE FROM spell_group_spell WHERE Id IN (900, 901, 902);")
+L.append("DELETE FROM spell_group WHERE Id IN (900, 901, 902);")
+for gid, (gname, ids) in zip((900, 901, 902), [('Sniper balles', GROUPS.get('balle', [])), ('Sniper aspects', GROUPS.get('aspect', [])),
+                                                ('Metamorphe buffs', GROUPS.get('meta', []))]):
+    if not ids:
+        continue
+    L.append("INSERT INTO spell_group (Id, Rule, Name) VALUES (%d, 2, '%s');" % (gid, gname))
+    for sid in ids:
+        L.append("INSERT INTO spell_group_spell (Id, SpellId) VALUES (%d, %d);" % (gid, sid))
 L.append("DELETE FROM spell_affect WHERE entry BETWEEN 62000 AND 64499;")
-for sid, e, m in AFFECT:
+for sid, e, m in AFFECT_N + AFFECT:
     L.append("INSERT INTO spell_affect (entry, effectId, SpellFamilyMask) VALUES (%d, %d, %d);" % (sid, e, m))
 
 # lignes de compétence (onglets du grimoire)
@@ -257,9 +660,10 @@ SKILLLINES = [(900, "Invocateur", 354), (901, "Malédiction", 355), (902, "Magic
 RENAME_SKILL = {573: "Totémique", 134: "Druidique", 574: "Angélique"}
 SLA_ROWS = []
 sla_id = 21000
-for skill, sid in NSLA:
-    SLA_ROWS.append([sla_id, skill, sid, 0, CBIT[NECRO], 0, 0, 1, 0, 0, 0, 0, 0, 0, 0])
-    sla_id += 1
+for cls, lst in ((NECRO, NSLA), (SNIPER, SC.sla), (META, MC.sla)):
+    for skill, sid in lst:
+        SLA_ROWS.append([sla_id, skill, sid, 0, CBIT[cls], 0, 0, 1, 0, 0, 0, 0, 0, 0, 0])
+        sla_id += 1
 
 # DBC serveur : SkillLine (nouvelles lignes + Métamorphe) et SkillLineAbility (base + métiers + sorts custom)
 import struct
@@ -278,8 +682,8 @@ MET = json.load(open('/home/claude/wow/metiers/metiers_rows.json', encoding='utf
 open(OUT + 'out/SkillLineAbility.dbc', 'wb').write(
     append_rows(open('/home/claude/wow/dbc_extra/SkillLineAbility.dbc', 'rb').read(), MET['sla'] + SLA_ROWS))
 
-json.dump({'spell': NG.dbc_rows() + TG.dbc_rows(), 'sla': SLA_ROWS, 'skilllines': sk_new, 'rename_skill': RENAME_SKILL,
-           'masks': {'necro': {k: v for k, v in NG.masks.items()}}, 'ids': {'necro': N}},
+json.dump({'spell': NG.dbc_rows() + SG.dbc_rows() + MG.dbc_rows() + TG.dbc_rows(), 'sla': SLA_ROWS, 'skilllines': sk_new, 'rename_skill': RENAME_SKILL,
+           'masks': {'necro': NG.masks, 'sniper': SG.masks, 'meta': MG.masks}, 'ids': {'necro': N, 'sniper': S, 'meta': M}},
           open(OUT + 'sorts_rows.json', 'w', encoding='utf-8'), ensure_ascii=False)
 open(OUT + 'sorts.sql', 'w', encoding='utf-8').write("\n".join(L) + "\n")
-print('necro', len(NG.spells), 'sorts', 'sla', len(SLA_ROWS))
+print('necro', len(NG.spells), 'sniper', len(SG.spells), 'meta', len(MG.spells), 'apprentissage', len(TG.spells), 'sla', len(SLA_ROWS))
