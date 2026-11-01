@@ -112,6 +112,8 @@ def ids(l):
 L = ['-- Généré par gen_pfquest.py : quêtes custom du serveur pour pfQuest. Ne pas modifier à la main.',
      'if not pfDB then return end',
      'local function ajout(dst, src) if dst then for k, v in pairs(src) do dst[k] = v end end end',
+     '-- oublie les quêtes que pfQuest avait mémorisées comme inconnues (avant cet addon), pour qu\'il les reconnaisse',
+     'if pfQuest_questcache then for k, v in pairs(pfQuest_questcache) do if type(v) == "table" and type(v[1]) == "string" then pfQuest_questcache[k] = nil end end end',
      'ajout(pfDB["quests"]["data"], {']
 for e in sorted(QUESTS):
     Q = QUESTS[e]
