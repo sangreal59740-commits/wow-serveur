@@ -27,23 +27,26 @@ for i in range(n):
     if area:
         WMA.append((mapid, area, left, right, top, bottom))
 
-def zone_coords(mapid, x, y):
+def zone_coords(mapid, x, y, hints=()):
     best = None
     for m, area, left, right, top, bottom in WMA:
         if m != mapid or not (right <= y <= left and bottom <= x <= top):
             continue
+        if area in hints:       # zone de la quête : prioritaire (les cadres des cartes se chevauchent aux frontières)
+            return (area, round((left - y) / (left - right) * 100, 1), round((top - x) / (top - bottom) * 100, 1))
         size = (left - right) * (top - bottom)
         if best is None or size < best[0]:
             best = (size, area, (left - y) / (left - right) * 100, (top - x) / (top - bottom) * 100)
     return None if best is None else (best[1], round(best[2], 1), round(best[3], 1))
 
+HINTS = {}
 def spawns(table, ids):
     out = {}
     if not ids:
         return out
     for gid, mp, x, y, rt in q("SELECT id, map, position_x, position_y, %s FROM %s WHERE id IN (%s)"
                                 % ('spawntimesecsmin', table, ','.join(map(str, ids)))):
-        zc = zone_coords(int(mp), float(x), float(y))
+        zc = zone_coords(int(mp), float(x), float(y), HINTS.get(int(gid), ()))
         if zc:
             out.setdefault(int(gid), []).append((zc[1], zc[2], zc[0], int(rt)))
     return out
@@ -51,13 +54,13 @@ def spawns(table, ids):
 # ------------------------------------------------------------ quêtes
 cols = ("entry, Title, Objectives, Details, QuestLevel, MinLevel, RequiredRaces, PrevQuestId, "
         "ReqCreatureOrGOId1, ReqCreatureOrGOId2, ReqCreatureOrGOId3, ReqCreatureOrGOId4, ReqItemId1, ReqItemId2, ReqItemId3, ReqItemId4, "
-        "ReqCreatureOrGOCount1, ReqItemCount1")
+        "ReqCreatureOrGOCount1, ReqItemCount1, ZoneOrSort")
 QUESTS = {}
 for r in q("SELECT %s FROM quest_template WHERE entry >= 990000" % cols):
     e = int(r[0])
     QUESTS[e] = dict(T=r[1], O=r[2], D=r[3], lvl=int(r[4]), min=int(r[5]), race=int(r[6]), pre=int(r[7]),
                      cgo=[int(v) for v in r[8:12] if int(v)], items=[int(v) for v in r[12:16] if int(v)],
-                     ccount=int(r[16]), icount=int(r[17]),
+                     ccount=int(r[16]), icount=int(r[17]), zone=int(r[18]),
                      start={}, end={}, obj={})
 for table, side, kind in (('creature_questrelation', 'start', 'U'), ('gameobject_questrelation', 'start', 'O'),
                           ('creature_involvedrelation', 'end', 'U'), ('gameobject_involvedrelation', 'end', 'O')):
@@ -89,6 +92,12 @@ if new_items:
         objects.add(int(gid))
 new_units = sorted(u for u in units if u not in KU)
 new_objects = sorted(o for o in objects if o not in KO)
+for Q in QUESTS.values():
+    if Q['zone'] > 0:
+        for side in ('start', 'end', 'obj'):
+            for kind in ('U', 'O'):
+                for g in Q[side].get(kind, []):
+                    HINTS.setdefault(g, set()).add(Q['zone'])
 USP = spawns('creature', new_units)
 OSP = spawns('gameobject', new_objects)
 UNAME, ULVL = {}, {}
