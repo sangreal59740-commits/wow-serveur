@@ -1,0 +1,22 @@
+--- a/src/game/Entities/Object.cpp
++++ b/src/game/Entities/Object.cpp
+@@ -386,7 +386,8 @@
+     {
+         if (isType(TYPEMASK_GAMEOBJECT) && !((GameObject*)this)->IsTransport())
+         {
+-            if (((GameObject*)this)->ActivateToQuest(target) || target->IsGameMaster())
++            if (((GameObject*)this)->ActivateToQuest(target) || target->IsGameMaster()
++                || (GetEntry() >= 990500 && GetEntry() <= 990599))      // tableaux de primes du serveur : toujours utilisables
+                 IsActivateToQuest = true;
+ 
+             updateMask->SetBit(GAMEOBJECT_DYN_FLAGS);
+@@ -396,7 +397,8 @@
+     {
+         if (isType(TYPEMASK_GAMEOBJECT) && !((GameObject*)this)->IsTransport())
+         {
+-            if (((GameObject*)this)->ActivateToQuest(target) || target->IsGameMaster())
++            if (((GameObject*)this)->ActivateToQuest(target) || target->IsGameMaster()
++                || (GetEntry() >= 990500 && GetEntry() <= 990599))      // tableaux de primes du serveur : toujours utilisables
+                 IsActivateToQuest = true;
+ 
+             updateMask->SetBit(GAMEOBJECT_DYN_FLAGS);
