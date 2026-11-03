@@ -377,10 +377,15 @@ namespace cmangos_module
     {
         if (!player || !xp)
             return false;
+        float mult = 1.0f;
         auto it = profils.find(player->GetObjectGuid().GetCounter());
-        if (it == profils.end() || it->second.xpMult == 1.0f)
+        if (it != profils.end())
+            mult = it->second.xpMult;               // rythme du bot de vague
+        if (player->GetPlayerbotAI())
+            mult *= VAGUES_BONUS_XP_BOTS;           // tous les bots : expérience x1,25
+        if (mult == 1.0f)
             return false;
-        xp = std::max(1u, uint32(xp * it->second.xpMult + 0.5f));
+        xp = std::max(1u, uint32(xp * mult + 0.5f));
         return false;
     }
 }

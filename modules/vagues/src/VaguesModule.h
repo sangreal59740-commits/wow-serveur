@@ -13,6 +13,7 @@
 namespace cmangos_module
 {
     #define VAGUES_MAX              5
+    #define VAGUES_BONUS_XP_BOTS    1.25f   // les bots gagnent 25 % d'expérience de plus que les joueurs
 
     struct ProfilBot
     {
