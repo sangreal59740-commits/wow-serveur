@@ -1215,6 +1215,16 @@ namespace cmangos_module
         }
     }
 
+    // à chaque connexion (joueurs, pas les bots) : au moins 50 % de la barre d'expérience en repos
+    void ClassesModule::OnLoadFromDB(Player* player)
+    {
+        if (!player || IsBot(player))
+            return;
+        float objectif = float(player->GetUInt32Value(PLAYER_NEXT_LEVEL_XP)) * 0.5f;
+        if (player->GetRestBonus() < objectif)
+            player->SetRestBonus(objectif);
+    }
+
     void ClassesModule::OnLogOut(Player* player)
     {
         std::lock_guard<std::recursive_mutex> guard(lock);

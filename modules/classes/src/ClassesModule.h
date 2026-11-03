@@ -40,6 +40,7 @@ namespace cmangos_module
         void OnKill(Unit* unit, Unit* victim) override;
         void OnLearnTalent(Player* player, uint32 spellId) override;
         void OnLogOut(Player* player) override;
+        void OnLoadFromDB(Player* player) override;
         void OnUpdate(uint32 elapsed) override;
 
         void BotThink(Player* bot);
