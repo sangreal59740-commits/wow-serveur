@@ -1,6 +1,6 @@
 -- Tableaux de primes : à côté de la boîte aux lettres de l'auberge (généré par gen_tableaux.py)
 -- toujours cliquables (sans l'indicateur « interaction sous condition » hérité du modèle Wanted Board)
-UPDATE gameobject_template SET flags=0 WHERE entry BETWEEN 990500 AND 990599 AND type=2;
+UPDATE gameobject_template SET flags=0, faction=35 WHERE entry BETWEEN 990500 AND 990599 AND type=2;
 UPDATE gameobject SET position_x=-5600.11, position_y=-513.38, position_z=401.57, orientation=1.685, rotation0=0, rotation1=0, rotation2=0.74615, rotation3=0.66578 WHERE guid=9905001;
 UPDATE gameobject SET position_x=-6676.48, position_y=-2171.93, position_z=244.16, orientation=3.949, rotation0=0, rotation1=0, rotation2=0.91955, rotation3=-0.39298 WHERE guid=9905003;
 UPDATE gameobject SET position_x=-10464.93, position_y=-3268.63, position_z=20.18, orientation=6.014, rotation0=0, rotation1=0, rotation2=0.13403, rotation3=-0.99098 WHERE guid=9905004;

@@ -17,7 +17,7 @@ boards = [(int(g), int(m), float(x), float(y), float(z)) for g, m, x, y, z in q(
     "select guid, map, position_x, position_y, position_z from gameobject where guid between 9905000 and 9905999")]
 L = ["-- Tableaux de primes : à côté de la boîte aux lettres de l'auberge (généré par gen_tableaux.py)",
      "-- toujours cliquables (sans l'indicateur « interaction sous condition » hérité du modèle Wanted Board)",
-     "UPDATE gameobject_template SET flags=0 WHERE entry BETWEEN 990500 AND 990599 AND type=2;"]
+     "UPDATE gameobject_template SET flags=0, faction=35 WHERE entry BETWEEN 990500 AND 990599 AND type=2;"]
 stats = {}
 RESTE = []
 used = {}
