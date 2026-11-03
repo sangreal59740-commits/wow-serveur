@@ -1512,6 +1512,8 @@ for _g, _a, _b in V4_GENS:
     L += _g.sql(_a, _b)
 L += T4G.sql(56000, 56999)
 L += SPG.sql(65500, 65509)
+# Pierre de foyer sans temps de recharge (demande d'Alexis)
+VPATCH.setdefault(8690, {})['CategoryRecoveryTime'] = 0
 from spellgen import dbc_col as _dbc_col
 SPELL_PATCH = {}
 for _sid, _cols in sorted(VPATCH.items()):
