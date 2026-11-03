@@ -15,6 +15,10 @@ if exist "%~dp0primes_bas.sql" (
   "%SPP%\bin\mysql.exe" --defaults-extra-file="%SPP%\connection.cnf" --default-character-set=utf8mb4 --database=classicmangos < "%~dp0primes_bas.sql"
   if errorlevel 1 goto erreur
 )
+if exist "%~dp0primes_evenements.sql" (
+  "%SPP%\bin\mysql.exe" --defaults-extra-file="%SPP%\connection.cnf" --default-character-set=utf8mb4 --database=classicmangos < "%~dp0primes_evenements.sql"
+  if errorlevel 1 goto erreur
+)
 if exist "%~dp0primes_xp.sql" (
   "%SPP%\bin\mysql.exe" --defaults-extra-file="%SPP%\connection.cnf" --default-character-set=utf8mb4 --database=classicmangos < "%~dp0primes_xp.sql"
   if errorlevel 1 goto erreur
