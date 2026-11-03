@@ -56,7 +56,7 @@ def amical(fac):
 # ------------------------------------------------------------------ créatures
 rows = q("select c.guid, c.id, c.map, c.position_x, c.position_y, c.position_z, c.orientation, t.MinLevel, t.MaxLevel, t.Rank, "
          "t.CreatureType, t.Faction, t.NpcFlags, t.LootId, t.UnitFlags, t.ExtraFlags from creature c join creature_template t on t.Entry=c.id "
-         "where c.map in (0,1)")
+         "where c.map in (0,1) and c.guid not in (select guid from game_event_creature)")      # hors spawns d'événement (Invasion du Fléau...)
 spawns = defaultdict(list)       # zone -> liste de spawns de monstres
 hubs = defaultdict(list)         # zone -> aubergistes
 fly = defaultdict(list)
