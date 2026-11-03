@@ -1744,6 +1744,7 @@ H.append("    static const Invocation INVOCATIONS[] = { %s };" % ", ".join("{%d,
 H.append("    static const uint32_t INVOCATIONS_N = %d;" % len(nd['summons']))
 for k, v in nd['hidden'].items():
     one("N_H_" + k.upper(), v)
+one("N_GH_RENOV", a['gh_renov'])        # Rénovation de la goule (lancée sur le joueur par le module : l'IA des créatures ne voit pas les joueurs)
 for k in ['peste_explo', 'berserk', 'mortexplo', 'renovation', 'sang', 'chevalier_renf', 'annihilation', 'mort', 'malefice', 'camouflage']:
     arr("N_" + k.upper(), ranks(k, NG))
 for k in nd['dots']:

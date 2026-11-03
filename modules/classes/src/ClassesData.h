@@ -26,6 +26,7 @@ namespace classes_data
     static const uint32_t N_H_MORSURE = 62349;
     static const uint32_t N_H_SYNERGIE = 62350;
     static const uint32_t N_H_PYRO = 62351;
+    static const uint32_t N_GH_RENOV = 62303;
     static const uint32_t N_PESTE_EXPLO[] = { 62400, 62401, 62402, 62403, 62404, 62405, 62406, 62407 };
     static const uint32_t N_PESTE_EXPLO_N = 8;
     static const uint32_t N_BERSERK[] = { 62408 };

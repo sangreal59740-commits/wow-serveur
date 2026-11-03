@@ -1341,6 +1341,31 @@ namespace cmangos_module
             for (auto const& e : dq)
                 if (Pet* pet = map->GetPet(ObjectGuid(e.guid)))
                     army.push_back(pet);
+            // Rénovation des goules sur le joueur et son groupe : l'IA des créatures ne cherche ses cibles de soin
+            // que parmi les créatures, jamais parmi les joueurs
+            if (player->IsInCombat())
+            {
+                std::vector<Player*> blesses;
+                blesses.push_back(player);
+                if (Group* g = player->GetGroup())
+                    for (GroupReference* ref = g->GetFirstMember(); ref; ref = ref->next())
+                        if (Player* m = ref->getSource())
+                            if (m != player && m->IsInWorld() && m->GetMap() == map)
+                                blesses.push_back(m);
+                for (Unit* u : army)
+                {
+                    if (u->GetEntry() != 990501 || !u->IsAlive() || u->IsNonMeleeSpellCasted(false))
+                        continue;
+                    Player* cible = nullptr;
+                    for (Player* m : blesses)
+                        if (m->IsAlive() && m->GetHealthPercent() < 75.0f && !m->HasAura(N_GH_RENOV)
+                            && u->IsWithinDistInMap(m, 30.0f) && u->IsWithinLOSInMap(m)
+                            && (!cible || m->GetHealthPercent() < cible->GetHealthPercent()))
+                            cible = m;
+                    if (cible)
+                        u->CastSpell(cible, N_GH_RENOV, TRIGGERED_NONE);
+                }
+            }
             // Étreinte de la tombe + Chair putride : endurance et dégâts des invocations
             uint32 rE = TRank(player, T_ETREINTE, T_ETREINTE_N), rC = TRank(player, T_CHAIR, T_CHAIR_N);
             int32 sta = int32(2 * rE + 3 * rC), dmg = int32(rE * 3 / 2);
