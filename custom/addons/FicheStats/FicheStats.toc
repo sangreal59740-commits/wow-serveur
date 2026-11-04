@@ -1,0 +1,5 @@
+## Interface: 11200
+## Title: FicheStats
+## Notes: Dégâts d'arme, dégâts des sorts et niveau d'objet au-dessus de la fiche du personnage, et gains ou pertes de statistiques quand l'équipement ou les buffs changent
+## OptionalDeps: NiveauObjet
+FicheStats.lua

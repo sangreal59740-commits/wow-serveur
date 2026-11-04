@@ -1,0 +1,6 @@
+## Interface: 11200
+## Title: NiveauObjet
+## Notes: Niveau d'objet dans les infobulles, moyenne sur la fiche du personnage et en inspection
+## SavedVariables:
+Donnees.lua
+NiveauObjet.lua
