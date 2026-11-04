@@ -1,0 +1,30 @@
+name: Outils (extracteur des routes)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: [ 'tools/**', '.github/workflows/outils.yml' ]
+
+permissions:
+  contents: write
+
+jobs:
+  routes:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compiler routes_extract
+        shell: bash
+        run: |
+          cmake -S tools/routes -B build -A x64
+          cmake --build build --config Release
+          mkdir out && cp build/Release/routes_extract.exe out/
+      - name: Publier sur la branche outils
+        shell: bash
+        run: |
+          cd out
+          git init -q && git checkout -q -b outils
+          git config user.name "build" && git config user.email "build@localhost"
+          git add . && git commit -qm "outils ${{ github.sha }}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" outils
