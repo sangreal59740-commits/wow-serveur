@@ -17,7 +17,8 @@ jobs:
       - name: Compiler routes_extract
         shell: bash
         run: |
-          cmake -S tools/routes -B build -A x64
+          "$VCPKG_INSTALLATION_ROOT/vcpkg" install stormlib:x64-windows-static
+          cmake -S tools/routes -B build -A x64 -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
           cmake --build build --config Release
           mkdir out && cp build/Release/routes_extract.exe out/
       - name: Publier sur la branche outils
