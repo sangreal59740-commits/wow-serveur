@@ -517,4 +517,7 @@ namespace classes_data
     static const uint32_t T4_SANGSUE_AM_N = 2;
     static const uint32_t T4_RATS_ENR[] = { 56259, 56260 };
     static const uint32_t T4_RATS_ENR_N = 2;
+    static const uint32_t BIEN_NOURRI[] = { 18125, 18141, 18191, 18192, 18193, 18194, 18222, 19705, 19706, 19708, 19709, 19710, 19711, 22730, 23697, 24799, 24870, 25661, 25694, 25941 };
+    static const uint32_t BIEN_NOURRI_N = 20;
+    static const uint32_t ROUTE_SPELL = 65506;
 }

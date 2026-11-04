@@ -1491,6 +1491,8 @@ for _g in [NG, SG, MG, TALG, T4G] + [g for g, a, b in V4_GENS]:
             _passif = st.get('Attributes', base[_ATTR]) & 0x40
             st['SpellVisual'] = 0 if _passif else visuel_sans_etat(_v)
 
+exec(open('/home/claude/wow/classes/confort.py', encoding='utf-8').read())
+
 # ======================================================================== sorties
 def all_ids(d):
     out = []
@@ -1522,6 +1524,7 @@ for _g, _a, _b in V4_GENS:
     L += _g.sql(_a, _b)
 L += T4G.sql(56000, 56999)
 L += SPG.sql(65500, 65509)
+L += AG.sql(65600, 65699)
 # Pierre de foyer sans temps de recharge (demande d'Alexis)
 VPATCH.setdefault(8690, {})['CategoryRecoveryTime'] = 0
 from spellgen import dbc_col as _dbc_col
@@ -1725,8 +1728,8 @@ print('talents', len(TALENT_ROWS), 'sorts de talent', len(TALG.spells), 'sans ef
 json.dump(DUMMY_TALENTS, open(OUT + 'talents_a_coder.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=0)
 
 json.dump({'talenttab_new': tab_new, 'talenttab_meta': {str(k): v for k, v in META_TABS.items()},
-           'spell': NG.dbc_rows() + SG.dbc_rows() + MG.dbc_rows() + TG.dbc_rows() + TALG.dbc_rows() + sum((_g.dbc_rows() for _g, _a, _b in V4_GENS), []) + T4G.dbc_rows() + SPG.dbc_rows(),
-           'spell_patch': SPELL_PATCH, 'spellvisual_new': SV_NEW, 'form_patch': {str(k): v for k, v in globals().get('FORM_PATCH', {}).items()}, 'sla': SLA_ROWS, 'skilllines': sk_new, 'rename_skill': RENAME_SKILL,
+           'spell': NG.dbc_rows() + SG.dbc_rows() + MG.dbc_rows() + TG.dbc_rows() + TALG.dbc_rows() + sum((_g.dbc_rows() for _g, _a, _b in V4_GENS), []) + T4G.dbc_rows() + SPG.dbc_rows() + AG.dbc_rows(),
+           'spell_patch': SPELL_PATCH, 'spell_text': SPELL_TEXT, 'spellvisual_new': SV_NEW, 'form_patch': {str(k): v for k, v in globals().get('FORM_PATCH', {}).items()}, 'sla': SLA_ROWS, 'skilllines': sk_new, 'rename_skill': RENAME_SKILL,
            'masks': {'necro': NG.masks, 'sniper': SG.masks, 'meta': MG.masks}, 'ids': {'necro': N, 'sniper': S, 'meta': M}},
           open(OUT + 'sorts_rows.json', 'w', encoding='utf-8'), ensure_ascii=False)
 open(OUT + 'sorts.sql', 'w', encoding='utf-8').write("\n".join(L) + "\n")
@@ -1827,6 +1830,8 @@ for t in T4G.spells:
     T4NAMES.setdefault(t['name'], []).append(t['id'])
 for _n, _t in V4T:
     arr(_n, T4NAMES.get(_t, []))
+arr("BIEN_NOURRI", BIEN_NOURRI)
+one("ROUTE_SPELL", ROUTE_SPELL)
 H.append("}")
 open(OUT + 'ClassesData.h', 'w', encoding='utf-8').write("\n".join(H) + "\n")
 print('en-tête module : ClassesData.h')

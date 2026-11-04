@@ -31,6 +31,16 @@ for f in sorted(os.listdir('dbc_en')):
             pt=SRT.get('spell_patch',{}).get(str(r[0]))
             if pt:
                 for col,v in pt.items(): r[int(col)]=v
+            tx=SRT.get('spell_text',{}).get(str(r[0]))
+            if tx:
+                for col,ops in tx.items():
+                    col=int(col); en=d.str(r[col])
+                    if not en: continue
+                    fr=(R if col==129 else D if col in (138,147) else T).get(en,en)
+                    for op in ops:
+                        if op[0]=='+': fr=fr.rstrip()+op[1]
+                        else: fr=re.sub(op[0],op[1],fr)
+                    rs[(i,col)]=fr
     if f=='SpellItemEnchantment.dbc':
         for i,r in enumerate(d.rows):
             c=CH['ench'].get(str(r[0]))
