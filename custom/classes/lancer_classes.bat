@@ -23,6 +23,10 @@ if exist "%~dp0primes_xp.sql" (
   "%SPP%\bin\mysql.exe" --defaults-extra-file="%SPP%\connection.cnf" --default-character-set=utf8mb4 --database=classicmangos < "%~dp0primes_xp.sql"
   if errorlevel 1 goto erreur
 )
+if exist "%~dp0maisons.sql" (
+  "%SPP%\bin\mysql.exe" --defaults-extra-file="%SPP%\connection.cnf" --default-character-set=utf8mb4 --database=classicmangos < "%~dp0maisons.sql"
+  if errorlevel 1 goto erreur
+)
 if exist "%~dp0tableaux.sql" (
   "%SPP%\bin\mysql.exe" --defaults-extra-file="%SPP%\connection.cnf" --default-character-set=utf8mb4 --database=classicmangos < "%~dp0tableaux.sql"
   if errorlevel 1 goto erreur
