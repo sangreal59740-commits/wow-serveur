@@ -1,0 +1,36 @@
+diff -ru a/src/game/Entities/GameObject.cpp b/src/game/Entities/GameObject.cpp
+--- a/src/game/Entities/GameObject.cpp	2026-11-04 18:13:48.886788387 +0100
++++ b/src/game/Entities/GameObject.cpp	2026-11-04 18:14:00.473399574 +0100
+@@ -1106,12 +1106,18 @@
+         GetMap()->GetPersistentState()->SaveGORespawnTime(GetDbGuid(), m_respawnTime);
+ }
+ 
++bool (*gMaisonsVisibilite)(GameObject const* go, Player const* viewer) = nullptr;
++
+ bool GameObject::isVisibleForInState(Player const* u, WorldObject const* viewPoint, bool /*inVisibleList*/) const
+ {
+     // Not in world
+     if (!IsInWorld() || !u->IsInWorld())
+         return false;
+ 
++    // [serveur] logement : chacun voit ses meubles, les autres voient ceux de la plus belle maison
++    if (gMaisonsVisibilite && GetEntry() >= 990600 && GetEntry() <= 990999 && !gMaisonsVisibilite(this, u))
++        return false;
++
+     // Transport always visible at this step implementation
+     if (IsMoTransport() && IsInMap(u))
+         return true;
+diff -ru a/src/game/Entities/GameObject.h b/src/game/Entities/GameObject.h
+--- a/src/game/Entities/GameObject.h	2026-11-04 18:13:48.886845643 +0100
++++ b/src/game/Entities/GameObject.h	2026-11-04 18:14:00.472993069 +0100
+@@ -715,6 +715,10 @@
+ 
+ #define GO_ANIMPROGRESS_DEFAULT 100                         // in 3.x 0xFF
+ 
++// [serveur] logement : visibilité des meubles des maisons (fixée par le module maisons)
++class Player;
++extern bool (*gMaisonsVisibilite)(GameObject const* go, Player const* viewer);
++
+ class GameObject : public WorldObject
+ {
+     public:
