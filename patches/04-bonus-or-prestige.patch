@@ -1,0 +1,58 @@
+diff -ru a/src/game/Entities/Player.cpp b/src/game/Entities/Player.cpp
+--- a/src/game/Entities/Player.cpp	2026-11-04 19:18:48.254217363 +0100
++++ b/src/game/Entities/Player.cpp	2026-11-04 19:18:48.285064100 +0100
+@@ -12997,7 +12997,10 @@
+         ModifyMoney(int32(pQuest->GetRewMoneyMaxLevel() * sWorld.getConfig(CONFIG_FLOAT_RATE_DROP_MONEY)));
+ 
+     // Give player extra money if GetRewOrReqMoney > 0 and get ReqMoney if negative
+-    ModifyMoney(pQuest->GetRewOrReqMoney());
++    int32 rewMoney = pQuest->GetRewOrReqMoney();
++    if (rewMoney > 0 && gBonusArgent)                       // [serveur] bonus d'or du prestige
++        rewMoney = int32(gBonusArgent(this, uint32(rewMoney)));
++    ModifyMoney(rewMoney);
+ 
+     // Send reward mail
+     if (uint32 mail_template_id = pQuest->GetRewMailTemplateId())
+@@ -20505,6 +20508,8 @@
+         CharacterDatabase.PExecute("UPDATE characters set at_login = at_login & ~ %u WHERE guid ='%u'", uint32(f), GetGUIDLow());
+ }
+ 
++uint32 (*gBonusArgent)(Player* player, uint32 money) = nullptr;
++
+ void Player::ModifyMoney(int32 d)
+ {
+     if (d < 0)
+diff -ru a/src/game/Entities/Player.h b/src/game/Entities/Player.h
+--- a/src/game/Entities/Player.h	2026-11-04 19:18:48.255987417 +0100
++++ b/src/game/Entities/Player.h	2026-11-04 19:18:48.282422181 +0100
+@@ -894,6 +894,9 @@
+ typedef std::vector<WowarmoryFeedEntry> WowarmoryFeeds;
+ /* World of Warcraft Armory */
+ 
++// [serveur] bonus d'or du prestige (fixé par le module modes) : renvoie le montant majoré
++extern uint32 (*gBonusArgent)(Player* player, uint32 money);
++
+ class Player : public Unit
+ {
+         friend class WorldSession;
+diff -ru a/src/game/Loot/LootMgr.cpp b/src/game/Loot/LootMgr.cpp
+--- a/src/game/Loot/LootMgr.cpp	2026-11-04 19:18:48.163341147 +0100
++++ b/src/game/Loot/LootMgr.cpp	2026-11-04 19:18:48.285660461 +0100
+@@ -2304,7 +2304,7 @@
+             if (!plr || !plr->GetSession())
+                 continue;
+ 
+-            plr->ModifyMoney(money_per_player);
++            plr->ModifyMoney(gBonusArgent ? gBonusArgent(plr, money_per_player) : money_per_player);   // [serveur] prestige
+ 
+             WorldPacket data(SMSG_LOOT_MONEY_NOTIFY, 4);
+             data << uint32(money_per_player);
+@@ -2314,7 +2314,7 @@
+     }
+     else
+     {
+-        player->ModifyMoney(m_gold);
++        player->ModifyMoney(gBonusArgent ? gBonusArgent(player, m_gold) : m_gold);   // [serveur] prestige
+ 
+         // Known deviation from WoW Classic Era: do not send SMSG_LOOT_MONEY_NOTIFY for solo money loot
+ 

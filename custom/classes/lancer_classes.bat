@@ -31,6 +31,10 @@ if exist "%~dp0logement.sql" (
   "%SPP%\bin\mysql.exe" --defaults-extra-file="%SPP%\connection.cnf" --default-character-set=utf8mb4 --database=classicmangos < "%~dp0logement.sql"
   if errorlevel 1 goto erreur
 )
+if exist "%~dp0modes.sql" (
+  "%SPP%\bin\mysql.exe" --defaults-extra-file="%SPP%\connection.cnf" --default-character-set=utf8mb4 --database=classicmangos < "%~dp0modes.sql"
+  if errorlevel 1 goto erreur
+)
 if exist "%~dp0tableaux.sql" (
   "%SPP%\bin\mysql.exe" --defaults-extra-file="%SPP%\connection.cnf" --default-character-set=utf8mb4 --database=classicmangos < "%~dp0tableaux.sql"
   if errorlevel 1 goto erreur

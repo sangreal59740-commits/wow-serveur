@@ -1397,6 +1397,16 @@ for _i, (_sid, _icon) in enumerate(zip(SPEC_SPELLS, (776, 1553, 1575))):
                                 'CastingTimeIndex': 6, 'Category': 0, 'RecoveryTime': 0, 'CategoryRecoveryTime': 0,
                                 'Attributes': SPR[8690][dc_attr] | 0x10000000, 'SpellIconID': _icon, 'SpellLevel': 0, 'BaseLevel': 0})
 
+# buff de prestige (module modes) : +30 % d'expérience et d'or, appliqué en permanence par le module aux personnages prestige
+from spellgen import dbc_col as _dcp
+PRESTIGE_SPELL = 65505
+SPG.add(PRESTIGE_SPELL, 8690, "Prestige", "Expérience et or gagnés augmentés de 30 %.",
+        tooltip="Expérience et or gagnés augmentés de 30 %.",
+        family=False, sets={'Effect1': 6, 'EffectApplyAuraName1': 4, 'EffectImplicitTargetA1': 1, 'EffectBasePoints1': 29, 'EffectDieSides1': 1,
+                            'EffectMiscValue1': 0, 'Effect2': 0, 'EffectApplyAuraName2': 0, 'Effect3': 0, 'EffectApplyAuraName3': 0,
+                            'CastingTimeIndex': 1, 'DurationIndex': DUR[-1], 'Category': 0, 'RecoveryTime': 0, 'CategoryRecoveryTime': 0,
+                            'Attributes': 0x80000000, 'SpellVisual': 0, 'SpellIconID': SPR[14752][_dcp('SpellIconID')], 'SpellLevel': 0, 'BaseLevel': 0})
+
 # ======================================================================== icônes (demandées par Alexis le 01/11)
 ICON_FIX = {N['inv_squelette']: 61, N['inv_goule']: 108, N['inv_abo']: 313, N['inv_givre']: 94, N['inv_chien']: 1614,
             N['inv_chevalier']: 1241, N['inv_wyrm']: 56,
