@@ -1,4 +1,5 @@
 ## Interface: 11200
 ## Title: Reliques
 ## Notes: Cases Artefacts (bleu, rouge, vert, jaune) et Mascotte sur la fiche du personnage
+Mascottes.lua
 Reliques.lua

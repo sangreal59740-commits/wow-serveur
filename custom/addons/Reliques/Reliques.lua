@@ -144,6 +144,42 @@ for i, d in ipairs(CASES) do
 end
 MajCases()
 
+-- infobulles des mascottes : leurs statistiques à votre niveau (moitié du budget d'un casque bleu chacune)
+local NOMS = { ["for"] = "Force", agi = "Agilité", ["end"] = "Endurance", int = "Intelligence", esp = "Esprit",
+	ps = "Puissance des sorts", pa = "Puissance d'attaque", cc = "% de critique", tm = "% de toucher", def = "Défense" }
+local function ValeurMascotte(cle, niveau)
+	local b = niveau / 2
+	local v = b
+	if cle == "ps" then v = b * 1.16 elseif cle == "pa" then v = b * 2 elseif cle == "cc" then v = b / 14
+	elseif cle == "tm" then v = b / 10 elseif cle == "def" then v = b / 1.5 end
+	return math.max(1, math.floor(v + 0.5))
+end
+local function InfoMascotte(tip, lien)
+	local _, _, id = string.find(lien or "", "item:(%d+)")
+	local m = id and Reliques_Mascottes and Reliques_Mascottes[tonumber(id)]
+	if not m then return end
+	local n = UnitLevel("player")
+	tip:AddLine("Mascotte : se place dans la case Mascotte (clic droit), le compagnon vous suit.", 0.8, 0.5, 1, 1)
+	tip:AddLine("+" .. ValeurMascotte(m[1], n) .. " " .. NOMS[m[1]] .. ", +" .. ValeurMascotte(m[2], n) .. " " .. NOMS[m[2]]
+		.. " (à votre niveau)", 0.2, 1, 0.2)
+	tip:Show()
+end
+local function Accrocher(tip, methode, quelLien)
+	local orig = tip[methode]
+	if not orig then return end
+	tip[methode] = function(self, a1, a2, a3, a4)
+		local r1, r2, r3 = orig(self, a1, a2, a3, a4)
+		local ok, lien = pcall(quelLien, a1, a2)
+		if ok and lien then pcall(InfoMascotte, self, lien) end
+		return r1, r2, r3
+	end
+end
+Accrocher(GameTooltip, "SetBagItem", function(b, s) return GetContainerItemLink(b, s) end)
+Accrocher(GameTooltip, "SetHyperlink", function(l) return l end)
+Accrocher(GameTooltip, "SetLootItem", function(s) return GetLootSlotLink(s) end)
+Accrocher(GameTooltip, "SetInventoryItem", function(u, s) return GetInventoryItemLink(u, s) end)
+if ItemRefTooltip then Accrocher(ItemRefTooltip, "SetHyperlink", function(l) return l end) end
+
 -- réponses du serveur
 local origChat = ChatFrame_OnEvent
 ChatFrame_OnEvent = function(ev)

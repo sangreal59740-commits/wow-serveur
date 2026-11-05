@@ -135,7 +135,7 @@ SPG.add(ROUTE_SPELL, 8690, "Sur la route", "Vitesse de déplacement augmentée d
 # 10 points = 1 % de toucher, 1,5 point = 1 défense, 1 point = 1,16 puissance des sorts, 1 point = 2 PA
 from spellgen import Gen
 AG = Gen(0, [])
-RELIQUES_NIVEAUX = [10, 20, 30, 40, 50, 60]
+RELIQUES_NIVEAUX = [10, 20, 30, 40, 50, 60, 89]      # budgets : casque bleu niveau 10 à 60, puis 60 épique (89)
 RELIQUES_VAL = {
     'cc': lambda L: max(1, int(round(L / 14.0))), 'tm': lambda L: max(1, int(round(L / 10.0))),
     'def': lambda L: int(round(L / 1.5)), 'ps': lambda L: int(round(L * 1.16)), 'pa': lambda L: 2 * L}
@@ -156,7 +156,25 @@ for _k in ('cc', 'tm', 'def', 'ps', 'pa'):
         AG.add(_rid, _RB[_k], _RN[_k][0] + " %d" % _val, _RN[_k][1], tooltip=_RN[_k][2], family=False, sets=_st)
         RELIQUES_SORTS['%s%d' % (_k, _val)] = _rid
         _rid += 1
-json.dump({'niveaux': RELIQUES_NIVEAUX, 'sorts': RELIQUES_SORTS,
+# effets des mascottes : sorts génériques (valeur donnée au lancement selon le niveau du joueur), passifs donc invisibles
+_MS = [('for', 0), ('agi', 1), ('end', 2), ('int', 3), ('esp', 4)]
+RELIQUES_MASCOTTE = {}
+_NOMSTAT = {'for': "Force", 'agi': "Agilité", 'end': "Endurance", 'int': "Intelligence", 'esp': "Esprit"}
+for _i, (_k, _stat) in enumerate(_MS):
+    _sid = 65690 + _i
+    AG.add(_sid, 9142, "Mascotte : " + _NOMSTAT[_k], "%s augmentée de $s1." % _NOMSTAT[_k], tooltip="%s augmentée de $s1." % _NOMSTAT[_k],
+           family=False, sets={'EffectApplyAuraName1': 29, 'EffectMiscValue1': _stat, 'EffectBasePoints1': 0, 'EffectDieSides1': 1,
+                               'EffectBaseDice1': 1, 'Effect2': 0, 'EffectApplyAuraName2': 0, 'EffectBasePoints2': 0, 'EffectMiscValue2': 0,
+                               'DurationIndex': DUR[-1]})
+    RELIQUES_MASCOTTE[_k] = _sid
+for _i, _k in enumerate(('ps', 'pa', 'cc', 'tm', 'def')):
+    _sid = 65695 + _i
+    _st = {'EffectBasePoints1': 0, 'EffectDieSides1': 1, 'EffectBaseDice1': 1, 'DurationIndex': DUR[-1]}
+    if _v(_RB[_k], 'Effect2') == 6:
+        _st.update({'EffectBasePoints2': 0, 'EffectDieSides2': 1, 'EffectBaseDice2': 1})
+    AG.add(_sid, _RB[_k], "Mascotte : " + _RN[_k][0], _RN[_k][1], tooltip=_RN[_k][2], family=False, sets=_st)
+    RELIQUES_MASCOTTE[_k] = _sid
+json.dump({'niveaux': RELIQUES_NIVEAUX, 'sorts': RELIQUES_SORTS, 'mascotte': RELIQUES_MASCOTTE,
            'valeurs': {k: {str(L): f(L) for L in RELIQUES_NIVEAUX} for k, f in RELIQUES_VAL.items()}},
           open('/home/claude/wow/classes/reliques_sorts.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 print('reliques : sorts', len(RELIQUES_SORTS))
