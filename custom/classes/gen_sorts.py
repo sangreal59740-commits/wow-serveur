@@ -1527,6 +1527,7 @@ L += SPG.sql(65500, 65509)
 L += AG.sql(65600, 65699)
 # Pierre de foyer sans temps de recharge (demande d'Alexis)
 VPATCH.setdefault(8690, {})['CategoryRecoveryTime'] = 0
+VPATCH[8690].update({'Category': 0, 'RecoveryTime': 0})
 from spellgen import dbc_col as _dbc_col
 SPELL_PATCH = {}
 for _sid, _cols in sorted(VPATCH.items()):

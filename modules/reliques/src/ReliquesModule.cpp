@@ -138,6 +138,8 @@ namespace cmangos_module
         }
         // objets qui n'existent plus (anciennes mascottes d'essai)
         CharacterDatabase.DirectExecute("DELETE FROM `custom_relique` WHERE `entry` BETWEEN 992100 AND 992199");
+        // pierre de foyer sans temps de recharge : on efface ceux déjà enregistrés
+        CharacterDatabase.DirectExecute("DELETE FROM `character_spell_cooldown` WHERE `SpellId` = 8690");
         sLog.outString("Reliques : %u objets autorises dont %u mascottes, %u recettes, %u personnages", uint32(types.size()),
                        uint32(mascottes.size()), uint32(recettes.size()), uint32(cases.size()));
     }
