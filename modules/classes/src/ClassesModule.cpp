@@ -1308,11 +1308,20 @@ namespace cmangos_module
             {
                 Unit* u = suiveurs[i];
                 uint64 key = u->GetObjectGuid().GetRawValue();
-                bool suit = u->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE;
-                if (u->IsInCombat() || u->GetVictim() || !suit)
+                MovementGeneratorType type = u->GetMotionMaster()->GetCurrentMovementGeneratorType();
+                bool suit = type == FOLLOW_MOTION_TYPE;
+                if (u->IsInCombat() || u->GetVictim())
                 {
                     formation.erase(key);
                     continue;
+                }
+                if (!suit)
+                {
+                    formation.erase(key);
+                    // après un combat, l'invocation revenait d'abord à l'endroit où le combat avait commencé : elle rejoint directement le joueur
+                    if (type != HOME_MOTION_TYPE && type != IDLE_MOTION_TYPE)
+                        continue;
+                    u->GetMotionMaster()->Clear(false, true);
                 }
                 uint32 slot = uint32(i) + 1;
                 if (formation[key] == slot)
