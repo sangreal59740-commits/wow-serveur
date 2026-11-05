@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
-// Vagues de bots niveau 1, lancees a la main avec la commande .bots vague
+// Vagues de bots (niveau 1 par défaut), lancées à la main avec la commande .bots vague [niveau]
 // Une vague = 275 bots (137 Alliance, 138 Horde), spe imposee par bot : voir SpesDeClasse / ClassesDeRace.
 // Chaque bot recoit un rythme de progression (multiplicateur d'experience) et une qualite de jeu
 // (multiplicateur du temps de reaction de l'IA), tires au hasard.

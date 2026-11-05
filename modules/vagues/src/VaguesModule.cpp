@@ -181,6 +181,13 @@ namespace cmangos_module
     bool VaguesModule::HandleVague(WorldSession* session, const std::string& args)
     {
         uint32 vague = NombreVagues() + 1;
+        // niveau de départ facultatif : .bots vague 12
+        uint32 niveau = args.empty() ? 1 : uint32(atoi(args.c_str()));
+        if (niveau < 1 || niveau > 60)
+        {
+            Message(session, "Usage : .bots vague [niveau de 1 à 60]");
+            return true;
+        }
         if (VaguesPresentes() >= VAGUES_MAX)
         {
             Message(session, "Il y a déjà 5 vagues. Supprime-en une avec .bots supprimer <numéro>.");
@@ -203,7 +210,7 @@ namespace cmangos_module
                         }
         }
 
-        Message(session, "Création de la vague " + std::to_string(vague) + " (" + std::to_string(taches.size()) + " bots niveau 1 : "
+        Message(session, "Création de la vague " + std::to_string(vague) + " (" + std::to_string(taches.size()) + " bots niveau " + std::to_string(niveau) + " : "
             + std::to_string(parFaction[0]) + " Alliance, " + std::to_string(parFaction[1]) + " Horde)...");
 
         std::set<uint64> avant;
@@ -246,7 +253,16 @@ namespace cmangos_module
 
         // Enregistrement en base puis fermeture des sessions temporaires (meme logique que la creation au demarrage)
         for (Cree& c : crees)
+        {
+            if (niveau > 1)
+            {
+                // équipement et sorts du niveau : donnés par les bots aléatoires à leur première connexion
+                c.player->GiveLevel(niveau);
+                c.player->InitTalentForLevel();
+                c.player->SetUInt32Value(PLAYER_XP, 0);
+            }
             c.player->SaveToDB();
+        }
 
         std::ostringstream sql;
         uint32 rythmes[4] = { 0, 0, 0, 0 }, qualites[4] = { 0, 0, 0, 0 };
@@ -287,7 +303,7 @@ namespace cmangos_module
         }
 
         std::ostringstream out;
-        out << "Vague " << vague << " créée : " << crees.size() << " bots niveau 1 sur " << taches.size() << " prévus. Ils se connectent dans les prochaines minutes."
+        out << "Vague " << vague << " créée : " << crees.size() << " bots niveau " << niveau << " sur " << taches.size() << " prévus. Ils se connectent dans les prochaines minutes."
             << " Rythme : " << rythmes[0] << " lents, " << rythmes[1] << " normaux, " << rythmes[2] << " rapides, " << rythmes[3] << " très rapides."
             << " Jeu : " << qualites[0] << " experts, " << qualites[1] << " bons, " << qualites[2] << " moyens, " << qualites[3] << " débutants.";
         Message(session, out.str());
