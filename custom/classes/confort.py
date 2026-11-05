@@ -174,6 +174,11 @@ for _i, _k in enumerate(('ps', 'pa', 'cc', 'tm', 'def')):
         _st.update({'EffectBasePoints2': 0, 'EffectDieSides2': 1, 'EffectBaseDice2': 1})
     AG.add(_sid, _RB[_k], "Mascotte : " + _RN[_k][0], _RN[_k][1], tooltip=_RN[_k][2], family=False, sets=_st)
     RELIQUES_MASCOTTE[_k] = _sid
+# coffret d'artefact : sort d'utilisation sans effet, l'artefact (adapté à la classe) est donné par le module reliques
+AG.add(65590, 8690, "Ouvrir le coffret", "Ouvre le coffret : un artefact de couleur au hasard, adapté à votre personnage.",
+       tooltip="", family=False, sets={'Effect1': 3, 'Effect2': 0, 'Effect3': 0, 'EffectImplicitTargetA1': 1, 'CastingTimeIndex': 1,
+                                       'Category': 0, 'RecoveryTime': 0, 'CategoryRecoveryTime': 0, 'DurationIndex': 0,
+                                       'SpellVisual': 0, 'SpellLevel': 0, 'BaseLevel': 0, 'Attributes': 0})
 json.dump({'niveaux': RELIQUES_NIVEAUX, 'sorts': RELIQUES_SORTS, 'mascotte': RELIQUES_MASCOTTE,
            'valeurs': {k: {str(L): f(L) for L in RELIQUES_NIVEAUX} for k, f in RELIQUES_VAL.items()}},
           open('/home/claude/wow/classes/reliques_sorts.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)

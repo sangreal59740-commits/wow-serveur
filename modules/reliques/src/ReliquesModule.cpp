@@ -544,7 +544,7 @@ namespace cmangos_module
             ch.PSendSysMessage("Il vous faut %s.", Or(rc.argent).c_str());
             return;
         }
-        uint32 entry = a->second[urand(0, uint32(a->second.size()) - 1)];
+        uint32 entry = ArtefactAdapte(player, couleur, palier);
         ItemPosCountVec dest;
         if (player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, entry, 1) != EQUIP_ERR_OK)
         {
@@ -558,5 +558,88 @@ namespace cmangos_module
             player->ModifyMoney(-int32(rc.argent));
         if (Item* it = player->StoreNewItem(dest, entry, true))
             player->SendNewItem(it, 1, true, false, false, false);
+    }
+
+    // ---------------------------------------------------------------- artefact adapté au personnage (coffrets et machine)
+    // rouge : Intelligence si le personnage a plus d'Intelligence que de Force ; jaune : puissance des sorts pour un lanceur de sorts,
+    // défense pour un guerrier ou un paladin avec bouclier, sinon puissance d'attaque ; vert : critique ou toucher au hasard
+    static std::string Variante(ItemPrototype const* proto)
+    {
+        if (proto->ItemStat[0].ItemStatType == ITEM_MOD_INTELLECT) return "int";
+        if (proto->ItemStat[0].ItemStatType == ITEM_MOD_STRENGTH) return "for";
+        if (proto->ItemStat[0].ItemStatType == ITEM_MOD_STAMINA) return "end";
+        if (SpellEntry const* sp = sSpellTemplate.LookupEntry<SpellEntry>(proto->Spells[0].SpellId))
+        {
+            switch (sp->EffectApplyAuraName[0])
+            {
+                case SPELL_AURA_MOD_CRIT_PERCENT: return "cc";
+                case SPELL_AURA_MOD_HIT_CHANCE: return "tm";
+                case SPELL_AURA_MOD_SKILL: return "def";
+                case SPELL_AURA_MOD_DAMAGE_DONE: return "ps";
+                case SPELL_AURA_MOD_ATTACK_POWER: return "pa";
+                default: break;
+            }
+        }
+        return "";
+    }
+
+    uint32 ReliquesModule::ArtefactAdapte(Player* player, uint32 couleur, uint32 palier)
+    {
+        auto a = artefacts.find(couleur * 10 + palier);
+        if (a == artefacts.end() || a->second.empty())
+            return 0;
+        bool lanceur = player->GetStat(STAT_INTELLECT) > player->GetStat(STAT_STRENGTH);
+        bool bouclier = false;
+        if (Item* g = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND))
+            bouclier = g->GetProto()->InventoryType == INVTYPE_SHIELD;
+        uint8 cls = player->getClass();
+        std::string voulu;
+        if (couleur == 2)
+            voulu = lanceur ? "int" : "for";
+        else if (couleur == 3)
+            voulu = urand(0, 1) ? "cc" : "tm";
+        else if (couleur == 4)
+            voulu = lanceur ? "ps" : ((bouclier && (cls == CLASS_WARRIOR || cls == CLASS_PALADIN)) ? "def" : "pa");
+        std::vector<uint32> bons;
+        for (uint32 e : a->second)
+            if (ItemPrototype const* pr = sObjectMgr.GetItemPrototype(e))
+                if (voulu.empty() || Variante(pr) == voulu)
+                    bons.push_back(e);
+        if (bons.empty())
+            bons = a->second;
+        return bons[urand(0, uint32(bons.size()) - 1)];
+    }
+
+    // coffret d'artefact : une couleur au hasard, l'artefact adapté au personnage
+    bool ReliquesModule::OnUseItem(Player* player, Item* item)
+    {
+        if (!player || !item || item->GetEntry() < RELIQUES_COFFRET || item->GetEntry() >= RELIQUES_COFFRET + RELIQUES_PALIERS)
+            return false;
+        uint32 palier = item->GetEntry() - RELIQUES_COFFRET;
+        uint32 entry;
+        {
+            std::lock_guard<std::recursive_mutex> guard(lock);
+            entry = ArtefactAdapte(player, urand(1, 4), palier);
+        }
+        if (!entry)
+            return true;
+        ItemPosCountVec dest;
+        if (player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, entry, 1) != EQUIP_ERR_OK)
+        {
+            // le coffret prend une place qui se libère : on le retire d'abord
+            uint32 coffret = item->GetEntry();
+            player->DestroyItemCount(coffret, 1, true);
+            if (player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, entry, 1) != EQUIP_ERR_OK)
+            {
+                player->StoreNewItemInInventorySlot(coffret, 1);
+                ChatHandler(player->GetSession()).SendSysMessage("Vos sacs sont pleins.");
+                return true;
+            }
+        }
+        else
+            player->DestroyItemCount(item->GetEntry(), 1, true);
+        if (Item* it = player->StoreNewItem(dest, entry, true))
+            player->SendNewItem(it, 1, true, false, false, false);
+        return true;
     }
 }

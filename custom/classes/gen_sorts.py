@@ -1525,7 +1525,7 @@ for _g, _a, _b in V4_GENS:
     L += _g.sql(_a, _b)
 L += T4G.sql(56000, 56999)
 L += SPG.sql(65500, 65509)
-L += AG.sql(65600, 65699)
+L += AG.sql(65590, 65699)
 # Pierre de foyer sans temps de recharge (demande d'Alexis)
 VPATCH.setdefault(8690, {})['CategoryRecoveryTime'] = 0
 VPATCH[8690].update({'Category': 0, 'RecoveryTime': 0})

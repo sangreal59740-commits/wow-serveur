@@ -21,8 +21,10 @@
 #define RELIQUES_CASES      5           // 1 à 4 : artefacts bleu, rouge, vert, jaune ; 5 : mascotte
 #define RELIQUES_MACHINE    991000      // machine à artefacts (près des hôtels des ventes), recettes : custom_relique_recette
 #define RELIQUES_PALIERS    7           // 10, 20, 30, 40, 50, 60, 60 épique
+#define RELIQUES_COFFRET    992200      // coffrets d'artefact 992200-992206 (un par palier)
 
 class GameObject;
+class Item;
 class Player;
 struct ItemPrototype;
 
@@ -37,6 +39,7 @@ namespace cmangos_module
         void OnUpdate(uint32 elapsed) override;
         void OnLogOut(Player* player) override;
         void OnDeleteFromDB(uint32 playerId) override;
+        bool OnUseItem(Player* player, Item* item) override;
         void OnGossipHello(Player* player, GameObject* gameObject) override;
         bool OnGossipSelect(Player* player, GameObject* gameObject, uint32 sender, uint32 action, const std::string& code, uint32 gossipListId) override;
 
@@ -54,6 +57,7 @@ namespace cmangos_module
         void Liste(Player* player);
         void Mascotte(Player* player, uint32 entry, bool apply);
         void Fabriquer(Player* player, uint32 couleur, uint32 palier);
+        uint32 ArtefactAdapte(Player* player, uint32 couleur, uint32 palier);
         void MenuPaliers(Player* player, GameObject* go, uint32 couleur);
         std::array<uint32, RELIQUES_CASES>& Cases(uint32 guid);
 

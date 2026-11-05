@@ -135,7 +135,8 @@ for v, a in enumerate(ARTEFACTS):
     _par_couleur.setdefault(a[0], []).append(v)
 for i in range(7):
     nom = "Coffret d'artefact épique" if i == 6 else "Coffret d'artefact (niveau %d)" % PALIERS[i]
-    objet(COFFRET[i], 0, nom, 16028, i, [], 0, "Contient un artefact au hasard.", flags=4, base=9541)
+    objet(COFFRET[i], 0, nom, 16028, i, [], 0, "Un artefact de couleur au hasard, adapté à votre personnage.", base=9541)
+    L.append("UPDATE tmp_it SET spellid_1=65590, spelltrigger_1=0, spellcharges_1=-1 WHERE entry=%d;" % COFFRET[i])
     for c, vs in _par_couleur.items():
         for v in vs:
             L.append("INSERT INTO item_loot_template (entry, item, ChanceOrQuestChance, groupid, mincountOrRef, maxcount) "
