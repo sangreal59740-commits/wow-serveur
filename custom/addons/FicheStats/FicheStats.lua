@@ -401,24 +401,48 @@ GameTooltip.SetAction = function(self, a1)
 end
 
 -- ---------------------------------------------------------------- calcul et échanges avec le serveur
--- réduction des dégâts sur les portraits : le mien (mon armure contre la cible, ou contre mon niveau) et celui de la cible
-local function TexteCadre(cadre, portrait)
+-- réduction des dégâts dans une bulle au-dessus des portraits : la mienne (mon armure contre la cible, ou contre mon niveau)
+-- et celle de la cible (son armure contre mes coups)
+local function Bulle(cadre, portrait, aide)
 	local f = CreateFrame("Frame", nil, cadre)
-	f:SetAllPoints(portrait)
-	f:SetFrameLevel(cadre:GetFrameLevel() + 5)
+	f:SetWidth(62)
+	f:SetHeight(20)
+	f:SetPoint("BOTTOM", portrait, "TOP", 0, 1)
+	f:SetFrameLevel(cadre:GetFrameLevel() + 6)
+	f:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+		tile = true, tileSize = 8, edgeSize = 10, insets = { left = 2, right = 2, top = 2, bottom = 2 } })
+	f:SetBackdropColor(0.05, 0.08, 0.15, 0.9)
+	f:SetBackdropBorderColor(0.45, 0.6, 0.9, 1)
+	local ic = f:CreateTexture(nil, "ARTWORK")
+	ic:SetTexture("Interface\\Icons\\INV_Shield_06")
+	ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	ic:SetWidth(12)
+	ic:SetHeight(12)
+	ic:SetPoint("LEFT", f, "LEFT", 5, 0)
 	local t = f:CreateFontString(nil, "OVERLAY")
 	t:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
-	t:SetPoint("BOTTOM", portrait, "BOTTOM", 0, 6)
-	t:SetTextColor(0.75, 0.85, 1)
-	return t
+	t:SetPoint("LEFT", ic, "RIGHT", 3, 0)
+	t:SetTextColor(0.8, 0.9, 1)
+	f.texte = t
+	f.aide = aide
+	f:EnableMouse(true)
+	f:SetScript("OnEnter", function()
+		GameTooltip:SetOwner(this, "ANCHOR_TOP")
+		GameTooltip:SetText("Réduction des dégâts physiques", 1, 0.82, 0)
+		GameTooltip:AddLine(this.aide, 1, 1, 1, 1)
+		GameTooltip:Show()
+	end)
+	f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	f:Hide()
+	return f
 end
-local txtJoueur = TexteCadre(PlayerFrame, PlayerPortrait)
-local txtCible = TexteCadre(TargetFrame, TargetPortrait)
+local bulleJoueur = Bulle(PlayerFrame, PlayerPortrait, "Votre armure réduit les coups de votre cible de ce pourcentage (sans cible : contre un ennemi de votre niveau).")
+local bulleCible = Bulle(TargetFrame, TargetPortrait, "L'armure de la cible réduit vos coups physiques de ce pourcentage.")
 local function MajCadres(s)
 	local cible = s.cn and s.cn > 0 and UnitExists("target")
 	local r = cible and s.car or s.ra
-	txtJoueur:SetText(r and ("-" .. Pct(r)) or "")
-	txtCible:SetText((cible and s.ctr) and ("-" .. Pct(s.ctr)) or "")
+	if r then bulleJoueur.texte:SetText("-" .. Pct(r)) bulleJoueur:Show() else bulleJoueur:Hide() end
+	if cible and s.ctr then bulleCible.texte:SetText("-" .. Pct(s.ctr)) bulleCible:Show() else bulleCible:Hide() end
 end
 
 local function Calculer()
