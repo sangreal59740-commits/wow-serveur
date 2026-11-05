@@ -12,6 +12,10 @@
 #include "Maps/Map.h"
 #include <boost/algorithm/string.hpp>
 #include "playerbot/PlayerbotLLMInterface.h"
+#include "Globals/ObjectAccessor.h"
+#include <mutex>
+#include <map>
+#include <set>
 
 using namespace ai;
 
@@ -452,6 +456,88 @@ delayedPackets ChatReplyAction::GenerateResponsePackets(const std::string json
     return packets;
 }
 
+// Serveur d'Alexis : un joueur demande de l'aide (quête, élite, donjon) dans /1, /2, /4 ou le canal Monde :
+// 3 bots au plus, de niveau proche, sans groupe, de préférence dans sa zone, lui répondent et lui proposent de l'aider.
+static bool HandleAideFR(Player* bot, ChatChannelSource src, std::string const& msg, std::string const& name, uint32 guid1)
+{
+    if (src != ChatChannelSource::SRC_GENERAL && src != ChatChannelSource::SRC_LOOKING_FOR_GROUP && src != ChatChannelSource::SRC_WORLD
+        && src != ChatChannelSource::SRC_TRADE)
+        return false;
+    Player* joueur = sObjectAccessor.FindPlayer(ObjectGuid(HIGHGUID_PLAYER, guid1));
+    if (!joueur || joueur == bot || !joueur->isRealPlayer())
+        return false;
+    std::string bas = msg;
+    std::transform(bas.begin(), bas.end(), bas.begin(), ::tolower);
+    static const char* MOTS[] = { "aide", "help", "groupe", "grp", "dj", "donjon", "quete", "quête", "elite", "élite", "lfg", "lfm",
+                                  "cherche", "besoin", "qui veut", "qq1", "quelqu", "dispo", "tank", "heal", "soigneur", "renfort" };
+    bool demande = false;
+    for (const char* m : MOTS)
+        if (bas.find(m) != std::string::npos)
+            demande = true;
+    if (!demande)
+        return false;
+
+    static std::mutex verrou;
+    static std::map<std::string, std::pair<time_t, std::set<uint32>>> choix;
+    std::string cle = std::to_string(guid1) + ":" + msg;
+    bool repond = false;
+    {
+        std::lock_guard<std::mutex> g(verrou);
+        time_t now = time(nullptr);
+        for (auto it = choix.begin(); it != choix.end();)
+            it = (now - it->second.first > 120) ? choix.erase(it) : std::next(it);
+        auto it = choix.find(cle);
+        if (it == choix.end())
+        {
+            std::vector<std::pair<uint32, uint32>> cand;      // (score, guid)
+            uint32 lvl = joueur->GetLevel(), zone = joueur->GetZoneId();
+            {
+                HashMapHolder<Player>::ReadGuard rg(HashMapHolder<Player>::GetLock());
+                for (auto const& kv : HashMapHolder<Player>::GetContainer())
+                {
+                    Player* p = kv.second;
+                    if (!p || !p->IsInWorld() || !p->GetPlayerbotAI() || p->GetGroup() || !p->IsAlive() || p->GetTeam() != joueur->GetTeam())
+                        continue;
+                    int32 ecart = int32(p->GetLevel()) - int32(lvl);
+                    if (ecart < -3 || ecart > 5)
+                        continue;
+                    cand.emplace_back((p->GetZoneId() == zone ? 0 : 1000) + urand(0, 999), p->GetGUIDLow());
+                }
+            }
+            std::sort(cand.begin(), cand.end());
+            std::set<uint32> elus;
+            for (size_t i = 0; i < cand.size() && i < 3; ++i)
+                elus.insert(cand[i].second);
+            it = choix.emplace(cle, std::make_pair(now, elus)).first;
+        }
+        repond = it->second.second.count(bot->GetGUIDLow()) > 0;
+        it->second.second.erase(bot->GetGUIDLow());           // une seule réponse par bot
+    }
+    if (!repond)
+        return true;
+
+    static const char* CANAL[] = {
+        "%s, je peux t'aider, invite-moi !", "Partant %s ! Niveau %u, j'arrive si tu m'invites.", "Je suis dispo %s, envoie une invitation.",
+        "%s, je viens avec toi. Invite-moi !", "Ça marche %s, je suis niveau %u, invite et on y va." };
+    static const char* MP[] = { "Je suis dispo pour t'aider, invite-moi quand tu veux.", "Envoie-moi une invitation, je te rejoins.",
+                                "Je peux venir, invite-moi !" };
+    char buf[200];
+    snprintf(buf, sizeof(buf), CANAL[urand(0, 4)], name.c_str(), bot->GetLevel());
+    PlayerbotAI* ai = bot->GetPlayerbotAI();
+    bool dit = false;
+    switch (src)
+    {
+        case ChatChannelSource::SRC_GENERAL: dit = ai->SayToGeneral(buf); break;
+        case ChatChannelSource::SRC_LOOKING_FOR_GROUP: dit = ai->SayToLFG(buf); break;
+        case ChatChannelSource::SRC_WORLD: dit = ai->SayToWorld(buf); break;
+        case ChatChannelSource::SRC_TRADE: dit = ai->SayToTrade(buf); break;
+        default: break;
+    }
+    if (!dit || urand(0, 1))
+        ai->Whisper(MP[urand(0, 2)], name);
+    return true;
+}
+
 void ChatReplyAction::ChatReplyDo(Player* bot, uint32 type, uint32 guid1, uint32 guid2, std::string msg, std::string chanName, std::string name)
 {
     // if we're just commanding bots around, don't respond...
@@ -497,6 +583,9 @@ void ChatReplyAction::ChatReplyDo(Player* bot, uint32 type, uint32 guid1, uint32
     {
         return;
     }
+
+    if (HandleAideFR(bot, chatChannelSource, msg, name, guid1))
+        return;
 
     //toxic links
     if (boost::algorithm::istarts_with(msg, sPlayerbotAIConfig.toxicLinksPrefix)
