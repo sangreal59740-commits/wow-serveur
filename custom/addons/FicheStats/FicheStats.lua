@@ -401,28 +401,24 @@ GameTooltip.SetAction = function(self, a1)
 end
 
 -- ---------------------------------------------------------------- calcul et échanges avec le serveur
--- réduction des dégâts au-dessus des barres de vie : la mienne (mon armure contre la cible, ou contre mon niveau) et celle de la cible
-local function TexteCadre(barre, point, relPoint)
-	local t = barre:CreateFontString(nil, "OVERLAY")
+-- réduction des dégâts sur les portraits : le mien (mon armure contre la cible, ou contre mon niveau) et celui de la cible
+local function TexteCadre(cadre, portrait)
+	local f = CreateFrame("Frame", nil, cadre)
+	f:SetAllPoints(portrait)
+	f:SetFrameLevel(cadre:GetFrameLevel() + 5)
+	local t = f:CreateFontString(nil, "OVERLAY")
 	t:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
-	t:SetPoint(point, barre, relPoint, 0, 2)
+	t:SetPoint("BOTTOM", portrait, "BOTTOM", 0, 6)
+	t:SetTextColor(0.75, 0.85, 1)
 	return t
 end
-local txtJoueur = TexteCadre(PlayerFrameHealthBar, "BOTTOMRIGHT", "TOPRIGHT")
-local txtCible = TexteCadre(TargetFrameHealthBar, "BOTTOMLEFT", "TOPLEFT")
+local txtJoueur = TexteCadre(PlayerFrame, PlayerPortrait)
+local txtCible = TexteCadre(TargetFrame, TargetPortrait)
 local function MajCadres(s)
 	local cible = s.cn and s.cn > 0 and UnitExists("target")
 	local r = cible and s.car or s.ra
-	if r then
-		txtJoueur:SetText("|cffaaaaaaArmure|r -" .. Pct(r))
-	else
-		txtJoueur:SetText("")
-	end
-	if cible and s.ctr then
-		txtCible:SetText("|cffaaaaaaArmure|r -" .. Pct(s.ctr))
-	else
-		txtCible:SetText("")
-	end
+	txtJoueur:SetText(r and ("-" .. Pct(r)) or "")
+	txtCible:SetText((cible and s.ctr) and ("-" .. Pct(s.ctr)) or "")
 end
 
 local function Calculer()

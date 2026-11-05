@@ -112,7 +112,8 @@ N['bouclier'] = n_single('bouclier', 'inv', 11426, 12, "Bouclier",
                          "Absorbe 15 points de dégâts par niveau du lanceur (900 au niveau 60). Dure 1 min.", 30000, 0, 15,
                          icon_sid=6229, tooltip="Absorbe des dégâts.",
                          EffectBasePoints1=15 * 12 - 1, EffectDieSides1=1, EffectRealPointsPerLevel1=15.0, MaxLevel=60,
-                         EffectMiscValue1=127, EffectBonusCoefficient1=0.10, DurationIndex=DUR[60000])
+                         EffectMiscValue1=127, EffectBonusCoefficient1=0.10, DurationIndex=DUR[60000],
+                         SpellVisual=visual(6229), School=5)   # effet visuel d'ombre (Gardien de l'ombre) au lieu du givre
 N['eclair'] = n_direct('eclair', 'mag', 116, 14, 7, "Éclair de givre", 4, 260, 300, 0.57, 2000, 2000, 16,
                        extra=lambda L: {'EffectBasePoints1': -21, 'EffectDieSides1': 1, 'DurationIndex': DUR[3000]},
                        desc_extra=" Ralentit la cible de 20 % pendant 3 s.")
