@@ -12,6 +12,7 @@
 #include "Server/WorldSession.h"
 #include "Spells/SpellMgr.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <sstream>
 
@@ -164,6 +165,31 @@ namespace cmangos_module
         if (Player* p = session ? session->GetPlayer() : nullptr)
         {
             Initialiser(p);
+            // objets qui vont dans les cases (pour le clic droit dans les sacs) : « ##RELIQO début-fin,... »
+            {
+                std::lock_guard<std::recursive_mutex> guard(lock);
+                std::vector<uint32> ids;
+                for (auto const& kv : types)
+                    ids.push_back(kv.first);
+                std::sort(ids.begin(), ids.end());
+                std::string ligne;
+                for (size_t i = 0; i < ids.size();)
+                {
+                    size_t j = i;
+                    while (j + 1 < ids.size() && ids[j + 1] == ids[j] + 1)
+                        ++j;
+                    std::string morceau = std::to_string(ids[i]) + (j > i ? "-" + std::to_string(ids[j]) : "");
+                    if (ligne.size() + morceau.size() > 200)
+                    {
+                        ChatHandler(session).SendSysMessage(("##RELIQO " + ligne).c_str());
+                        ligne.clear();
+                    }
+                    ligne += (ligne.empty() ? "" : ",") + morceau;
+                    i = j + 1;
+                }
+                if (!ligne.empty())
+                    ChatHandler(session).SendSysMessage(("##RELIQO " + ligne).c_str());
+            }
             Liste(p);
             return true;
         }

@@ -1,0 +1,5 @@
+## Interface: 11200
+## Title: CadresPlus
+## Notes: Valeurs sur les barres de vie et de mana, cadres deplacables (Maj + glisser). /cadres
+## SavedVariables: CadresPlus_Pos
+CadresPlus.lua

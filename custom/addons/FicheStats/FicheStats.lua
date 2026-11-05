@@ -401,9 +401,34 @@ GameTooltip.SetAction = function(self, a1)
 end
 
 -- ---------------------------------------------------------------- calcul et échanges avec le serveur
+-- réduction des dégâts au-dessus des barres de vie : la mienne (mon armure contre la cible, ou contre mon niveau) et celle de la cible
+local function TexteCadre(barre, point, relPoint)
+	local t = barre:CreateFontString(nil, "OVERLAY")
+	t:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
+	t:SetPoint(point, barre, relPoint, 0, 2)
+	return t
+end
+local txtJoueur = TexteCadre(PlayerFrameHealthBar, "BOTTOMRIGHT", "TOPRIGHT")
+local txtCible = TexteCadre(TargetFrameHealthBar, "BOTTOMLEFT", "TOPLEFT")
+local function MajCadres(s)
+	local cible = s.cn and s.cn > 0 and UnitExists("target")
+	local r = cible and s.car or s.ra
+	if r then
+		txtJoueur:SetText("|cffaaaaaaArmure|r -" .. Pct(r))
+	else
+		txtJoueur:SetText("")
+	end
+	if cible and s.ctr then
+		txtCible:SetText("|cffaaaaaaArmure|r -" .. Pct(s.ctr))
+	else
+		txtCible:SetText("")
+	end
+end
+
 local function Calculer()
 	local s = Releve()
 	MajPanneau(s)
+	MajCadres(s)
 	if avant and afficher then MontrerDifferences(avant, s) end
 	avant = s
 	afficher = true

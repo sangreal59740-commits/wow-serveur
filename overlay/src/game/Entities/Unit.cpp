@@ -7235,6 +7235,8 @@ int32 Unit::SpellBaseDamageBonusDone(SpellSchoolMask schoolMask)
     {
         // Base value
         DoneAdvertisedBenefit += ((Player*)this)->GetBaseSpellPowerBonus();
+        // serveur perso : 1 Intelligence = 0,5 puissance des sorts
+        DoneAdvertisedBenefit += int32(GetStat(STAT_INTELLECT) * 0.5f);
 
         // Damage bonus from stats
         AuraList const& mDamageDoneOfStatPercent = GetAurasByType(SPELL_AURA_MOD_SPELL_DAMAGE_OF_STAT_PERCENT);
@@ -7386,6 +7388,8 @@ int32 Unit::SpellBaseHealingBonusDone(SpellSchoolMask schoolMask)
     {
         // Base value
         AdvertisedBenefit += ((Player*)this)->GetBaseSpellPowerBonus();
+        // serveur perso : 1 Intelligence = 0,5 puissance des sorts (soins aussi)
+        AdvertisedBenefit += int32(GetStat(STAT_INTELLECT) * 0.5f);
 
         // Healing bonus from stats
         AuraList const& mHealingDoneOfStatPercent = GetAurasByType(SPELL_AURA_MOD_SPELL_HEALING_OF_STAT_PERCENT);

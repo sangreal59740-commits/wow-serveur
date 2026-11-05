@@ -1,18 +1,35 @@
 -- Reliques : 4 cases d'artefacts (bleu, rouge, vert, jaune) et 1 case de mascotte sur la fiche du personnage.
--- Glisser un artefact ou une mascotte depuis les sacs sur une case (il va dans la case de sa couleur), clic droit pour le retirer.
+-- Clic droit sur un artefact ou une mascotte dans les sacs (ou glisser sur une case) : il va dans la case de sa couleur,
+-- en remplaçant celui qui y est. Clic droit sur une case pour retirer l'objet.
 -- Le serveur garde l'objet et applique ses statistiques (module reliques) : commandes .relique liste / equiper / retirer,
 -- réponses « ##RELIQ ... » lues puis masquées.
 
 local CASES = {
-	{ ancre = "CharacterHeadSlot", couleur = { 0.25, 0.5, 1 }, nom = "Artefact bleu", aide = "Endurance" },
-	{ ancre = "CharacterNeckSlot", couleur = { 1, 0.25, 0.25 }, nom = "Artefact rouge", aide = "Force ou Intelligence" },
-	{ ancre = "CharacterShoulderSlot", couleur = { 0.3, 1, 0.3 }, nom = "Artefact vert", aide = "Critique ou toucher" },
-	{ ancre = "CharacterBackSlot", couleur = { 1, 0.85, 0.2 }, nom = "Artefact jaune", aide = "Défense, puissance des sorts ou puissance d'attaque" },
+	{ ancre = "CharacterNeckSlot", couleur = { 0.25, 0.5, 1 }, nom = "Artefact bleu", aide = "Endurance" },
+	{ ancre = "CharacterShoulderSlot", couleur = { 1, 0.25, 0.25 }, nom = "Artefact rouge", aide = "Force ou Intelligence" },
+	{ ancre = "CharacterBackSlot", couleur = { 0.3, 1, 0.3 }, nom = "Artefact vert", aide = "Critique ou toucher" },
+	{ ancre = "CharacterChestSlot", couleur = { 1, 0.85, 0.2 }, nom = "Artefact jaune", aide = "Défense, puissance des sorts ou puissance d'attaque" },
 	{ ancre = "CharacterFinger0Slot", couleur = { 0.8, 0.5, 1 }, nom = "Mascotte", aide = "Autant de statistiques qu'un casque", gauche = true },
 }
 local objets = { 0, 0, 0, 0, 0 }
 local boutons = {}
 local dernierSac, derniereCase = nil, nil
+
+local reliques = {}        -- objets qui vont dans les cases (envoyés par le serveur)
+
+-- clic droit sur un artefact ou une mascotte dans les sacs : il va dans sa case (remplace celui qui y est)
+local origUse = UseContainerItem
+UseContainerItem = function(sac, case, a3)
+	local lien = GetContainerItemLink(sac, case)
+	local _, _, id = string.find(lien or "", "item:(%d+)")
+	id = tonumber(id)
+	if id and reliques[id] and not (MerchantFrame and MerchantFrame:IsVisible()) and not (BankFrame and BankFrame:IsVisible())
+		and not (TradeFrame and TradeFrame:IsVisible()) and not (SendMailFrame and SendMailFrame:IsVisible()) then
+		SendChatMessage(".relique equiper " .. sac .. " " .. case .. " 1", "SAY")
+		return
+	end
+	origUse(sac, case, a3)
+end
 
 -- d'où vient l'objet pris par la souris
 local origPickup = PickupContainerItem
@@ -141,7 +158,13 @@ local tDemande, tMaj = 0, 0
 f:SetScript("OnEvent", function()
 	if event == "PLAYER_ENTERING_WORLD" then
 		tDemande = GetTime() + 3
-	elseif arg1 and string.find(arg1, "^##RELIQ") then
+	elseif arg1 and string.find(arg1, "^##RELIQO") then
+		for d, f in string.gfind(arg1, "(%d+)%-?(%d*)") do
+			d = tonumber(d)
+			f = tonumber(f) or d
+			for i = d, f do reliques[i] = true end
+		end
+	elseif arg1 and string.find(arg1, "^##RELIQ ") then
 		for n, id in string.gfind(arg1, "(%d)=(%d+)") do
 			objets[tonumber(n)] = tonumber(id)
 		end
