@@ -1,3 +1,4 @@
+import json
 # Génère l'addon pfQuest-Custom : ajoute à la base de pfQuest les quêtes custom du serveur (entrées >= 990000),
 # leurs donneurs, objectifs (monstres, objets, objets du monde) et les positions sur la carte.
 import re, struct, subprocess, sys, os
@@ -118,6 +119,10 @@ if new_items:
 # chefs de zone et alphas : copies d'un monstre de la zone (le nom en jeu vient du nom français de la source)
 _ms = open('/home/claude/wow-serveur/custom/monde.sql', encoding='utf-8').read()
 BOSS_SRC = {int(b): int(a) for a, b in re.findall(r"INSERT INTO tmp_ct SELECT \* FROM creature_template WHERE Entry=(\d+);\s*UPDATE tmp_ct SET Entry=(\d+),", _ms)}
+# alphas dont la source vivait dans l'eau, remplacée par gen_primes_eau.py
+import os
+if os.path.exists('/home/claude/wow-serveur/custom/primes_eau.json'):
+    BOSS_SRC.update({int(k): int(v) for k, v in json.load(open('/home/claude/wow-serveur/custom/primes_eau.json')).items()})
 
 # ------------------------------------------------------------ écriture Lua (5.0)
 def s(v):
