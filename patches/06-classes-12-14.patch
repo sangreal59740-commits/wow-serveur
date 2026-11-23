@@ -1,0 +1,167 @@
+--- a/src/game/Globals/SharedDefines.h
++++ b/src/game/Globals/SharedDefines.h
+@@ -82,22 +82,36 @@
+     CLASS_WARLOCK       = 9,
+     CLASS_SNIPER        = 10,                               // [custom] Sniper (base chasseur)
+     CLASS_DRUID         = 11,
+-    // CLASS_DEMON_HUNTER = 12,                             // not listed in DBC, will be in 7.0
++    CLASS_TISSERAND     = 12,                               // [custom] Tisserand de vie (base pretre)
++    CLASS_FOSSOYEUR     = 13,                               // [custom] Fossoyeur (base voleur / chasseur)
++    CLASS_MARTYR        = 14,                               // [custom] Martyr (base guerrier, la vie comme ressource)
+ };
+ 
+ // max+1 for player class
+-#define MAX_CLASSES       12
++#define MAX_CLASSES       15
+ 
+ constexpr uint32 const CLASSMASK_ALL_PLAYABLE = convertEnumToFlag
+ (
+     CLASS_WARRIOR, CLASS_PALADIN, CLASS_HUNTER,
+     CLASS_ROGUE,   CLASS_PRIEST,  CLASS_SHAMAN,
+     CLASS_MAGE,    CLASS_WARLOCK, CLASS_DRUID,
+-    CLASS_NECROMANCER, CLASS_SNIPER
++    CLASS_NECROMANCER, CLASS_SNIPER,
++    CLASS_TISSERAND, CLASS_FOSSOYEUR, CLASS_MARTYR
+ );
+ 
+ // [custom] classe vanilla dont une classe custom reprend les formules (stats, regen, familier)
+-inline uint8 CustomBaseClass(uint8 c) { return c == CLASS_NECROMANCER ? CLASS_WARLOCK : c == CLASS_SNIPER ? CLASS_HUNTER : c; }
++inline uint8 CustomBaseClass(uint8 c)
++{
++    switch (c)
++    {
++        case CLASS_NECROMANCER: return CLASS_WARLOCK;
++        case CLASS_SNIPER:      return CLASS_HUNTER;
++        case CLASS_TISSERAND:   return CLASS_PRIEST;
++        case CLASS_FOSSOYEUR:   return CLASS_ROGUE;
++        case CLASS_MARTYR:      return CLASS_WARRIOR;
++        default:                return c;
++    }
++}
+ 
+ constexpr uint32 const CLASSMASK_ALL_CREATURES = convertEnumToFlag(CLASS_WARRIOR, CLASS_PALADIN, CLASS_MAGE);
+ 
+@@ -105,7 +119,7 @@
+ 
+ // array index could be used to store class data only Warrior, Paladin and Mage are indexed for creature
+ //                                                  W  P                 M
+-static const uint8 classToIndex[MAX_CLASSES] = { 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0 };
++static const uint8 classToIndex[MAX_CLASSES] = { 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0 };
+ 
+ constexpr uint32 const CLASSMASK_WAND_USERS = convertEnumToFlag(CLASS_PRIEST, CLASS_MAGE, CLASS_WARLOCK);
+ 
+--- a/src/game/Server/DBCStores.cpp
++++ b/src/game/Server/DBCStores.cpp
+@@ -144,7 +144,7 @@
+ typedef std::map<uint32, uint32> TalentInspectMap;
+ static TalentInspectMap sTalentPosInInspect;
+ static TalentInspectMap sTalentTabSizeInInspect;
+-static uint32 sTalentTabPages[12/*MAX_CLASSES*/][5];   // [custom] 4e arbre de talents (5 onglets max cote client)
++static uint32 sTalentTabPages[MAX_CLASSES][5];   // [custom] 4e arbre de talents (5 onglets max cote client)
+ 
+ DBCStorage <TaxiNodesEntry> sTaxiNodesStore(TaxiNodesEntryfmt);
+ TaxiMask sTaxiNodesMask;
+--- a/src/game/Entities/Player.h
++++ b/src/game/Entities/Player.h
+@@ -898,6 +898,7 @@
+ extern uint32 (*gBonusArgent)(Player* player, uint32 money);
+ // [serveur] bonus fractionnaires des reliques (module reliques) : 0 toucher des armes, 1 toucher des sorts, 2 critique des sorts (en %)
+ extern float (*gBonusReliques)(Player const* player, uint8 type);
++extern bool (*gEviteMort)(Player const* player);      // [custom] module classes : mort evitee
+ 
+ class Player : public Unit
+ {
+--- a/src/game/Entities/Player.cpp
++++ b/src/game/Entities/Player.cpp
+@@ -1808,7 +1808,7 @@
+         uint32 petFamily = 0;
+ 
+         // show pet at selection character in character list only for non-ghost character
+-        if (result && !(playerFlags & PLAYER_FLAGS_GHOST) && (pClass == CLASS_WARLOCK || pClass == CLASS_HUNTER || pClass == CLASS_NECROMANCER || pClass == CLASS_SNIPER))
++        if (result && !(playerFlags & PLAYER_FLAGS_GHOST) && (pClass == CLASS_WARLOCK || pClass == CLASS_HUNTER || pClass == CLASS_NECROMANCER || pClass == CLASS_SNIPER || pClass == CLASS_FOSSOYEUR))
+         {
+             uint32 entry = fields[16].GetUInt32();
+             CreatureInfo const* cInfo = sCreatureStorage.LookupEntry<CreatureInfo>(entry);
+@@ -1912,7 +1912,7 @@
+         uint32 petFamily = 0;
+ 
+         // show pet at selection character in character list only for non-ghost character
+-        if (cache->petEntry && !(playerFlags & PLAYER_FLAGS_GHOST) && (pClass == CLASS_WARLOCK || pClass == CLASS_HUNTER || pClass == CLASS_NECROMANCER || pClass == CLASS_SNIPER))
++        if (cache->petEntry && !(playerFlags & PLAYER_FLAGS_GHOST) && (pClass == CLASS_WARLOCK || pClass == CLASS_HUNTER || pClass == CLASS_NECROMANCER || pClass == CLASS_SNIPER || pClass == CLASS_FOSSOYEUR))
+         {
+             CreatureInfo const* cInfo = sCreatureStorage.LookupEntry<CreatureInfo>(cache->petEntry);
+             if (cInfo)
+@@ -2424,6 +2424,9 @@
+ 
+ void Player::RewardRage(uint32 damage, bool attacker)
+ {
++    if (getClass() == CLASS_MARTYR)                         // [custom] le Martyr n'a pas de rage : il paie avec sa vie
++        return;
++
+     float addRage;
+ 
+     float rageconversion = float((0.0091107836 * GetLevel() * GetLevel()) + 3.225598133 * GetLevel()) + 4.2652911f;
+@@ -5228,7 +5231,7 @@
+         {   3.33f, 12.41f,  0.79f }                         // 11: druid
+     };
+     // FIXME: Add base value and scaling for hunters, fix the formula
+-    const uint32 pclass = CustomBaseClass(getClass());
++    const uint32 pclass = getClass() == CLASS_FOSSOYEUR ? uint32(CLASS_SHAMAN) : uint32(CustomBaseClass(getClass()));
+     if (pclass >= MAX_CLASSES)
+         return 0.0f;
+     const float crit_ratio = crit_data[pclass].rate0 + crit_data[pclass].rate1 * GetLevel();
+@@ -17512,6 +17515,9 @@
+         case CLASS_DRUID: name = SPELLFAMILY_DRUID; break;
+         case CLASS_NECROMANCER: name = SPELLFAMILY_WARLOCK; break;
+         case CLASS_SNIPER: name = SPELLFAMILY_HUNTER; break;
++        case CLASS_TISSERAND: name = SpellFamily(14); break;    // familles de sorts propres aux nouvelles classes
++        case CLASS_FOSSOYEUR: name = SpellFamily(15); break;
++        case CLASS_MARTYR: name = SpellFamily(16); break;
+     }
+     m_spellClassName = name;
+ }
+@@ -20783,9 +20789,14 @@
+         m_ExtraFlags &= ~PLAYER_EXTRA_GM_UNKILLABLE;
+ }
+ 
++// [custom] module classes : effets qui empechent la mort (Fil du destin, Refus du trepas)
++bool (*gEviteMort)(Player const* player) = nullptr;
++
+ bool Player::IsPreventingDeath() const
+ {
+-    return m_ExtraFlags & PLAYER_EXTRA_GM_UNKILLABLE;
++    if (m_ExtraFlags & PLAYER_EXTRA_GM_UNKILLABLE)
++        return true;
++    return gEviteMort && gEviteMort(this);
+ }
+ 
+ void Player::ForceHealAndPowerUpdateInZone()
+--- a/src/game/Entities/StatSystem.cpp
++++ b/src/game/Entities/StatSystem.cpp
+@@ -230,7 +230,7 @@
+ 
+         mod = AttackPowerMod::RANGED_ATTACK_POWER;
+ 
+-        switch (getClass())
++        switch (CustomBaseClass(getClass()))
+         {
+             case CLASS_HUNTER:
+             case CLASS_SNIPER: val2 = level * 2.0f + GetStat(STAT_AGILITY) * 2.0f - 10.0f;    break;
+@@ -252,7 +252,7 @@
+     }
+     else
+     {
+-        switch (getClass())
++        switch (CustomBaseClass(getClass()))
+         {
+             case CLASS_WARRIOR:      val2 = level * 3.0f + GetStat(STAT_STRENGTH) * 2.0f                    - 20.0f; break;
+             case CLASS_PALADIN:      val2 = level * 3.0f + GetStat(STAT_STRENGTH) * 2.0f                    - 20.0f; break;
+@@ -503,7 +503,7 @@
+ void Player::UpdateDodgePercentage()
+ {
+     // Base dodge
+-    float value = (getClass() < MAX_CLASSES) ? PLAYER_BASE_DODGE[getClass()] : 0.0f;
++    float value = (CustomBaseClass(getClass()) < MAX_CLASSES) ? PLAYER_BASE_DODGE[CustomBaseClass(getClass())] : 0.0f;
+     // Dodge from agility
+     value += GetDodgeFromAgility(GetStat(STAT_AGILITY));
+     // Dodge from SPELL_AURA_MOD_DODGE_PERCENT aura

@@ -186,6 +186,7 @@ namespace cmangos_module
         CharacterDatabase.Execute("CREATE TABLE IF NOT EXISTS `custom_bot_arbre` (`guid` INT UNSIGNED NOT NULL, `arbre` TINYINT UNSIGNED NOT NULL,"
                                   " PRIMARY KEY (`guid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
         ChargerArbres();
+        gEviteMort = [](Player const* p) { return instance && instance->NouvEviteMort(p); };   // Fil du destin, Refus du trépas
         sLog.outString("Classes custom : %u invocations du Nécromancien, IA des bots active, %u bot(s) à arbre imposé", INVOCATIONS_N, uint32(arbreBots.size()));
     }
 
@@ -813,6 +814,16 @@ namespace cmangos_module
             return;
         Player* player = static_cast<Player*>(caster);
         uint8 cls = player->getClass();
+        if (cls >= 12)                                       // nouvelles classes : Tisserand de vie, Fossoyeur, Martyr
+        {
+            if (s_depth == 0)
+            {
+                std::lock_guard<std::recursive_mutex> guard(lock);
+                DepthGuard depth;
+                NouvCast(player, spell->m_spellInfo->Id, victim, spell);
+            }
+            return;
+        }
         if (cls != C_NECRO && cls != C_SNIPER && cls != C_META)
         {
             if (s_depth == 0)
@@ -846,6 +857,12 @@ namespace cmangos_module
         Player* player = static_cast<Player*>(caster);
         SpellEntry const* info = spell->m_spellInfo;
         uint32 id = info->Id;
+        if (player->getClass() >= 12)
+        {
+            std::lock_guard<std::recursive_mutex> guard(lock);
+            NouvHit(player, id, victim, spell);
+            return;
+        }
         if (player->getClass() == CLASS_HUNTER)
         {
             // tirs de soin de l'Infirmier : le module calcule le soin (arme, base du sort, puissance d'attaque à distance)
@@ -999,6 +1016,14 @@ namespace cmangos_module
 
     bool ClassesModule::OnPeriodicTick(Aura* aura)
     {
+        if (aura && s_depth == 0)
+            if (Unit* c = aura->GetCaster())
+                if (c->GetTypeId() == TYPEID_PLAYER && static_cast<Player*>(c)->getClass() >= 12)
+                {
+                    std::lock_guard<std::recursive_mutex> guard(lock);
+                    DepthGuard depth;
+                    return NouvTick(aura);
+                }
         // Maléfice : les DoT du Nécromancien infligent un tick supplémentaire (dégâts doublés)
         if (!aura || !N_MALEFICE[0] || s_depth > 0)
             return false;
@@ -1093,6 +1118,12 @@ namespace cmangos_module
 
     void ClassesModule::OnDealDamage(Unit* unit, Unit* victim, uint32 health, uint32 damage)
     {
+        if (victim && s_depth == 0)
+        {
+            std::lock_guard<std::recursive_mutex> guard(lock);
+            DepthGuard depth;
+            NouvDamage(unit, victim, health, damage);
+        }
         // Prêtre Corrompu : les dégâts des rats soignent les alliés blessés à 20 m du Prêtre
         if (unit && victim && damage && s_depth == 0 && unit->GetTypeId() == TYPEID_UNIT && unit->GetEntry() == Q4_RAT[0])
             if (Unit* owner = unit->GetOwner())
@@ -1170,6 +1201,12 @@ namespace cmangos_module
 
     void ClassesModule::OnDealHeal(Unit* unit, Unit* victim, int32 /*gain*/, uint32 addHealth)
     {
+        if (s_depth == 0)
+        {
+            std::lock_guard<std::recursive_mutex> guard(lock);
+            DepthGuard depth;
+            NouvHeal(unit, victim, addHealth);
+        }
         if (!unit || !victim || !addHealth || s_depth > 0 || unit->GetTypeId() != TYPEID_PLAYER)
             return;
         Player* mage = static_cast<Player*>(unit);
@@ -1235,6 +1272,7 @@ namespace cmangos_module
         petHealTick.erase(player->GetObjectGuid().GetRawValue());
         botTalentTick.erase(player->GetObjectGuid().GetRawValue());
         actionLists.erase(player->GetObjectGuid().GetRawValue());
+        NouvLogOut(player);
     }
 
     // ------------------------------------------------------------------ IA des bots
@@ -1288,6 +1326,8 @@ namespace cmangos_module
         std::lock_guard<std::recursive_mutex> guard(lock);
         DepthGuard depth;
         uint8 cls = player->getClass();
+        if (cls >= 12)
+            NouvUpkeep(player);
         // invocations (armée, bêtes, fantômes, rats...) en mode défensif : elles n'attaquent que si le joueur attaque ou est attaqué
         player->CallForAllControlledUnits([](Unit* u)
         {

@@ -65,6 +65,23 @@ namespace cmangos_module
         void Spe4Cast(Player* player, uint32 spellId, Unit* victim);
         void Spe4Upkeep(Player* player);
         void SwapSpells(Player* player, const uint32_t* from, const uint32_t* to, uint32 n, bool active);
+        // nouvelles classes (23/11) : Tisserand de vie, Fossoyeur, Martyr (NouvellesClasses.cpp)
+    public:
+        void NouvCast(Player* player, uint32 spellId, Unit* victim, Spell* spell);
+        void NouvHit(Player* player, uint32 spellId, Unit* victim, Spell* spell);
+        bool NouvTick(Aura* aura);
+        void NouvDamage(Unit* unit, Unit* victim, uint32 health, uint32 damage);
+        void NouvHeal(Unit* unit, Unit* victim, uint32 addHealth);
+        void NouvUpkeep(Player* player);
+        void NouvLogOut(Player* player);
+        bool NouvEviteMort(Player const* player);
+    private:
+        std::unordered_map<uint64, std::vector<uint64>> lienForce;                   // Tisserand -> alliés liés (Lien de force)
+        std::unordered_map<uint64, uint64> toileCaster;                              // cible de Toile protectrice -> Tisserand
+        std::unordered_map<uint64, uint32> vieSauts;                                 // Tisserand -> sauts restants du Fil de vie
+        std::unordered_map<uint64, std::deque<std::pair<uint64, uint32>>> fantomes;  // Passeur -> (allié, sort du fantôme)
+        std::unordered_map<uint64, time_t> trepasTime;                               // Tisserand -> dernier Refus du trépas
+        std::unordered_map<uint64, uint8> mortEvitee;                                // joueur -> 1 Fil du destin, 2 Refus du trépas
         // bots
         bool TryCast(Player* bot, Unit* target, uint32 spellId);
         bool TryCastAt(Player* bot, Unit* where, uint32 spellId);
