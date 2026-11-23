@@ -473,7 +473,12 @@ namespace cmangos_module
                     return false;
                 --sauts;
                 int32 reste = aura->GetAuraDuration();
-                target->RemoveAurasByCasterSpell(TW_VIE[0], pg);
+                // l'aura en cours de tick n'est pas retirée ici : elle expire à la prochaine mise à jour
+                if (SpellAuraHolder* cur = aura->GetHolder())
+                {
+                    cur->SetAuraDuration(1);
+                    cur->UpdateAuraDuration();
+                }
                 p->CastSpell(best, TW_VIE[0], TRIGGERED_OLD_TRIGGERED);
                 if (SpellAuraHolder* h = best->GetSpellAuraHolder(TW_VIE[0], pg))
                     if (reste > 0)
