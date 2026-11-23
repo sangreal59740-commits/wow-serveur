@@ -1,0 +1,43 @@
+diff -ru a/src/game/Entities/Player.h b/src/game/Entities/Player.h
+--- a/src/game/Entities/Player.h	2026-11-23 19:16:11.905279565 +0100
++++ b/src/game/Entities/Player.h	2026-11-23 19:16:19.212270536 +0100
+@@ -896,6 +896,8 @@
+ 
+ // [serveur] bonus d'or du prestige (fixé par le module modes) : renvoie le montant majoré
+ extern uint32 (*gBonusArgent)(Player* player, uint32 money);
++// [serveur] bonus fractionnaires des reliques (module reliques) : 0 toucher des armes, 1 toucher des sorts, 2 critique des sorts (en %)
++extern float (*gBonusReliques)(Player const* player, uint8 type);
+ 
+ class Player : public Unit
+ {
+diff -ru a/src/game/Entities/StatSystem.cpp b/src/game/Entities/StatSystem.cpp
+--- a/src/game/Entities/StatSystem.cpp	2026-11-23 19:16:11.897645569 +0100
++++ b/src/game/Entities/StatSystem.cpp	2026-11-23 19:16:19.213044788 +0100
+@@ -524,6 +524,8 @@
+     crit += GetTotalAuraModifier(SPELL_AURA_MOD_SPELL_CRIT_CHANCE);
+     // Increase crit by school from SPELL_AURA_MOD_SPELL_CRIT_CHANCE_SCHOOL
+     crit += GetTotalAuraModifierByMiscMask(SPELL_AURA_MOD_SPELL_CRIT_CHANCE_SCHOOL, (1 << school));
++    if (gBonusReliques)                                     // [serveur] améliorations des reliques
++        crit += gBonusReliques(this, 2);
+     // Set current crit chance
+     m_modSpellCritChance[school] = crit;
+ }
+@@ -543,14 +545,16 @@
+         else if (weapon && weapon->IsFitToSpellRequirements(hitAura->GetSpellProto()))
+             weaponHitChance += hitAura->GetModifier()->m_amount;
+     }
+-    m_modWeaponHitChance[attType] = weaponHitChance;
++    m_modWeaponHitChance[attType] = weaponHitChance + (gBonusReliques ? gBonusReliques(this, 0) : 0.0f);   // [serveur] reliques
+ }
+ 
+ void Player::UpdateSpellHitChances()
+ {
+-    m_modSpellHitChance = GetTotalAuraModifier(SPELL_AURA_MOD_SPELL_HIT_CHANCE);
++    m_modSpellHitChance = GetTotalAuraModifier(SPELL_AURA_MOD_SPELL_HIT_CHANCE) + (gBonusReliques ? gBonusReliques(this, 1) : 0.0f);
+ }
+ 
++float (*gBonusReliques)(Player const* player, uint8 type) = nullptr;
++
+ void Player::UpdateAllSpellCritChances()
+ {
+     for (int i = SPELL_SCHOOL_NORMAL; i < MAX_SPELL_SCHOOL; ++i)

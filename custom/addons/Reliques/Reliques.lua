@@ -6,12 +6,17 @@
 
 local CASES = {
 	{ ancre = "CharacterNeckSlot", couleur = { 0.25, 0.5, 1 }, nom = "Artefact bleu", aide = "Endurance" },
-	{ ancre = "CharacterShoulderSlot", couleur = { 1, 0.25, 0.25 }, nom = "Artefact rouge", aide = "Force ou Intelligence" },
+	{ ancre = "CharacterShoulderSlot", couleur = { 1, 0.25, 0.25 }, nom = "Artefact rouge", aide = "Force, Agilité ou Intelligence" },
 	{ ancre = "CharacterBackSlot", couleur = { 0.3, 1, 0.3 }, nom = "Artefact vert", aide = "Critique ou toucher" },
 	{ ancre = "CharacterChestSlot", couleur = { 1, 0.85, 0.2 }, nom = "Artefact jaune", aide = "Défense, puissance des sorts ou puissance d'attaque" },
 	{ ancre = "CharacterFinger0Slot", couleur = { 0.8, 0.5, 1 }, nom = "Mascotte", aide = "Autant de statistiques qu'un casque", gauche = true },
 }
 local objets = { 0, 0, 0, 0, 0 }
+local amel = {}             -- améliorations de la machine par case : { essais, pa, ps, cc, tm, armure }
+local function Nb(v)
+	v = math.floor(v * 100 + 0.5) / 100
+	return (string.gsub(tostring(v), "%.", ","))
+end
 local boutons = {}
 local dernierSac, derniereCase = nil, nil
 
@@ -131,6 +136,15 @@ for i, d in ipairs(CASES) do
 		local id = objets[this.n]
 		if id ~= 0 then
 			GameTooltip:SetHyperlink("item:" .. id .. ":0:0:0")
+			local a = amel[this.n]
+			if a and a[1] > 0 then
+				local t, noms = {}, { "PA", "PS", "% critique", "% toucher", "armure" }
+				for k = 2, 6 do
+					if a[k] > 0 then table.insert(t, "+" .. Nb(a[k]) .. " " .. noms[k - 1]) end
+				end
+				GameTooltip:AddLine("Améliorations (" .. a[1] .. "/5 essais) :", 1, 0.82, 0)
+				GameTooltip:AddLine(table.getn(t) > 0 and table.concat(t, ", ") or "aucune réussie", 0.2, 1, 0.2, 1)
+			end
 			GameTooltip:AddLine("Clic droit : retirer", 0.6, 0.6, 0.6)
 		else
 			GameTooltip:SetText(this.d.nom, this.c[1], this.c[2], this.c[3])
@@ -194,6 +208,10 @@ local tDemande, tMaj = 0, 0
 f:SetScript("OnEvent", function()
 	if event == "PLAYER_ENTERING_WORLD" then
 		tDemande = GetTime() + 3
+	elseif arg1 and string.find(arg1, "^##RELIQA") then
+		for n, e, v1, v2, v3, v4, v5 in string.gfind(arg1, "(%d)=(%d+),([%d%.]+),([%d%.]+),([%d%.]+),([%d%.]+),([%d%.]+)") do
+			amel[tonumber(n)] = { tonumber(e), tonumber(v1), tonumber(v2), tonumber(v3), tonumber(v4), tonumber(v5) }
+		end
 	elseif arg1 and string.find(arg1, "^##RELIQO") then
 		for d, f in string.gfind(arg1, "(%d+)%-?(%d*)") do
 			d = tonumber(d)

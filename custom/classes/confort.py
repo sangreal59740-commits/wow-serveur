@@ -137,7 +137,7 @@ from spellgen import Gen
 AG = Gen(0, [])
 RELIQUES_NIVEAUX = [10, 20, 30, 40, 50, 60, 89]      # budgets : casque bleu niveau 10 à 60, puis 60 épique (89)
 RELIQUES_VAL = {
-    'cc': lambda L: max(1, int(round(L / 14.0))), 'tm': lambda L: max(1, int(round(L / 10.0))),
+    'cc': lambda L: 9 if L > 60 else L // 10, 'tm': lambda L: 9 if L > 60 else L // 10,      # 1 à 6 %, 9 % au 60 épique (demande du 23/11)
     'def': lambda L: int(round(L / 1.5)), 'ps': lambda L: int(round(L * 1.16)), 'pa': lambda L: 2 * L}
 _RB = {'cc': 7597, 'tm': 15464, 'def': 13384, 'ps': 9343, 'pa': 9142}
 _RN = {'cc': ("Critique", "Augmente de $s1 % vos chances d'infliger un coup critique.", "Chances de coup critique augmentées de $s1 %."),

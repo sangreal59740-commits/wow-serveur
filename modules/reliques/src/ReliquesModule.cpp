@@ -25,7 +25,7 @@ namespace cmangos_module
 {
     static ReliquesModule* instance = nullptr;
     static const char* NOM_COULEUR[5] = { "", "bleu", "rouge", "vert", "jaune" };
-    static const char* AIDE_COULEUR[5] = { "", "Endurance", "Force ou Intelligence", "critique ou toucher", "défense, puissance des sorts ou d'attaque" };
+    static const char* AIDE_COULEUR[5] = { "", "Endurance", "Force, Agilité ou Intelligence", "critique ou toucher", "défense, puissance des sorts ou d'attaque" };
 
     // sorts passifs des mascottes (valeur donnée au lancement) : 65690 Force ... 65699 Défense
     static uint32 SortMascotte(std::string const& s)
@@ -50,11 +50,44 @@ namespace cmangos_module
         return std::max(1, int32(std::lround(v)));
     }
 
+    // gain par amélioration réussie, par palier (10, 20, 30, 40, 50, 60, 60 épique)
+    static const float PAS_PA_PS[RELIQUES_PALIERS] = { 2, 5, 8, 10, 12, 15, 20 };
+    static const float PAS_CC_TM[RELIQUES_PALIERS] = { 0.5f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f };
+    static const float PAS_ARMURE[RELIQUES_PALIERS] = { 20, 50, 80, 100, 120, 150, 200 };
+    static const char* NOM_STAT[5] = { "puissance d'attaque", "puissance des sorts", "% de critique", "% de toucher", "armure" };
+    static const uint32 ESSAIS_MAX = 5;
+    static const uint32 REUSSITE = 75;
+
+    static float Pas(uint32 stat, uint32 palier)
+    {
+        if (stat <= 1) return PAS_PA_PS[palier];
+        if (stat <= 3) return PAS_CC_TM[palier];
+        return PAS_ARMURE[palier];
+    }
+
+    static std::string Nombre(float v)
+    {
+        char buf[32];
+        if (std::fabs(v - std::round(v)) < 0.01f)
+            snprintf(buf, sizeof(buf), "%d", int(std::lround(v)));
+        else
+            snprintf(buf, sizeof(buf), "%.2f", v);
+        std::string r = buf;
+        while (r.find('.') != std::string::npos && (r.back() == '0'))
+            r.pop_back();
+        for (char& ch : r)
+            if (ch == '.')
+                ch = ',';
+        return r;
+    }
+
     static std::string Or(uint32 cuivre)
     {
         char buf[64];
-        if (cuivre >= 10000)
+        if (cuivre >= 10000 && cuivre % 10000 == 0)
             snprintf(buf, sizeof(buf), "%u po", cuivre / 10000);
+        else if (cuivre >= 10000)
+            snprintf(buf, sizeof(buf), "%u po %u pa", cuivre / 10000, (cuivre % 10000) / 100);
         else
             snprintf(buf, sizeof(buf), "%u pa", cuivre / 100);
         return buf;
@@ -125,6 +158,26 @@ namespace cmangos_module
                 artefacts[t.second * 10 + palier].push_back(t.first);
             }
         }
+        CharacterDatabase.DirectExecute(
+            "CREATE TABLE IF NOT EXISTS `custom_relique_amelioration` (`guid` INT UNSIGNED NOT NULL, `emplacement` TINYINT UNSIGNED NOT NULL,"
+            " `essais` TINYINT UNSIGNED NOT NULL DEFAULT 0, `pa` FLOAT NOT NULL DEFAULT 0, `ps` FLOAT NOT NULL DEFAULT 0, `cc` FLOAT NOT NULL DEFAULT 0,"
+            " `tm` FLOAT NOT NULL DEFAULT 0, `armure` FLOAT NOT NULL DEFAULT 0, PRIMARY KEY (`guid`, `emplacement`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+        if (auto r = CharacterDatabase.Query("SELECT `guid`, `emplacement`, `essais`, `pa`, `ps`, `cc`, `tm`, `armure` FROM `custom_relique_amelioration`"))
+        {
+            do
+            {
+                Field* f = r->Fetch();
+                uint32 e = f[1].GetUInt32();
+                if (e >= 4)
+                    continue;
+                Amelioration& a = amels[f[0].GetUInt32()][e];
+                a.essais = f[2].GetUInt32();
+                for (int i = 0; i < 5; ++i)
+                    a.v[i] = f[3 + i].GetFloat();
+            }
+            while (r->NextRow());
+        }
+        gBonusReliques = [](Player const* player, uint8 type) -> float { return instance ? instance->BonusFractionnaire(player, type) : 0.0f; };
         if (auto r = CharacterDatabase.Query("SELECT `guid`, `emplacement`, `entry` FROM `custom_relique`"))
         {
             do
@@ -231,9 +284,13 @@ namespace cmangos_module
         auto it = cases.find(guid);
         if (it == cases.end())
             return;
-        for (uint32 e : it->second)
-            if (e)
-                Bonus(player, e, true);
+        for (uint32 i = 0; i < RELIQUES_CASES; ++i)
+            if (it->second[i])
+            {
+                Bonus(player, it->second[i], true);
+                if (i < 4)
+                    Ameliorations(player, i, true);
+            }
     }
 
     void ReliquesModule::OnUpdate(uint32 elapsed)
@@ -285,6 +342,7 @@ namespace cmangos_module
     {
         std::lock_guard<std::recursive_mutex> guard(lock);
         appliques.erase(player->GetGUIDLow());
+        fractions.erase(player->GetGUIDLow());
     }
 
     void ReliquesModule::OnDeleteFromDB(uint32 playerId)
@@ -293,6 +351,8 @@ namespace cmangos_module
         cases.erase(playerId);
         appliques.erase(playerId);
         CharacterDatabase.PExecute("DELETE FROM `custom_relique` WHERE `guid` = %u", playerId);
+        CharacterDatabase.PExecute("DELETE FROM `custom_relique_amelioration` WHERE `guid` = %u", playerId);
+        amels.erase(playerId);
     }
 
     void ReliquesModule::Liste(Player* player)
@@ -300,6 +360,19 @@ namespace cmangos_module
         std::lock_guard<std::recursive_mutex> guard(lock);
         auto& c = Cases(player->GetGUIDLow());
         char buf[160];
+        // améliorations d'abord : « ##RELIQA 1=essais,pa,ps,cc,tm,armure;... »
+        std::string am = "##RELIQA ";
+        auto ia = amels.find(player->GetGUIDLow());
+        for (uint32 i = 0; i < 4; ++i)
+        {
+            Amelioration a;
+            if (ia != amels.end())
+                a = ia->second[i];
+            char m[96];
+            snprintf(m, sizeof(m), "%s%u=%u,%g,%g,%g,%g,%g", i ? ";" : "", i + 1, a.essais, a.v[0], a.v[1], a.v[2], a.v[3], a.v[4]);
+            am += m;
+        }
+        ChatHandler(player->GetSession()).SendSysMessage(am.c_str());
         snprintf(buf, sizeof(buf), "##RELIQ 1=%u;2=%u;3=%u;4=%u;5=%u", c[0], c[1], c[2], c[3], c[4]);
         ChatHandler(player->GetSession()).SendSysMessage(buf);
     }
@@ -396,10 +469,14 @@ namespace cmangos_module
                 return true;
             }
         uint32 ancien = c[num - 1];
+        if (ancien && num <= 4 && !Perte(p, num - 1, ch))
+            return true;
         // l'ancien objet revient dans les sacs, à la place du nouveau
         p->DestroyItem(bag, slot, true);
         if (ancien)
         {
+            if (num <= 4)
+                Ameliorations(p, num - 1, false);
             Bonus(p, ancien, false);
             ItemPosCountVec dest;
             if (p->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, ancien, 1) == EQUIP_ERR_OK)
@@ -409,6 +486,11 @@ namespace cmangos_module
             }
         }
         c[num - 1] = entry;
+        if (ancien && num <= 4)
+        {
+            amels[p->GetGUIDLow()][num - 1] = Amelioration();
+            CharacterDatabase.PExecute("DELETE FROM `custom_relique_amelioration` WHERE `guid` = %u AND `emplacement` = %u", p->GetGUIDLow(), uint32(num - 1));
+        }
         Bonus(p, entry, true);
         Entretien(p);
         CharacterDatabase.PExecute("REPLACE INTO `custom_relique` (`guid`, `emplacement`, `entry`) VALUES (%u, %u, %u)",
@@ -440,6 +522,8 @@ namespace cmangos_module
         uint32 entry = c[num - 1];
         if (!entry)
             return true;
+        if (num <= 4 && !Perte(p, num - 1, ch))
+            return true;
         ItemPosCountVec dest;
         if (p->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, entry, 1) != EQUIP_ERR_OK)
         {
@@ -450,6 +534,12 @@ namespace cmangos_module
         if (!it)
             return true;
         p->SendNewItem(it, 1, true, false, false, false);
+        if (num <= 4)
+        {
+            Ameliorations(p, num - 1, false);
+            amels[p->GetGUIDLow()][num - 1] = Amelioration();
+            CharacterDatabase.PExecute("DELETE FROM `custom_relique_amelioration` WHERE `guid` = %u AND `emplacement` = %u", p->GetGUIDLow(), uint32(num - 1));
+        }
         Bonus(p, entry, false);
         c[num - 1] = 0;
         CharacterDatabase.PExecute("DELETE FROM `custom_relique` WHERE `guid` = %u AND `emplacement` = %u", p->GetGUIDLow(), uint32(num - 1));
@@ -462,40 +552,69 @@ namespace cmangos_module
     {
         if (!player || !gameObject || gameObject->GetEntry() != RELIQUES_MACHINE)
             return;
+        std::lock_guard<std::recursive_mutex> guard(lock);
+        Initialiser(player);
         GossipMenu& menu = player->GetPlayerMenu()->GetGossipMenu();
-        for (uint32 c = 1; c <= 4; ++c)
+        auto& c = Cases(player->GetGUIDLow());
+        auto& am = amels[player->GetGUIDLow()];
+        bool un = false;
+        for (uint32 i = 0; i < 4; ++i)
         {
-            std::string t = std::string("Artefact ") + NOM_COULEUR[c] + " (" + AIDE_COULEUR[c] + ")";
-            menu.AddMenuItem(GOSSIP_ICON_INTERACT_1, t, GOSSIP_SENDER_MAIN, 100 + c, "", false);
+            if (!c[i])
+                continue;
+            ItemPrototype const* pr = sObjectMgr.GetItemPrototype(c[i]);
+            std::string t = "Améliorer " + std::string(pr ? pr->Name1 : "?") + " (" + std::to_string(am[i].essais) + "/" + std::to_string(ESSAIS_MAX) + " essais)";
+            menu.AddMenuItem(GOSSIP_ICON_INTERACT_1, t, GOSSIP_SENDER_MAIN, 100 + i, "", false);
+            un = true;
         }
+        if (!un)
+            menu.AddMenuItem(GOSSIP_ICON_CHAT, "Aucun artefact équipé : placez-en un dans les cases de la fiche du personnage.", GOSSIP_SENDER_MAIN, 98, "", false);
     }
 
-    void ReliquesModule::MenuPaliers(Player* player, GameObject* go, uint32 couleur)
+    uint32 ReliquesModule::Palier(uint32 entry) const
+    {
+        ItemPrototype const* proto = sObjectMgr.GetItemPrototype(entry);
+        if (!proto)
+            return 0;
+        return proto->Quality >= 4 ? 6 : std::min<uint32>(std::max<uint32>(proto->RequiredLevel / 10, 1), 6) - 1;
+    }
+
+    void ReliquesModule::MenuAmelioration(Player* player, GameObject* go, uint32 i)
     {
         std::lock_guard<std::recursive_mutex> guard(lock);
         PlayerMenu* pm = player->GetPlayerMenu();
         pm->ClearMenus();
         GossipMenu& menu = pm->GetGossipMenu();
-        for (uint32 i = 0; i < RELIQUES_PALIERS; ++i)
+        auto& c = Cases(player->GetGUIDLow());
+        Amelioration const& a = amels[player->GetGUIDLow()][i];
+        if (c[i] && a.essais < ESSAIS_MAX)
         {
-            auto r = recettes.find(couleur * 10 + i);
-            if (r == recettes.end() || !artefacts.count(couleur * 10 + i))
-                continue;
+            uint32 palier = Palier(c[i]);
+            auto r = recettes.find((i + 1) * 10 + palier);
             std::string cout;
-            for (int k = 0; k < 4; ++k)
+            if (r != recettes.end())
             {
-                if (!r->second.objet[k] || !r->second.nombre[k])
-                    continue;
-                ItemPrototype const* pr = sObjectMgr.GetItemPrototype(r->second.objet[k]);
-                cout += (cout.empty() ? "" : ", ") + std::to_string(r->second.nombre[k]) + " x " + (pr ? pr->Name1 : std::string("?"));
+                for (int k = 0; k < 4; ++k)
+                {
+                    if (!r->second.objet[k] || !r->second.nombre[k])
+                        continue;
+                    ItemPrototype const* pr = sObjectMgr.GetItemPrototype(r->second.objet[k]);
+                    cout += (cout.empty() ? "" : ", ") + std::to_string(r->second.nombre[k]) + " x " + (pr ? pr->Name1 : std::string("?"));
+                }
+                if (r->second.argent)
+                    cout += (cout.empty() ? "" : ", ") + Or(r->second.argent);
             }
-            if (r->second.argent)
-                cout += (cout.empty() ? "" : ", ") + Or(r->second.argent);
-            std::string palier = i == 6 ? "niveau 60 épique" : "niveau " + std::to_string((i + 1) * 10);
-            std::string t = std::string("Artefact ") + NOM_COULEUR[couleur] + ", " + palier;
-            std::string confirme = "Fabriquer un artefact " + std::string(NOM_COULEUR[couleur]) + " de " + palier + " pour : " + cout + " ?";
-            menu.AddMenuItem(GOSSIP_ICON_VENDOR, t, GOSSIP_SENDER_MAIN, 1000 + couleur * 10 + i, confirme, false);
+            ItemPrototype const* pr = sObjectMgr.GetItemPrototype(c[i]);
+            for (uint32 st = 0; st < 5; ++st)
+            {
+                std::string gain = "+" + Nombre(Pas(st, palier)) + (st == 2 || st == 3 ? " " : " ") + NOM_STAT[st];
+                std::string confirme = "Tenter " + gain + " sur " + (pr ? pr->Name1 : std::string("?")) + " ?\n" + std::to_string(REUSSITE)
+                    + " % de réussite, essai " + std::to_string(a.essais + 1) + "/" + std::to_string(ESSAIS_MAX) + ".\nCoût : " + cout;
+                menu.AddMenuItem(GOSSIP_ICON_VENDOR, gain, GOSSIP_SENDER_MAIN, 1000 + i * 10 + st, confirme, false);
+            }
         }
+        else
+            menu.AddMenuItem(GOSSIP_ICON_CHAT, "Cet artefact a déjà utilisé ses 5 essais.", GOSSIP_SENDER_MAIN, 99, "", false);
         menu.AddMenuItem(GOSSIP_ICON_CHAT, "Retour", GOSSIP_SENDER_MAIN, 99, "", false);
         pm->SendGossipMenu(player->GetGossipTextId(go), go->GetObjectGuid());
     }
@@ -512,15 +631,130 @@ namespace cmangos_module
             pm->SendGossipMenu(player->GetGossipTextId(gameObject), gameObject->GetObjectGuid());
             return true;
         }
-        if (action > 100 && action <= 104)
+        if (action >= 100 && action < 104)
         {
-            MenuPaliers(player, gameObject, action - 100);
+            MenuAmelioration(player, gameObject, action - 100);
             return true;
         }
         player->GetPlayerMenu()->CloseGossip();
-        if (action >= 1010 && action < 1050)
-            Fabriquer(player, (action - 1000) / 10, (action - 1000) % 10);
+        if (action >= 1000 && action < 1040 && (action % 10) < 5)
+            Ameliorer(player, (action - 1000) / 10, action % 10);
         return true;
+    }
+
+    // applique ou retire les améliorations de l'artefact de la case c (0 à 3)
+    void ReliquesModule::Ameliorations(Player* p, uint32 c, bool apply)
+    {
+        std::lock_guard<std::recursive_mutex> guard(lock);
+        auto ia = amels.find(p->GetGUIDLow());
+        if (ia == amels.end() || c >= 4)
+            return;
+        Amelioration const& a = ia->second[c];
+        if (a.v[0])
+        {
+            p->HandleStatModifier(UNIT_MOD_ATTACK_POWER, TOTAL_VALUE, a.v[0], apply);
+            p->HandleStatModifier(UNIT_MOD_ATTACK_POWER_RANGED, TOTAL_VALUE, a.v[0], apply);
+        }
+        if (a.v[1])
+            p->ApplySpellPowerBonus(int32(std::lround(a.v[1])), apply);
+        if (a.v[4])
+            p->HandleStatModifier(UNIT_MOD_ARMOR, TOTAL_VALUE, a.v[4], apply);
+        if (a.v[2] || a.v[3])
+        {
+            // critique : mêlée et distance directement, sorts et toucher par le correctif 05 (valeurs fractionnaires)
+            if (a.v[2])
+            {
+                p->HandleBaseModValue(CRIT_PERCENTAGE, FLAT_MOD, a.v[2], apply);
+                p->HandleBaseModValue(OFFHAND_CRIT_PERCENTAGE, FLAT_MOD, a.v[2], apply);
+                p->HandleBaseModValue(RANGED_CRIT_PERCENTAGE, FLAT_MOD, a.v[2], apply);
+            }
+            auto& f = fractions[p->GetGUIDLow()];
+            float s = apply ? 1.0f : -1.0f;
+            f[0] += s * a.v[3];
+            f[1] += s * a.v[3];
+            f[2] += s * a.v[2];
+            p->UpdateWeaponHitChances(BASE_ATTACK);
+            p->UpdateWeaponHitChances(OFF_ATTACK);
+            p->UpdateWeaponHitChances(RANGED_ATTACK);
+            p->UpdateSpellHitChances();
+            p->UpdateAllSpellCritChances();
+        }
+    }
+
+    float ReliquesModule::BonusFractionnaire(Player const* player, uint8 type)
+    {
+        std::lock_guard<std::recursive_mutex> guard(lock);
+        auto f = fractions.find(player->GetGUIDLow());
+        return (f == fractions.end() || type > 2) ? 0.0f : f->second[type];
+    }
+
+    // les améliorations sont perdues si l'artefact quitte sa case : il faut refaire l'action dans les 15 s pour confirmer
+    bool ReliquesModule::Perte(Player* p, uint32 c, ChatHandler& ch)
+    {
+        auto ia = amels.find(p->GetGUIDLow());
+        if (ia == amels.end() || !ia->second[c].essais)
+            return true;
+        auto cf = confirmation.find(p->GetGUIDLow());
+        time_t now = time(nullptr);
+        if (cf != confirmation.end() && cf->second.first == c && now - cf->second.second <= 15)
+        {
+            confirmation.erase(cf);
+            return true;
+        }
+        confirmation[p->GetGUIDLow()] = { c, now };
+        ch.PSendSysMessage("Cet artefact a %u essai(s) d'amélioration : ses améliorations seront perdues. Refais la même action dans les 15 s pour confirmer.",
+                           ia->second[c].essais);
+        return false;
+    }
+
+    void ReliquesModule::Ameliorer(Player* player, uint32 i, uint32 stat)
+    {
+        std::lock_guard<std::recursive_mutex> guard(lock);
+        ChatHandler ch(player->GetSession());
+        auto& c = Cases(player->GetGUIDLow());
+        if (i >= 4 || !c[i] || stat >= 5)
+            return;
+        Amelioration& a = amels[player->GetGUIDLow()][i];
+        if (a.essais >= ESSAIS_MAX)
+        {
+            ch.SendSysMessage("Cet artefact a déjà utilisé ses 5 essais.");
+            return;
+        }
+        uint32 palier = Palier(c[i]);
+        auto r = recettes.find((i + 1) * 10 + palier);
+        if (r == recettes.end())
+            return;
+        Recette const& rc = r->second;
+        for (int k = 0; k < 4; ++k)
+            if (rc.objet[k] && rc.nombre[k] && !player->HasItemCount(rc.objet[k], rc.nombre[k]))
+            {
+                ItemPrototype const* pr = sObjectMgr.GetItemPrototype(rc.objet[k]);
+                ch.PSendSysMessage("Il vous manque : %u x %s.", rc.nombre[k], pr ? pr->Name1 : "?");
+                return;
+            }
+        if (player->GetMoney() < rc.argent)
+        {
+            ch.PSendSysMessage("Il vous faut %s.", Or(rc.argent).c_str());
+            return;
+        }
+        for (int k = 0; k < 4; ++k)
+            if (rc.objet[k] && rc.nombre[k])
+                player->DestroyItemCount(rc.objet[k], rc.nombre[k], true);
+        if (rc.argent)
+            player->ModifyMoney(-int32(rc.argent));
+        bool ok = urand(1, 100) <= REUSSITE;
+        Ameliorations(player, i, false);
+        ++a.essais;
+        if (ok)
+            a.v[stat] += Pas(stat, palier);
+        Ameliorations(player, i, true);
+        CharacterDatabase.PExecute("REPLACE INTO `custom_relique_amelioration` (`guid`, `emplacement`, `essais`, `pa`, `ps`, `cc`, `tm`, `armure`) "
+                                   "VALUES (%u, %u, %u, %f, %f, %f, %f, %f)", player->GetGUIDLow(), i, a.essais, a.v[0], a.v[1], a.v[2], a.v[3], a.v[4]);
+        std::string msg = ok ? "La machine vrombit : réussite ! +" + Nombre(Pas(stat, palier)) + " " + NOM_STAT[stat] + "."
+                             : std::string("La machine crachote : échec, l'amélioration n'a pas pris.");
+        msg += " Essais restants : " + std::to_string(ESSAIS_MAX - a.essais) + ".";
+        ch.SendSysMessage(msg.c_str());
+        Liste(player);
     }
 
     void ReliquesModule::Fabriquer(Player* player, uint32 couleur, uint32 palier)
@@ -561,13 +795,14 @@ namespace cmangos_module
     }
 
     // ---------------------------------------------------------------- artefact adapté au personnage (coffrets et machine)
-    // rouge : Intelligence si le personnage a plus d'Intelligence que de Force ; jaune : puissance des sorts pour un lanceur de sorts,
+    // rouge : Intelligence si le personnage a plus d'Intelligence que de Force, sinon Agilité ou Force (la plus haute) ; jaune : puissance des sorts pour un lanceur de sorts,
     // défense pour un guerrier ou un paladin avec bouclier, sinon puissance d'attaque ; vert : critique ou toucher au hasard
     static std::string Variante(ItemPrototype const* proto)
     {
         if (proto->ItemStat[0].ItemStatType == ITEM_MOD_INTELLECT) return "int";
         if (proto->ItemStat[0].ItemStatType == ITEM_MOD_STRENGTH) return "for";
         if (proto->ItemStat[0].ItemStatType == ITEM_MOD_STAMINA) return "end";
+        if (proto->ItemStat[0].ItemStatType == ITEM_MOD_AGILITY) return "agi";
         if (SpellEntry const* sp = sSpellTemplate.LookupEntry<SpellEntry>(proto->Spells[0].SpellId))
         {
             switch (sp->EffectApplyAuraName[0])
@@ -595,7 +830,7 @@ namespace cmangos_module
         uint8 cls = player->getClass();
         std::string voulu;
         if (couleur == 2)
-            voulu = lanceur ? "int" : "for";
+            voulu = lanceur ? "int" : (player->GetStat(STAT_AGILITY) > player->GetStat(STAT_STRENGTH) ? "agi" : "for");
         else if (couleur == 3)
             voulu = urand(0, 1) ? "cc" : "tm";
         else if (couleur == 4)

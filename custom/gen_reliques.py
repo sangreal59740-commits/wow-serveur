@@ -3,7 +3,7 @@
 #     bleu Endurance ; rouge Force ou Intelligence ; vert critique ou toucher ; jaune défense, puissance des sorts ou d'attaque
 #     butin : coffret d'artefact (couleur au hasard) en récompense des quêtes élites du tableau des primes ;
 #             un artefact par boss de donjon (couleur tirée au hasard), au taux d'un objet bleu de ce boss ; les raids donnent le 60 épique
-#     machine à artefacts près des hôtels des ventes : couleur + palier contre des composants (table custom_relique_recette)
+#     machine à artefacts près des hôtels des ventes : améliore un artefact équipé (5 essais, 75 %), composants selon couleur et palier
 #   Mascottes : les compagnons du jeu, deux statistiques au budget d'un casque bleu du niveau du joueur (calcul dans le module) ;
 #     butin : 20 % sur les boss rares des donjons, mascotte au hasard
 import json
@@ -45,6 +45,7 @@ ARTEFACTS = [
     (4, "Topaze", 'f', "du rempart", 7339, ('sort', 'def')),
     (4, "Topaze", 'f', "des arcanes", 7339, ('sort', 'ps')),
     (4, "Topaze", 'f', "du guerrier", 7339, ('sort', 'pa')),
+    (2, "Rubis", 'm', "de vivacité", 4777, ('stat', 'agi')),        # ajouté le 23/11 (entrées 992048-992053 et 992068)
 ]
 
 
@@ -124,7 +125,7 @@ for v, (typ, nom, genre, comp, disp, (k, s)) in enumerate(ARTEFACTS):
         desc = "Artefact %s : se place dans la case %s de la fiche du personnage." % (COULEUR[typ], COULEUR_F[typ])
         nomc = "%s %s %s" % (nom, adj, comp)
         if k == 'stat':
-            objet(entree_artefact(v, i), typ, nomc, disp, i, [(STAT[s], budget)], 0, desc)
+            objet(entree_artefact(v, i), typ, nomc, disp, i, [(STAT[s], (budget + 1) // 2)], 0, desc)   # moitié du budget (23/11)
         else:
             objet(entree_artefact(v, i), typ, nomc, disp, i, [], SORTS['%s%d' % (s, VAL[s][str(budget)])], desc)
 
@@ -238,7 +239,7 @@ GEMMES = {1: [1210, 1705, 7909, 7909, 12361, 12361, 12361], 2: [818, 1210, 3864,
           3: [774, 1206, 1529, 1529, 12364, 12364, 12364], 4: [818, 1705, 3864, 3864, 12799, 12799, 12799]}
 NGEM = [1, 1, 1, 2, 1, 2, 3]
 ESSENCES = [10938, 10939, 11082, 11135, 11175, 16203, 16203]
-ARGENT = [10000, 50000, 100000, 200000, 400000, 600000, 1000000]
+ARGENT = [1000, 2500, 5000, 10000, 20000, 30000, 50000]       # prix d'un essai d'amélioration : 10 pa à 5 po
 for c in (1, 2, 3, 4):
     for i in range(7):
         bonus = "12800, 1, 12363, 2" if i == 6 else "0, 0, 0, 0"      # 60 épique : diamant d'Azeroth et cristaux arcaniques
