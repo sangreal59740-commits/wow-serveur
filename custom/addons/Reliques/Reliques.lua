@@ -142,7 +142,7 @@ for i, d in ipairs(CASES) do
 				for k = 2, 6 do
 					if a[k] > 0 then table.insert(t, "+" .. Nb(a[k]) .. " " .. noms[k - 1]) end
 				end
-				GameTooltip:AddLine("Améliorations (" .. a[1] .. "/5 essais) :", 1, 0.82, 0)
+				GameTooltip:AddLine("Améliorations (" .. a[1] .. "/5) :", 1, 0.82, 0)
 				GameTooltip:AddLine(table.getn(t) > 0 and table.concat(t, ", ") or "aucune réussie", 0.2, 1, 0.2, 1)
 			end
 			GameTooltip:AddLine("Clic droit : retirer", 0.6, 0.6, 0.6)

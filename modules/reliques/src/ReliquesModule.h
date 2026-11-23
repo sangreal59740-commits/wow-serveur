@@ -17,7 +17,7 @@
 // Mascottes : les compagnons du jeu (custom_relique_mascotte : deux statistiques), au budget d'un casque bleu du niveau du joueur,
 // effets par sorts passifs 65690-65699 ; le compagnon suit le joueur tant que la mascotte est dans sa case.
 // Machine à artefacts (près des hôtels des ventes) : améliore un artefact équipé avec une stat au choix (PA, PS, critique, toucher, armure),
-// 5 essais par artefact, 75 % de réussite, composants et prix selon la couleur et le palier (custom_relique_recette) ;
+// jusqu'à 5 améliorations cumulées par artefact, chaque tentative à 75 % de réussite, composants et prix selon la couleur et le palier (custom_relique_recette) ;
 // base characters : custom_relique_amelioration. Les améliorations sont perdues si l'artefact est retiré ou remplacé (confirmation demandée).
 // Commandes (utilisées par l'addon) : .relique liste / equiper <sac> <case du sac> <emplacement 1-5> / retirer <emplacement 1-5>
 
@@ -62,7 +62,7 @@ namespace cmangos_module
         void Mascotte(Player* player, uint32 entry, bool apply);
         void Fabriquer(Player* player, uint32 couleur, uint32 palier);
         uint32 ArtefactAdapte(Player* player, uint32 couleur, uint32 palier);
-        // améliorations des artefacts à la machine (5 essais, 75 % de réussite)
+        // améliorations des artefacts à la machine (5 cumulables, tentatives à 75 % de réussite)
         void Ameliorations(Player* player, uint32 c, bool apply);
         void Ameliorer(Player* player, uint32 c, uint32 stat);
         bool Perte(Player* player, uint32 c, ChatHandler& ch);
@@ -85,7 +85,8 @@ namespace cmangos_module
         std::unordered_map<uint32, Recette> recettes;                               // couleur * 10 + palier -> composants
         std::unordered_map<uint32, std::vector<uint32>> artefacts;                  // couleur * 10 + palier -> artefacts possibles
         uint32 timerEntretien = 0;
-        struct Amelioration { uint32 essais = 0; float v[5] = { 0, 0, 0, 0, 0 }; };   // PA, PS, critique %, toucher %, armure
+        struct Amelioration { uint32 essais = 0;    // essais = améliorations réussies
+                               float v[5] = { 0, 0, 0, 0, 0 }; };   // PA, PS, critique %, toucher %, armure
         std::unordered_map<uint32, std::array<Amelioration, 4>> amels;              // personnage -> améliorations des 4 artefacts
         std::unordered_map<uint32, std::array<float, 3>> fractions;                 // personnage -> toucher armes, toucher sorts, critique sorts
         std::unordered_map<uint32, std::pair<uint32, time_t>> confirmation;         // personnage -> case dont la perte est à confirmer

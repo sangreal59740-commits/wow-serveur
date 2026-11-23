@@ -55,7 +55,7 @@ namespace cmangos_module
     static const float PAS_CC_TM[RELIQUES_PALIERS] = { 0.5f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f };
     static const float PAS_ARMURE[RELIQUES_PALIERS] = { 20, 50, 80, 100, 120, 150, 200 };
     static const char* NOM_STAT[5] = { "puissance d'attaque", "puissance des sorts", "% de critique", "% de toucher", "armure" };
-    static const uint32 ESSAIS_MAX = 5;
+    static const uint32 ESSAIS_MAX = 5;            // améliorations réussies cumulables par artefact (essais illimités)
     static const uint32 REUSSITE = 75;
 
     static float Pas(uint32 stat, uint32 palier)
@@ -563,7 +563,7 @@ namespace cmangos_module
             if (!c[i])
                 continue;
             ItemPrototype const* pr = sObjectMgr.GetItemPrototype(c[i]);
-            std::string t = "Améliorer " + std::string(pr ? pr->Name1 : "?") + " (" + std::to_string(am[i].essais) + "/" + std::to_string(ESSAIS_MAX) + " essais)";
+            std::string t = "Améliorer " + std::string(pr ? pr->Name1 : "?") + " (" + std::to_string(am[i].essais) + "/" + std::to_string(ESSAIS_MAX) + " améliorations)";
             menu.AddMenuItem(GOSSIP_ICON_INTERACT_1, t, GOSSIP_SENDER_MAIN, 100 + i, "", false);
             un = true;
         }
@@ -609,12 +609,12 @@ namespace cmangos_module
             {
                 std::string gain = "+" + Nombre(Pas(st, palier)) + (st == 2 || st == 3 ? " " : " ") + NOM_STAT[st];
                 std::string confirme = "Tenter " + gain + " sur " + (pr ? pr->Name1 : std::string("?")) + " ?\n" + std::to_string(REUSSITE)
-                    + " % de réussite, essai " + std::to_string(a.essais + 1) + "/" + std::to_string(ESSAIS_MAX) + ".\nCoût : " + cout;
+                    + " % de réussite (amélioration " + std::to_string(a.essais + 1) + "/" + std::to_string(ESSAIS_MAX) + ").\nCoût : " + cout;
                 menu.AddMenuItem(GOSSIP_ICON_VENDOR, gain, GOSSIP_SENDER_MAIN, 1000 + i * 10 + st, confirme, false);
             }
         }
         else
-            menu.AddMenuItem(GOSSIP_ICON_CHAT, "Cet artefact a déjà utilisé ses 5 essais.", GOSSIP_SENDER_MAIN, 99, "", false);
+            menu.AddMenuItem(GOSSIP_ICON_CHAT, "Cet artefact a déjà ses 5 améliorations.", GOSSIP_SENDER_MAIN, 99, "", false);
         menu.AddMenuItem(GOSSIP_ICON_CHAT, "Retour", GOSSIP_SENDER_MAIN, 99, "", false);
         pm->SendGossipMenu(player->GetGossipTextId(go), go->GetObjectGuid());
     }
@@ -702,7 +702,7 @@ namespace cmangos_module
             return true;
         }
         confirmation[p->GetGUIDLow()] = { c, now };
-        ch.PSendSysMessage("Cet artefact a %u essai(s) d'amélioration : ses améliorations seront perdues. Refais la même action dans les 15 s pour confirmer.",
+        ch.PSendSysMessage("Cet artefact a %u amélioration(s) : elles seront perdues. Refais la même action dans les 15 s pour confirmer.",
                            ia->second[c].essais);
         return false;
     }
@@ -717,7 +717,7 @@ namespace cmangos_module
         Amelioration& a = amels[player->GetGUIDLow()][i];
         if (a.essais >= ESSAIS_MAX)
         {
-            ch.SendSysMessage("Cet artefact a déjà utilisé ses 5 essais.");
+            ch.SendSysMessage("Cet artefact a déjà ses 5 améliorations.");
             return;
         }
         uint32 palier = Palier(c[i]);
@@ -743,16 +743,18 @@ namespace cmangos_module
         if (rc.argent)
             player->ModifyMoney(-int32(rc.argent));
         bool ok = urand(1, 100) <= REUSSITE;
-        Ameliorations(player, i, false);
-        ++a.essais;
         if (ok)
+        {
+            Ameliorations(player, i, false);
+            ++a.essais;                                 // nombre d'améliorations réussies (5 au maximum)
             a.v[stat] += Pas(stat, palier);
-        Ameliorations(player, i, true);
+            Ameliorations(player, i, true);
+        }
         CharacterDatabase.PExecute("REPLACE INTO `custom_relique_amelioration` (`guid`, `emplacement`, `essais`, `pa`, `ps`, `cc`, `tm`, `armure`) "
                                    "VALUES (%u, %u, %u, %f, %f, %f, %f, %f)", player->GetGUIDLow(), i, a.essais, a.v[0], a.v[1], a.v[2], a.v[3], a.v[4]);
         std::string msg = ok ? "La machine vrombit : réussite ! +" + Nombre(Pas(stat, palier)) + " " + NOM_STAT[stat] + "."
-                             : std::string("La machine crachote : échec, l'amélioration n'a pas pris.");
-        msg += " Essais restants : " + std::to_string(ESSAIS_MAX - a.essais) + ".";
+                             : std::string("La machine crachote : échec, les composants sont perdus.");
+        msg += " Améliorations : " + std::to_string(a.essais) + "/" + std::to_string(ESSAIS_MAX) + ".";
         ch.SendSysMessage(msg.c_str());
         Liste(player);
     }
