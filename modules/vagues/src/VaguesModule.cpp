@@ -7,6 +7,9 @@
 #include "Globals/ObjectAccessor.h"
 #include "Globals/ObjectMgr.h"
 #include "Log/Log.h"
+#include "Maps/Map.h"
+#include "MotionGenerators/MotionMaster.h"
+#include "Movement/MoveSpline.h"
 #include "Server/WorldSession.h"
 #include "Util/Util.h"
 
@@ -16,7 +19,9 @@
 #include "playerbot/RandomPlayerbotFactory.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 
+#include <cmath>
 #include <cstdlib>
+#include <unordered_set>
 #include <functional>
 #include <map>
 #include <set>
@@ -340,7 +345,8 @@ namespace cmangos_module
             ++qualites[kv.second.qualite & 3];
         }
         std::ostringstream out;
-        out << "Vagues présentes : " << VaguesPresentes() << " / " << VAGUES_MAX << ". Bots :";
+        out << "Vagues présentes : " << VaguesPresentes() << " / " << VAGUES_MAX << ". Bots bloqués relancés : " << deblocages
+            << ", téléportés : " << teleportations << ". Bots :";
         for (auto const& kv : parVague)
             out << " vague " << kv.first << " = " << kv.second << ";";
         Message(session, out.str());
@@ -373,6 +379,7 @@ namespace cmangos_module
         if (timerReact < 5000)
             return;
         timerReact = 0;
+        SurveillerBots();
 
         for (auto const& kv : profils)
         {
@@ -386,6 +393,92 @@ namespace cmangos_module
                 if (ai->GetReactMult() != kv.second.reactMult)
                     ai->SetReactMult(kv.second.reactMult);
             }
+        }
+    }
+
+    // toutes les 5 s : un bot qui « court » sans avancer depuis 15 s, ou qui tourne en rond depuis 1 min (beaucoup de chemin parcouru,
+    // jamais à plus de 10 m de son point de départ), est relancé (IA remise à zéro) ; s'il recommence dans les 5 min, il est téléporté
+    // vers une zone de son niveau.
+    void VaguesModule::SurveillerBots()
+    {
+        time_t now = time(nullptr);
+        std::vector<std::pair<Map*, std::pair<ObjectGuid, bool>>> todo;
+        std::unordered_set<uint32> vus;
+        {
+            HashMapHolder<Player>::ReadGuard g(HashMapHolder<Player>::GetLock());
+            for (auto const& kv : HashMapHolder<Player>::GetContainer())
+            {
+                Player* p = kv.second;
+                if (!p || !p->IsInWorld() || p->IsBeingTeleported())
+                    continue;
+                PlayerbotAI* ai = p->GetPlayerbotAI();
+                if (!ai || ai->HasRealPlayerMaster() || !p->IsAlive() || p->IsTaxiFlying() || p->IsInCombat())
+                    continue;
+                uint32 guid = p->GetGUIDLow();
+                vus.insert(guid);
+                Suivi& s = suivis[guid];
+                float x = p->GetPositionX(), y = p->GetPositionY();
+                if (s.map != p->GetMapId() || s.trace.empty())
+                {
+                    s.map = p->GetMapId();
+                    s.x = x; s.y = y;
+                    s.surPlace = 0;
+                    s.trace.assign(1, { x, y });
+                    continue;
+                }
+                float d = std::sqrt((x - s.x) * (x - s.x) + (y - s.y) * (y - s.y));
+                bool bouge = p->IsMoving() || !p->movespline->Finalized();
+                s.surPlace = (bouge && d < 0.5f) ? s.surPlace + 1 : 0;
+                s.x = x; s.y = y;
+                s.trace.push_back({ x, y });
+                if (s.trace.size() > 13)
+                    s.trace.erase(s.trace.begin());
+                bool enRond = false;
+                if (s.trace.size() == 13)
+                {
+                    float chemin = 0, loin = 0;
+                    for (size_t i = 1; i < s.trace.size(); ++i)
+                    {
+                        float dx = s.trace[i].first - s.trace[i - 1].first, dy = s.trace[i].second - s.trace[i - 1].second;
+                        chemin += std::sqrt(dx * dx + dy * dy);
+                        float ex = s.trace[i].first - s.trace[0].first, ey = s.trace[i].second - s.trace[0].second;
+                        loin = std::max(loin, std::sqrt(ex * ex + ey * ey));
+                    }
+                    enRond = chemin > 60.0f && loin < 10.0f;
+                }
+                if (s.surPlace >= 3 || enRond)
+                {
+                    bool teleporter = s.dernierDeblocage && now - s.dernierDeblocage < 300;
+                    s.dernierDeblocage = now;
+                    s.surPlace = 0;
+                    s.trace.clear();
+                    if (Map* map = p->GetMap())
+                        todo.push_back({ map, { p->GetObjectGuid(), teleporter } });
+                }
+            }
+        }
+        for (auto it = suivis.begin(); it != suivis.end();)
+            it = vus.count(it->first) ? std::next(it) : suivis.erase(it);
+        for (auto const& t : todo)
+        {
+            ObjectGuid guid = t.second.first;
+            bool teleporter = t.second.second;
+            if (teleporter)
+                ++teleportations;
+            else
+                ++deblocages;
+            t.first->GetMessager().AddMessage([guid, teleporter](Map* map)
+            {
+                Player* p = map->GetPlayer(guid);
+                if (!p || !p->IsInWorld() || !p->GetPlayerbotAI())
+                    return;
+                p->GetMotionMaster()->Clear(false, true);
+                p->StopMoving(true);
+                if (teleporter)
+                    sRandomPlayerbotMgr.RandomTeleportForLevel(p, false);
+                else
+                    p->GetPlayerbotAI()->Reset();
+            });
         }
     }
 

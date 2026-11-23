@@ -46,6 +46,19 @@ namespace cmangos_module
 
         std::unordered_map<uint32, ProfilBot> profils;     // guid -> profil
         uint32 timerReact = 0;
+
+        // bots bloqués (courent sur place ou tournent en rond) : relancés, puis téléportés si ça recommence
+        struct Suivi
+        {
+            uint32 map = 0;
+            float x = 0, y = 0;
+            uint32 surPlace = 0;                            // relevés consécutifs « en mouvement mais immobile »
+            std::vector<std::pair<float, float>> trace;     // positions des 60 dernières secondes
+            time_t dernierDeblocage = 0;
+        };
+        std::unordered_map<uint32, Suivi> suivis;
+        uint32 deblocages = 0, teleportations = 0;
+        void SurveillerBots();
     };
 }
 #endif
