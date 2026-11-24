@@ -213,6 +213,8 @@ namespace cmangos_module
             " PRIMARY KEY (`guid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
         CharacterDatabase.Execute("CREATE TABLE IF NOT EXISTS `custom_bot_arbre` (`guid` INT UNSIGNED NOT NULL, `arbre` TINYINT UNSIGNED NOT NULL,"
                                   " PRIMARY KEY (`guid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+        CharacterDatabase.Execute("CREATE TABLE IF NOT EXISTS `custom_compagnon` (`guid` INT UNSIGNED NOT NULL, `groupe` TINYINT UNSIGNED NOT NULL,"
+                                  " `role` TINYINT UNSIGNED NOT NULL, PRIMARY KEY (`guid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
         CharacterDatabase.Execute("CREATE TABLE IF NOT EXISTS `custom_bot_wave_delete` (`vague` TINYINT UNSIGNED NOT NULL, PRIMARY KEY (`vague`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
 
         // Suppression des vagues demandees avec .bots supprimer (faite au demarrage, avant la connexion des bots)
@@ -234,6 +236,7 @@ namespace cmangos_module
         CharacterDatabase.Execute("DELETE FROM `ai_playerbot_random_bots` WHERE `bot` <> 0 AND `bot` NOT IN (SELECT `guid` FROM `characters`)");
         CharacterDatabase.Execute("DELETE FROM `custom_bot_profile` WHERE `guid` NOT IN (SELECT `guid` FROM `characters`)");
         CharacterDatabase.Execute("DELETE FROM `custom_bot_arbre` WHERE `guid` NOT IN (SELECT `guid` FROM `characters`)");
+        CharacterDatabase.Execute("DELETE FROM `custom_compagnon` WHERE `guid` NOT IN (SELECT `guid` FROM `characters`)");
 
         if (auto result = CharacterDatabase.Query("SELECT `guid`, `vague`, `rythme`, `qualite`, `xp_mult`, `react_mult` FROM `custom_bot_profile`"))
         {
@@ -284,6 +287,8 @@ namespace cmangos_module
             { "supprimer", std::bind(&VaguesModule::HandleSupprimer, this, std::placeholders::_1, std::placeholders::_2), SEC_GAMEMASTER },
             { "groupe", std::bind(&VaguesModule::HandleGroupe, this, std::placeholders::_1, std::placeholders::_2), SEC_GAMEMASTER },
             { "pull", std::bind(&VaguesModule::HandlePull, this, std::placeholders::_1, std::placeholders::_2), SEC_PLAYER },
+            { "rappel", std::bind(&VaguesModule::HandleRappel, this, std::placeholders::_1, std::placeholders::_2), SEC_GAMEMASTER },
+            { "tp", std::bind(&VaguesModule::HandleRappel, this, std::placeholders::_1, std::placeholders::_2), SEC_GAMEMASTER },
         };
         return &commandTable;
     }
@@ -433,9 +438,11 @@ namespace cmangos_module
         }
         auto const& groupes = GroupesCompagnons();
         int n = args.empty() ? 0 : atoi(args.c_str());
+        bool neuf = args.find("neuf") != std::string::npos;
         if (n < 1 || n > int(groupes.size()))
         {
-            Message(session, "Usage : .bots groupe <1 à 5>");
+            Message(session, "Usage : .bots groupe <1 à 5> (rappelle le groupe avec sa progression, le crée s'il n'existe pas)");
+            Message(session, "        .bots groupe <1 à 5> neuf (recrée le groupe de zéro, niveau 20)   .bots rappel (téléporte tes compagnons sur toi)");
             Message(session, "1 : guerrier tank, métamorphe soin");
             Message(session, "2 : métamorphe tank, prêtre soin");
             Message(session, "3 : prêtre soin, nécromancien Invocateur, sniper Mécanisme, métamorphe DPS");
@@ -449,9 +456,52 @@ namespace cmangos_module
             return true;
         }
         demandeGroupe = uint32(n);
+        demandeNeuf = neuf;
         demandeMaitre = maitre->GetGUIDLow();
         demandeAttente = 0;
-        Message(session, "Groupe " + std::to_string(n) + " : je renvoie les anciens compagnons et je prépare les nouveaux.");
+        Message(session, "Groupe " + std::to_string(n) + (neuf ? " : je recrée le groupe de zéro." : " : j'appelle tes compagnons."));
+        return true;
+    }
+
+    // .bots rappel : les compagnons connectés viennent à côté de toi (sinon on rappelle le dernier groupe)
+    bool VaguesModule::HandleRappel(WorldSession* session, const std::string& /*args*/)
+    {
+        Player* maitre = session ? session->GetPlayer() : nullptr;
+        if (!maitre || !maitre->GetPlayerbotMgr())
+        {
+            Message(session, "Cette commande se lance en jeu, depuis ton personnage.");
+            return true;
+        }
+        uint32 compte = sAccountMgr.GetId(COMPAGNONS_COMPTE);
+        uint32 n = 0;
+        if (compte)
+            if (auto r = CharacterDatabase.PQuery("SELECT c.`guid`, g.`groupe`, g.`role` FROM `characters` c JOIN `custom_compagnon` g ON g.`guid` = c.`guid` "
+                                                  "WHERE c.`account` = %u", compte))
+            {
+                do
+                {
+                    Field* f = r->Fetch();
+                    Player* bot = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, f[0].GetUInt32()));
+                    if (!bot || !bot->IsInWorld() || !bot->GetPlayerbotAI())
+                        continue;
+                    Compagnon c;
+                    c.guid = f[0].GetUInt32();
+                    c.maitre = maitre->GetGUIDLow();
+                    c.groupe = f[1].GetUInt8();
+                    c.role = f[2].GetUInt8();
+                    dernierGroupe = c.groupe;
+                    if (bot->IsBeingTeleported())
+                        continue;
+                    PreparerCompagnon(bot, maitre, c);      // téléporté sur toi s'il est à plus de 30 m
+                    ++n;
+                }
+                while (r->NextRow());
+            }
+        if (n)
+            return true;
+        if (dernierGroupe && !demandeGroupe && compagnons.empty())
+            return HandleGroupe(session, std::to_string(dernierGroupe));
+        Message(session, "Aucun compagnon connecté. Appelle un groupe avec .bots groupe <1 à 5>.");
         return true;
     }
 
@@ -477,14 +527,26 @@ namespace cmangos_module
             return;
         }
 
-        std::vector<uint32> anciens;
-        if (auto r = CharacterDatabase.PQuery("SELECT `guid` FROM `characters` WHERE `account` = %u", compte))
+        // compagnons du compte : groupe 0 = anciens compagnons sans groupe enregistré
+        struct Existant { uint32 guid; uint8 groupe; uint8 role; };
+        std::vector<Existant> existants;
+        if (auto r = CharacterDatabase.PQuery("SELECT c.`guid`, IFNULL(g.`groupe`, 0), IFNULL(g.`role`, 0) FROM `characters` c "
+                                              "LEFT JOIN `custom_compagnon` g ON g.`guid` = c.`guid` WHERE c.`account` = %u", compte))
         {
-            do anciens.push_back(r->Fetch()[0].GetUInt32()); while (r->NextRow());
+            do
+            {
+                Field* f = r->Fetch();
+                existants.push_back({ f[0].GetUInt32(), f[1].GetUInt8(), f[2].GetUInt8() });
+            }
+            while (r->NextRow());
         }
+        // ceux du groupe demandé restent connectés (sauf si on le recrée) ; les autres rentrent chez eux
         bool enLigne = false;
-        for (uint32 g : anciens)
-            if (Player* p = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, g)))
+        for (Existant const& e : existants)
+        {
+            if (e.groupe == demandeGroupe && !demandeNeuf)
+                continue;
+            if (Player* p = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, e.guid)))
             {
                 enLigne = true;
                 if (p->GetPlayerbotAI() && p->GetPlayerbotAI()->GetMaster() && p->GetPlayerbotAI()->GetMaster()->GetPlayerbotMgr())
@@ -492,6 +554,7 @@ namespace cmangos_module
                 else
                     maitre->GetPlayerbotMgr()->LogoutPlayerBot(p->GetGUIDLow());
             }
+        }
         if (enLigne)
         {
             demandeAttente += dt;
@@ -502,10 +565,57 @@ namespace cmangos_module
             }
             return;         // on attend qu'ils soient partis
         }
-        for (uint32 g : anciens)
+
+        float x = maitre->GetPositionX(), y = maitre->GetPositionY(), z = maitre->GetPositionZ(), o = maitre->GetOrientation();
+        uint32 mapId = maitre->GetMapId(), zone = maitre->GetZoneId();
+        dernierGroupe = demandeGroupe;
+
+        // le groupe existe déjà : il revient avec sa progression (niveau, expérience, objets)
+        if (!demandeNeuf)
         {
-            Player::DeleteFromDB(ObjectGuid(HIGHGUID_PLAYER, g), compte, true, true);
-            CharacterDatabase.PExecute("DELETE FROM `custom_bot_arbre` WHERE `guid` = %u", g);
+            uint32 rappeles = 0;
+            for (Existant const& e : existants)
+            {
+                if (e.groupe != demandeGroupe)
+                    continue;
+                Compagnon k;
+                k.guid = e.guid;
+                k.maitre = maitre->GetGUIDLow();
+                k.groupe = e.groupe;
+                k.role = e.role;
+                k.nouveau = false;
+                if (Player* p = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, e.guid)))
+                {
+                    if (p->IsInWorld() && p->GetPlayerbotAI())
+                    {
+                        PreparerCompagnon(p, maitre, k);
+                        ++rappeles;
+                        continue;
+                    }
+                }
+                // hors ligne : il se connecte directement à côté du joueur
+                CharacterDatabase.PExecute("UPDATE `characters` SET `map` = %u, `position_x` = %f, `position_y` = %f, `position_z` = %f, `orientation` = %f, `zone` = %u WHERE `guid` = %u",
+                    mapId, x, y, z, o, zone, e.guid);
+                k.attente = 500;
+                compagnons.push_back(k);
+                ++rappeles;
+            }
+            if (rappeles)
+            {
+                Message(maitre->GetSession(), "Groupe " + std::to_string(demandeGroupe) + " : " + std::to_string(rappeles) + " compagnons te rejoignent avec leur progression.");
+                demandeGroupe = 0;
+                return;
+            }
+        }
+
+        // création (ou recréation) : on supprime ce groupe et les anciens compagnons sans groupe
+        for (Existant const& e : existants)
+        {
+            if (e.groupe != demandeGroupe && e.groupe != 0)
+                continue;
+            Player::DeleteFromDB(ObjectGuid(HIGHGUID_PLAYER, e.guid), compte, true, true);
+            CharacterDatabase.PExecute("DELETE FROM `custom_bot_arbre` WHERE `guid` = %u", e.guid);
+            CharacterDatabase.PExecute("DELETE FROM `custom_compagnon` WHERE `guid` = %u", e.guid);
         }
 
         auto const& membres = GroupesCompagnons()[demandeGroupe - 1];
@@ -533,8 +643,6 @@ namespace cmangos_module
             }
         }
 
-        float x = maitre->GetPositionX(), y = maitre->GetPositionY(), z = maitre->GetPositionZ(), o = maitre->GetOrientation();
-        uint32 mapId = maitre->GetMapId(), zone = maitre->GetZoneId();
         for (auto& c : crees)
         {
             Player* p = c.first;
@@ -552,6 +660,7 @@ namespace cmangos_module
             k.maitre = maitre->GetGUIDLow();
             k.groupe = uint8(demandeGroupe);
             k.role = c.second;
+            CharacterDatabase.PExecute("REPLACE INTO `custom_compagnon` (`guid`, `groupe`, `role`) VALUES (%u, %u, %u)", k.guid, uint32(k.groupe), uint32(k.role));
             k.nouveau = true;
             k.attente = 3000;       // laisser la sauvegarde partir avant la connexion
             compagnons.push_back(k);
@@ -575,7 +684,7 @@ namespace cmangos_module
         if (crees.empty())
             Message(maitre->GetSession(), "Aucun compagnon n'a pu être créé.");
         else
-            Message(maitre->GetSession(), "Groupe " + std::to_string(demandeGroupe) + " : " + std::to_string(crees.size()) + " compagnons niveau 20 arrivent sur toi.");
+            Message(maitre->GetSession(), "Groupe " + std::to_string(demandeGroupe) + " : " + std::to_string(crees.size()) + " nouveaux compagnons niveau 20 arrivent sur toi.");
         demandeGroupe = 0;
     }
 

@@ -42,6 +42,7 @@ namespace cmangos_module
         bool HandleSupprimer(WorldSession* session, const std::string& args);
         bool HandleGroupe(WorldSession* session, const std::string& args);
         bool HandlePull(WorldSession* session, const std::string& args);
+        bool HandleRappel(WorldSession* session, const std::string& args);
 
         // pilotage de tous les bots (chaque seconde) : soigneurs économes, tanks qui pullent, rôles, sortie des zones trop basses
         uint32 timerPilote = 0, timerZones = 0;
@@ -64,6 +65,8 @@ namespace cmangos_module
         void SuivreCompagnons(uint32 elapsed);
         void RemplacerCompagnons(uint32 dt);
         uint32 demandeGroupe = 0, demandeMaitre = 0, demandeAttente = 0;
+        bool demandeNeuf = false;           // .bots groupe N neuf : on recrée le groupe de zéro
+        uint32 dernierGroupe = 0;           // dernier groupe appelé (pour .bots rappel)
         void PreparerCompagnon(Player* bot, Player* maitre, Compagnon const& c);
         uint32 VaguesPresentes() const;
         void Message(WorldSession* session, const std::string& text);
