@@ -1112,18 +1112,92 @@ namespace cmangos_module
     }
 
     // le tank va chercher la cible (stratégie « pull » si sa classe en a une, sinon il fonce dessus)
+    // pulls en attente : le tank s'approche, on relance le pull dès qu'il est à portée (tank -> cible, expiration)
+    static std::map<uint32, std::pair<ObjectGuid, time_t>> pullEnCours;
+
+    // sort pour attirer le monstre selon la classe (Charge, tir, horion, lucioles)
+    static void SortDePull(Player* tank, Unit* cible)
+    {
+        auto lancer = [&](uint32 id) -> bool
+        {
+            if (!tank->HasSpell(id))
+                return false;
+            SpellEntry const* info = sSpellTemplate.LookupEntry<SpellEntry>(id);
+            if (!info || !tank->IsSpellReady(*info))
+                return false;
+            if (info->manaCost && tank->GetPower(Powers(info->powerType)) < info->manaCost)
+                return false;
+            return tank->CastSpell(cible, info, TRIGGERED_NONE) == SPELL_CAST_OK;
+        };
+        float d = tank->GetDistance(cible);
+        switch (tank->getClass())
+        {
+            case CLASS_WARRIOR:
+            {
+                if (d >= 8.0f && d <= 25.0f)
+                    for (uint32 id : { 11578u, 6178u, 100u })        // Charge
+                        if (lancer(id))
+                            return;
+                if (Item* r = tank->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED))
+                    if (ItemPrototype const* proto = r->GetProto())
+                    {
+                        uint32 tir = proto->SubClass == ITEM_SUBCLASS_WEAPON_BOW ? 2480 : proto->SubClass == ITEM_SUBCLASS_WEAPON_GUN ? 7918 :
+                                     proto->SubClass == ITEM_SUBCLASS_WEAPON_CROSSBOW ? 7919 : proto->SubClass == ITEM_SUBCLASS_WEAPON_THROWN ? 2764 : 0;
+                        if (tir && lancer(tir))
+                            return;
+                    }
+                break;
+            }
+            case CLASS_SHAMAN:
+                for (uint32 id : { 10414u, 10413u, 10412u, 8046u, 8045u, 8044u, 8042u })     // Horion de terre
+                    if (lancer(id))
+                        return;
+                break;
+            case CLASS_DRUID:
+                for (uint32 id : { 17392u, 17391u, 17390u, 16857u, 9907u, 9749u, 778u, 770u })   // Lucioles (farouche puis normal)
+                    if (lancer(id))
+                        return;
+                break;
+            default:
+                break;
+        }
+    }
+
     static bool LancerPull(Player* tank, Unit* cible, Player* demandeur)
     {
         PlayerbotAI* ai = tank->GetPlayerbotAI();
         if (!ai || !cible)
             return false;
+        tank->SetSelectionGuid(cible->GetObjectGuid());
+        if (tank->IsWithinDistInMap(cible, 30.0f) && tank->IsWithinLOSInMap(cible))
+        {
+            {
+                std::lock_guard<std::mutex> g(piloteLock);
+                pullEnCours.erase(tank->GetGUIDLow());
+            }
+            tank->SetFacingToObject(cible);
+            SortDePull(tank, cible);
+            // dans tous les cas le monstre (et son pack) vient sur le tank, même sans sort de pull
+            if (cible->GetTypeId() == TYPEID_UNIT)
+            {
+                Creature* c = static_cast<Creature*>(cible);
+                if (!c->IsInCombat() && c->AI())
+                    c->AI()->AttackStart(tank);
+                c->AddThreat(tank, 10.0f);
+            }
+            tank->Attack(cible, true);
+            return true;
+        }
+        // trop loin : il s'approche (pull de l'IA), on finira le pull quand il sera à portée
+        {
+            std::lock_guard<std::mutex> g(piloteLock);
+            pullEnCours[tank->GetGUIDLow()] = { cible->GetObjectGuid(), time(nullptr) + 15 };
+        }
         ai::PullStrategy* ps = ai::PullStrategy::Get(ai);
         if (ps && ps->CanDoPullAction(cible))
             if (ai->DoSpecificAction("pull my target", Event("attack anything", cible->GetObjectGuid(), demandeur), true))
                 return true;
-        tank->SetSelectionGuid(cible->GetObjectGuid());
-        tank->Attack(cible, true);
-        tank->GetMotionMaster()->MoveChase(cible);
+        tank->GetMotionMaster()->MovePoint(0, cible->GetPositionX(), cible->GetPositionY(), cible->GetPositionZ());
         return true;
     }
 
@@ -1137,6 +1211,36 @@ namespace cmangos_module
         BotRoles role = AiFactory::GetPlayerRoles(p);
         bool tank = (role & BOT_ROLE_TANK) != 0;
         bool soin = !tank && (role & BOT_ROLE_HEALER) != 0;
+
+        // pull commencé de loin : on le termine dès que le tank est à portée
+        if (tank)
+        {
+            ObjectGuid cg;
+            {
+                std::lock_guard<std::mutex> g(piloteLock);
+                auto it = pullEnCours.find(guid);
+                if (it != pullEnCours.end())
+                {
+                    if (now > it->second.second)
+                        pullEnCours.erase(it);
+                    else
+                        cg = it->second.first;
+                }
+            }
+            if (cg)
+            {
+                Unit* c = p->GetMap()->GetUnit(cg);
+                if (!c || !c->IsAlive() || c->IsInCombat())
+                {
+                    std::lock_guard<std::mutex> g(piloteLock);
+                    pullEnCours.erase(guid);
+                }
+                else if (p->IsWithinDistInMap(c, 30.0f))
+                    LancerPull(p, c, ai->GetMaster() ? ai->GetMaster() : p);
+                else
+                    p->GetMotionMaster()->MovePoint(0, c->GetPositionX(), c->GetPositionY(), c->GetPositionZ());
+            }
+        }
 
         // rôle imposé (4e spé, classe custom) pas encore appliqué : on réinitialise l'IA (au plus une fois par minute)
         int custom = gRoleCustom ? gRoleCustom(p) : -1;
