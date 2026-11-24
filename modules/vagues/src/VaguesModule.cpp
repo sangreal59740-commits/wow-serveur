@@ -6,6 +6,9 @@
 #include "Entities/Player.h"
 #include "Globals/ObjectAccessor.h"
 #include "Globals/ObjectMgr.h"
+#include "Groups/Group.h"
+#include "Guilds/Guild.h"
+#include "Guilds/GuildMgr.h"
 #include "Log/Log.h"
 #include "Maps/Map.h"
 #include "MotionGenerators/MotionMaster.h"
@@ -18,6 +21,9 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/RandomPlayerbotFactory.h"
 #include "playerbot/RandomPlayerbotMgr.h"
+#include "playerbot/PlayerbotMgr.h"
+#include "playerbot/PlayerbotFactory.h"
+#include "playerbot/strategy/actions/ChangeTalentsAction.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -74,6 +80,37 @@ namespace cmangos_module
             default: return {};
         }
     }
+
+
+    // Compagnons (.bots groupe) : prêtre Sacré, guerrier Protection, mage Givre, paladin Vindicte, niveau 15,
+    // équipés d'objets de niveau 15 minimum (vert / bleu obtenables), arme comprise, sans anneau, bijou ni artefact.
+    // Choix fait par wow/compagnons/choix.py sur la base classicmangos.
+    struct ObjetCompagnon { uint8 slot; uint32 item; };
+    struct RoleCompagnon { uint8 cls; uint8 raceA; uint8 raceH; int32 premade; const char* nom; std::vector<ObjetCompagnon> objets; };
+    static const uint32 COMPAGNONS_NIVEAU = 15;
+    static const char* COMPAGNONS_COMPTE = "COMPAGNONS";
+    static const std::vector<RoleCompagnon>& Compagnons()
+    {
+        static const std::vector<RoleCompagnon> v =
+        {
+            { 5, 4, 8, 1, "prêtre Sacré (soin)", { { EQUIPMENT_SLOT_HEAD, 994098 }, { EQUIPMENT_SLOT_BACK, 6378 }, { EQUIPMENT_SLOT_CHEST, 4782 }, { EQUIPMENT_SLOT_WRISTS, 14148 },
+                { EQUIPMENT_SLOT_HANDS, 12977 }, { EQUIPMENT_SLOT_WAIST, 4786 }, { EQUIPMENT_SLOT_LEGS, 2982 }, { EQUIPMENT_SLOT_FEET, 4660 },
+                { EQUIPMENT_SLOT_MAINHAND, 1300 }, { EQUIPMENT_SLOT_RANGED, 5243 } } },
+            { 1, 3, 2, 2, "guerrier Protection (tank)", { { EQUIPMENT_SLOT_HEAD, 994097 }, { EQUIPMENT_SLOT_BACK, 14745 }, { EQUIPMENT_SLOT_CHEST, 3306 }, { EQUIPMENT_SLOT_WRISTS, 3211 },
+                { EQUIPMENT_SLOT_HANDS, 1448 }, { EQUIPMENT_SLOT_WAIST, 12978 }, { EQUIPMENT_SLOT_LEGS, 14727 }, { EQUIPMENT_SLOT_FEET, 1446 },
+                { EQUIPMENT_SLOT_MAINHAND, 12976 }, { EQUIPMENT_SLOT_OFFHAND, 5443 }, { EQUIPMENT_SLOT_RANGED, 3040 } } },
+            { 8, 7, 5, 8, "mage Givre", { { EQUIPMENT_SLOT_HEAD, 994098 }, { EQUIPMENT_SLOT_BACK, 6378 }, { EQUIPMENT_SLOT_CHEST, 14150 }, { EQUIPMENT_SLOT_WRISTS, 14366 },
+                { EQUIPMENT_SLOT_HANDS, 12977 }, { EQUIPMENT_SLOT_WAIST, 4786 }, { EQUIPMENT_SLOT_LEGS, 2970 }, { EQUIPMENT_SLOT_FEET, 4660 },
+                { EQUIPMENT_SLOT_MAINHAND, 935 }, { EQUIPMENT_SLOT_OFFHAND, 5183 }, { EQUIPMENT_SLOT_RANGED, 5243 } } },
+            { 2, 1, 5, 0, "paladin Vindicte", { { EQUIPMENT_SLOT_HEAD, 994097 }, { EQUIPMENT_SLOT_BACK, 14745 }, { EQUIPMENT_SLOT_CHEST, 3306 }, { EQUIPMENT_SLOT_WRISTS, 3211 },
+                { EQUIPMENT_SLOT_HANDS, 2992 }, { EQUIPMENT_SLOT_WAIST, 12978 }, { EQUIPMENT_SLOT_LEGS, 14727 }, { EQUIPMENT_SLOT_FEET, 1446 },
+                { EQUIPMENT_SLOT_MAINHAND, 12975 } } },
+        };
+        return v;
+    }
+    // point de téléportation « Stormwind » (game_tele 246)
+    static const float SW_X = -8833.38f, SW_Y = 628.628f, SW_Z = 94.0066f, SW_O = 1.06535f;
+    static const uint32 SW_ZONE = 1519;
 
     static const float XP_MULT[4] = { 0.6f, 1.0f, 1.3f, 1.6f };
     static const float REACT_MULT[4] = { 0.7f, 1.0f, 2.0f, 4.0f };
@@ -179,6 +216,7 @@ namespace cmangos_module
             { "vague", std::bind(&VaguesModule::HandleVague, this, std::placeholders::_1, std::placeholders::_2), SEC_GAMEMASTER },
             { "info", std::bind(&VaguesModule::HandleInfo, this, std::placeholders::_1, std::placeholders::_2), SEC_PLAYER },
             { "supprimer", std::bind(&VaguesModule::HandleSupprimer, this, std::placeholders::_1, std::placeholders::_2), SEC_GAMEMASTER },
+            { "groupe", std::bind(&VaguesModule::HandleGroupe, this, std::placeholders::_1, std::placeholders::_2), SEC_GAMEMASTER },
         };
         return &commandTable;
     }
@@ -317,6 +355,269 @@ namespace cmangos_module
         return true;
     }
 
+    // .bots groupe [recreer] : crée (ou reconnecte) 4 compagnons sur le compte COMPAGNONS, au point de téléportation de Hurlevent,
+    // dans le groupe du joueur qui lance la commande.
+    bool VaguesModule::HandleGroupe(WorldSession* session, const std::string& args)
+    {
+        Player* maitre = session ? session->GetPlayer() : nullptr;
+        if (!maitre || !maitre->GetPlayerbotMgr())
+        {
+            Message(session, "Cette commande se lance en jeu, depuis ton personnage.");
+            return true;
+        }
+        if (!compagnons.empty())
+        {
+            Message(session, "Des compagnons sont déjà en route, patiente quelques secondes.");
+            return true;
+        }
+
+        uint32 compte = sAccountMgr.GetId(COMPAGNONS_COMPTE);
+        if (!compte)
+        {
+            sAccountMgr.CreateAccount(COMPAGNONS_COMPTE, "compagnons");
+            compte = sAccountMgr.GetId(COMPAGNONS_COMPTE);
+        }
+        if (!compte)
+        {
+            Message(session, "Impossible de créer le compte COMPAGNONS.");
+            return true;
+        }
+
+        bool recreer = args.find("recreer") != std::string::npos || args.find("recréer") != std::string::npos;
+        std::vector<std::pair<uint32, uint8>> existants;     // guid, classe
+        if (auto r = CharacterDatabase.PQuery("SELECT `guid`, `class` FROM `characters` WHERE `account` = %u", compte))
+        {
+            do
+            {
+                Field* f = r->Fetch();
+                existants.push_back({ f[0].GetUInt32(), f[1].GetUInt8() });
+            } while (r->NextRow());
+        }
+
+        if (recreer && !existants.empty())
+        {
+            for (auto const& e : existants)
+            {
+                if (Player* p = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, e.first)))
+                    maitre->GetPlayerbotMgr()->LogoutPlayerBot(p->GetGUIDLow());
+                Player::DeleteFromDB(ObjectGuid(HIGHGUID_PLAYER, e.first), compte, true, true);
+            }
+            existants.clear();
+        }
+
+        auto const& roles = Compagnons();
+        if (!existants.empty())
+        {
+            // reconnexion des compagnons déjà créés
+            for (auto const& e : existants)
+            {
+                Compagnon c;
+                c.guid = e.first;
+                c.maitre = maitre->GetGUIDLow();
+                for (uint8 i = 0; i < roles.size(); ++i)
+                    if (roles[i].cls == e.second)
+                        c.role = i;
+                c.attente = 500;
+                compagnons.push_back(c);
+            }
+            Message(session, "Tes " + std::to_string(existants.size()) + " compagnons arrivent (.bots groupe recreer pour en refaire des neufs).");
+            return true;
+        }
+
+        bool horde = maitre->GetTeam() == HORDE;
+        std::set<uint64> avant;
+        for (auto const& kv : sObjectAccessor.GetPlayers())
+            avant.insert(kv.first.GetRawValue());
+
+        RandomPlayerbotFactory factory(compte);
+        std::vector<std::pair<Player*, uint8>> crees;
+        for (uint8 i = 0; i < roles.size(); ++i)
+        {
+            RoleCompagnon const& r = roles[i];
+            if (!factory.CreateRandomBot(r.cls, horde ? r.raceH : r.raceA))
+                continue;
+            for (auto const& kv : sObjectAccessor.GetPlayers())
+            {
+                uint64 raw = kv.first.GetRawValue();
+                if (avant.count(raw))
+                    continue;
+                avant.insert(raw);
+                Player* p = kv.second;
+                if (p && p->GetSession() && p->GetSession()->GetAccountId() == compte)
+                    crees.push_back({ p, i });
+            }
+        }
+
+        for (auto& c : crees)
+        {
+            Player* p = c.first;
+            p->GiveLevel(COMPAGNONS_NIVEAU);
+            p->InitTalentForLevel();
+            p->SetUInt32Value(PLAYER_XP, 0);
+            p->SetHomebindToLocation(WorldLocation(0, SW_X, SW_Y, SW_Z, SW_O), SW_ZONE);
+            p->SaveToDB();
+            // apparition au point de téléportation de Hurlevent
+            CharacterDatabase.PExecute("UPDATE `characters` SET `map` = 0, `position_x` = %f, `position_y` = %f, `position_z` = %f, `orientation` = %f, `zone` = %u WHERE `guid` = %u",
+                SW_X, SW_Y, SW_Z, SW_O, SW_ZONE, p->GetGUIDLow());
+
+            Compagnon k;
+            k.guid = p->GetGUIDLow();
+            k.maitre = maitre->GetGUIDLow();
+            k.role = c.second;
+            k.nouveau = true;
+            k.attente = 3000;       // laisser la sauvegarde partir avant la connexion
+            compagnons.push_back(k);
+            sRandomPlayerbotMgr.SetValue(k.guid, "specNo", uint32(roles[c.second].premade) + 1, "", 315360000);
+        }
+        for (auto& c : crees)
+        {
+            WorldSession* s = c.first->GetSession();
+            s->LogoutPlayer();
+            sObjectAccessor.RemoveObject(c.first);
+            delete c.first;
+            delete s;
+        }
+
+        if (crees.empty())
+            Message(session, "Aucun compagnon n'a pu être créé.");
+        else
+            Message(session, "Création de " + std::to_string(crees.size()) + " compagnons niveau 15 au point de téléportation de Hurlevent, ils arrivent dans quelques secondes.");
+        return true;
+    }
+
+    void VaguesModule::SuivreCompagnons(uint32 elapsed)
+    {
+        if (compagnons.empty())
+            return;
+        timerCompagnons += elapsed;
+        if (timerCompagnons < 500)
+            return;
+        uint32 dt = timerCompagnons;
+        timerCompagnons = 0;
+
+        for (auto it = compagnons.begin(); it != compagnons.end();)
+        {
+            Compagnon& c = *it;
+            Player* maitre = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, c.maitre));
+            if (!maitre || !maitre->IsInWorld() || !maitre->GetPlayerbotMgr())
+            {
+                it = compagnons.erase(it);
+                continue;
+            }
+            if (c.attente > dt)
+            {
+                c.attente -= dt;
+                ++it;
+                continue;
+            }
+            c.attente = 0;
+            Player* bot = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, c.guid));
+            if (!c.connecte)
+            {
+                c.connecte = true;
+                if (!bot)
+                {
+                    // un bot d'un autre compte n'est accepté que s'il est dans la même guilde que le joueur
+                    ObjectGuid og(HIGHGUID_PLAYER, c.guid);
+                    if (uint32 gid = maitre->GetGuildId())
+                        if (Player::GetGuildIdFromDB(og) != gid)
+                            if (Guild* guilde = sGuildMgr.GetGuildById(gid))
+                            {
+                                if (uint32 ancienne = Player::GetGuildIdFromDB(og))
+                                    if (Guild* a = sGuildMgr.GetGuildById(ancienne))
+                                        a->DelMember(og);
+                                guilde->AddMember(og, guilde->GetLowestRank());
+                            }
+                    maitre->GetPlayerbotMgr()->AddPlayerBot(c.guid, maitre->GetSession()->GetAccountId());
+                }
+                ++it;
+                continue;
+            }
+            if (!bot || !bot->IsInWorld() || !bot->GetPlayerbotAI())
+            {
+                if (++c.essais > 120)       // une minute sans connexion : abandon
+                {
+                    ChatHandler(maitre->GetSession()).SendSysMessage("Un compagnon n'a pas pu se connecter.");
+                    it = compagnons.erase(it);
+                }
+                else
+                    ++it;
+                continue;
+            }
+            PreparerCompagnon(bot, maitre, c);
+            it = compagnons.erase(it);
+        }
+    }
+
+    void VaguesModule::PreparerCompagnon(Player* bot, Player* maitre, Compagnon const& c)
+    {
+        auto const& roles = Compagnons();
+        RoleCompagnon const& r = roles[c.role < roles.size() ? c.role : 0];
+        if (c.nouveau)
+        {
+            bot->learnClassLevelSpells();
+            PlayerbotFactory f(bot, COMPAGNONS_NIVEAU, ITEM_QUALITY_UNCOMMON);
+            f.InitSkills();
+
+            sRandomPlayerbotMgr.SetValue(bot->GetGUIDLow(), "specNo", uint32(r.premade) + 1, "", 315360000);
+            std::ostringstream out;
+            ai::ChangeTalentsAction::AutoSelectTalents(bot, &out);
+
+            // on vide les emplacements visés (et la main gauche si arme à deux mains), puis on équipe
+            bool deuxMains = false;
+            for (ObjetCompagnon const& o : r.objets)
+                if (o.slot == EQUIPMENT_SLOT_MAINHAND)
+                    if (ItemPrototype const* proto = sObjectMgr.GetItemPrototype(o.item))
+                        deuxMains = proto->InventoryType == INVTYPE_2HWEAPON;
+            if (deuxMains && bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND))
+                bot->DestroyItem(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND, true);
+            uint32 equipes = 0;
+            for (ObjetCompagnon const& o : r.objets)
+            {
+                if (!sObjectMgr.GetItemPrototype(o.item))
+                    continue;
+                if (bot->GetItemByPos(INVENTORY_SLOT_BAG_0, o.slot))
+                    bot->DestroyItem(INVENTORY_SLOT_BAG_0, o.slot, true);
+                uint16 dest;
+                if (bot->CanEquipNewItem(o.slot, dest, o.item, false) == EQUIP_ERR_OK && bot->EquipNewItem(dest, o.item, true))
+                    ++equipes;
+                else
+                    sLog.outError("Compagnons : %s ne peut pas équiper l'objet %u", bot->GetName(), o.item);
+            }
+            f.AddFood();
+            sLog.outString("Compagnons : %s (%s) prêt, %u objets équipés", bot->GetName(), r.nom, equipes);
+        }
+
+        // au point de téléportation de Hurlevent s'il n'y est pas
+        if (bot->GetMapId() != 0 || bot->GetDistance(SW_X, SW_Y, SW_Z) > 30.0f)
+            bot->TeleportTo(0, SW_X, SW_Y, SW_Z, SW_O);
+
+        // dans le groupe du joueur
+        Group* g = maitre->GetGroup();
+        if (!g)
+        {
+            g = new Group();
+            if (g->Create(maitre->GetObjectGuid(), maitre->GetName()))
+                sObjectMgr.AddGroup(g);
+            else
+            {
+                delete g;
+                g = nullptr;
+            }
+        }
+        if (g && !g->IsMember(bot->GetObjectGuid()))
+        {
+            if (bot->GetGroup())
+                bot->RemoveFromGroup();
+            if (g->IsFull() || !g->AddMember(bot->GetObjectGuid(), bot->GetName()))
+                ChatHandler(maitre->GetSession()).SendSysMessage((std::string(bot->GetName()) + " n'a pas pu rejoindre ton groupe (groupe plein ?).").c_str());
+        }
+        if (PlayerbotAI* ai = bot->GetPlayerbotAI())
+            ai->ResetStrategies();
+        bot->SaveToDB();
+        ChatHandler(maitre->GetSession()).SendSysMessage((std::string(bot->GetName()) + ", " + r.nom + ", te rejoint.").c_str());
+    }
+
     bool VaguesModule::HandleSupprimer(WorldSession* session, const std::string& args)
     {
         uint32 v = uint32(atoi(args.c_str()));
@@ -375,6 +676,7 @@ namespace cmangos_module
 
     void VaguesModule::OnUpdate(uint32 elapsed)
     {
+        SuivreCompagnons(elapsed);
         timerReact += elapsed;
         if (timerReact < 5000)
             return;

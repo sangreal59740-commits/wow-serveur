@@ -40,6 +40,23 @@ namespace cmangos_module
         bool HandleVague(WorldSession* session, const std::string& args);
         bool HandleInfo(WorldSession* session, const std::string& args);
         bool HandleSupprimer(WorldSession* session, const std::string& args);
+        bool HandleGroupe(WorldSession* session, const std::string& args);
+
+        // compagnons (.bots groupe) : 4 personnages équipés niveau 15 qui suivent le joueur
+        struct Compagnon
+        {
+            uint32 guid = 0;
+            uint32 maitre = 0;          // guid du joueur
+            uint8 role = 0;             // index dans COMPAGNONS
+            bool nouveau = false;       // à préparer (sorts, talents, équipement) à la connexion
+            uint32 attente = 0;         // ms avant de lancer la connexion
+            bool connecte = false;      // connexion demandée
+            uint32 essais = 0;
+        };
+        std::vector<Compagnon> compagnons;
+        uint32 timerCompagnons = 0;
+        void SuivreCompagnons(uint32 elapsed);
+        void PreparerCompagnon(Player* bot, Player* maitre, Compagnon const& c);
         uint32 VaguesPresentes() const;
         void Message(WorldSession* session, const std::string& text);
         uint32 NombreVagues() const;
