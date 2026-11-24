@@ -86,6 +86,7 @@ namespace cmangos_module
         bool TryCast(Player* bot, Unit* target, uint32 spellId);
         bool TryCastAt(Player* bot, Unit* where, uint32 spellId);
         void BotTalents(Player* bot);
+        bool ShamanTank(Player* bot, Unit* victim, bool combat);
         void Bot4Think(Player* bot);
 
         std::recursive_mutex lock;

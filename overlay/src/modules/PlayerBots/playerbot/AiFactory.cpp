@@ -719,6 +719,9 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
         else
             combatEngine->addStrategy("boost");
     }
+    // [custom] les mages ne transforment plus les monstres en mouton (casse les pulls du groupe)
+    if (player->getClass() == CLASS_MAGE)
+        combatEngine->ChangeStrategy("-cc");
 }
 
 Engine* AiFactory::createCombatEngine(Player* player, PlayerbotAI* const facade, AiObjectContext* AiObjectContext)

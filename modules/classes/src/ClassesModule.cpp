@@ -1604,6 +1604,83 @@ namespace cmangos_module
         return bot->CastSpell(where->GetPositionX(), where->GetPositionY(), where->GetPositionZ(), info, TRIGGERED_NONE) == SPELL_CAST_OK;
     }
 
+    // Chaman Ruines (tank) : Arme croque-roc, attaques instantanées, totem de feu de zone
+    static const uint32_t SH_ROCK[] = { 8017, 8018, 8019, 10399, 16314, 16315, 16316 };       // Arme croque-roc
+    static const uint32_t SH_EARTH[] = { 8042, 8044, 8045, 8046, 10412, 10413, 10414 };       // Horion de terre
+    static const uint32_t SH_FLAME[] = { 8050, 8052, 8053, 10447, 10448, 29228 };             // Horion de flammes
+    static const uint32_t SH_CHAIN[] = { 421, 930, 2860, 10605 };                             // Chaîne d'éclairs
+    static const uint32_t SH_MAGMA[] = { 8190, 10585, 10586, 10587 };                         // Totem de magma
+    static const uint32_t SH_NOVA[] = { 1535, 8498, 8499, 11314, 11315 };                     // Totem Nova de feu
+    static const uint32_t SH_SEARING[] = { 3599, 6363, 6364, 6365, 10437, 10438 };            // Totem incendiaire
+
+    static bool CastOnItem(Player* bot, Item* item, uint32 spellId)
+    {
+        SpellEntry const* info = sSpellTemplate.LookupEntry<SpellEntry>(spellId);
+        if (!info || !item || !bot->IsSpellReady(*info))
+            return false;
+        if (info->manaCost && bot->GetPower(POWER_MANA) < info->manaCost)
+            return false;
+        SpellCastTargets targets;
+        targets.setItemTarget(item);
+        Spell* spell = new Spell(bot, info, TRIGGERED_NONE);
+        return spell->SpellStart(&targets) == SPELL_CAST_OK;
+    }
+
+    bool ClassesModule::ShamanTank(Player* bot, Unit* victim, bool combat)
+    {
+        // Arme croque-roc sur l'arme (remplace Furie-des-vents ou Langue de feu)
+        if (Item* arme = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND))
+        {
+            uint32 ench = arme->GetEnchantmentId(TEMP_ENCHANTMENT_SLOT);
+            bool rock = false;
+            for (uint32 id : SH_ROCK)
+                if (SpellEntry const* i = sSpellTemplate.LookupEntry<SpellEntry>(id))
+                    if (ench && uint32(i->EffectMiscValue[0]) == ench)
+                        rock = true;
+            if (!rock)
+                if (uint32 r = Best(bot, SH_ROCK, 7))
+                    if (CastOnItem(bot, arme, r))
+                        return true;
+        }
+        if (!combat || !victim || !bot->IsWithinDistInMap(victim, 8.0f))
+            return false;
+
+        // totem de feu de zone dès qu'il y a plusieurs monstres : Magma, sinon Nova de feu
+        uint32 adds = bot->getAttackers().size();
+        Totem* feu = bot->GetTotem(TOTEM_SLOT_FIRE);
+        bool zoneActif = false;
+        if (feu)
+            for (uint32 id : SH_MAGMA)
+                if (feu->GetUInt32Value(UNIT_CREATED_BY_SPELL) == id)
+                    zoneActif = true;
+        if (adds >= 2 && !zoneActif)
+        {
+            uint32 t = Best(bot, SH_MAGMA, 4);
+            if (!t)
+                t = Best(bot, SH_NOVA, 5);
+            if (t && TryCast(bot, bot, t))
+                return true;
+        }
+        else if (!feu)
+            if (uint32 t = Best(bot, SH_SEARING, 6))
+                if (TryCast(bot, bot, t))
+                    return true;
+
+        // attaques instantanées : Chaîne d'éclairs (instantanée avec Chaîne tellurique) sur plusieurs monstres, puis les horions
+        if (adds >= 2)
+            if (uint32 c = Best(bot, SH_CHAIN, 4))
+                if (SpellEntry const* ci = sSpellTemplate.LookupEntry<SpellEntry>(c))
+                    if (GetSpellCastTime(ci, bot) == 0 && TryCast(bot, victim, c))
+                        return true;
+        uint32 flame = Best(bot, SH_FLAME, 6);
+        if (flame && !victim->GetSpellAuraHolder(flame, bot->GetObjectGuid()) && TryCast(bot, victim, flame))
+            return true;
+        if (uint32 e = Best(bot, SH_EARTH, 7))
+            if (TryCast(bot, victim, e))
+                return true;
+        return false;
+    }
+
     void ClassesModule::Bot4Think(Player* bot)
     {
         DepthGuard depth;
@@ -1670,6 +1747,8 @@ namespace cmangos_module
                 break;
             case CLASS_SHAMAN:
                 if (self(B4_TERRE[0]))
+                    return;
+                if (RoleBot(bot) == 0 && ShamanTank(bot, victim, combat))
                     return;
                 if (combat && victim)
                 {
