@@ -196,6 +196,31 @@ namespace cmangos_module
     }
 
     // membres du groupe (ou le joueur seul) à moins de `range` mètres de `center`
+    // cible de combat d'un bot : sa cible de mêlée, sinon celle qu'il a sélectionnée, sinon le monstre que tape
+    // un membre du groupe (le tank) ou qui l'attaque lui. Les lanceurs de sorts n'ont souvent pas de cible de mêlée.
+    static Unit* CibleCombat(Player* bot)
+    {
+        auto ok = [&](Unit* u) { return u && u->IsAlive() && bot->CanAttack(u) && u->IsInMap(bot) && bot->IsWithinDistInMap(u, 40.0f); };
+        Unit* v = bot->GetVictim();
+        if (ok(v))
+            return v;
+        if (ObjectGuid sel = bot->GetSelectionGuid())
+            if (Unit* u = bot->GetMap()->GetUnit(sel))
+                if (ok(u) && u->IsInCombat())
+                    return u;
+        if (Group* g = bot->GetGroup())
+            for (GroupReference* ref = g->GetFirstMember(); ref; ref = ref->next())
+                if (Player* m = ref->getSource())
+                    if (m != bot && m->IsAlive() && m->IsInMap(bot))
+                        if (Unit* u = m->GetVictim())
+                            if (ok(u) && u->IsInCombat())
+                                return u;
+        for (Unit* a : bot->getAttackers())
+            if (ok(a))
+                return a;
+        return nullptr;
+    }
+
     static void GroupAround(Player* p, Unit* center, float range, std::vector<Unit*>& out)
     {
         if (Group* g = p->GetGroup())
@@ -1684,10 +1709,10 @@ namespace cmangos_module
     void ClassesModule::Bot4Think(Player* bot)
     {
         DepthGuard depth;
-        Unit* victim = bot->GetVictim();
-        if (victim && (!victim->IsAlive() || !bot->CanAttack(victim)))
-            victim = nullptr;
-        bool combat = bot->IsInCombat();
+        Unit* victim = CibleCombat(bot);
+        bool combat = bot->IsInCombat() || victim != nullptr;
+        if (victim && !bot->IsMoving())
+            bot->SetFacingToObject(victim);
         ObjectGuid me = bot->GetObjectGuid();
         auto mine = [&](Unit* u, uint32 id) { return id && u->GetSpellAuraHolder(id, me) != nullptr; };
         auto self = [&](uint32 id) { return id && bot->HasSpell(id) && !bot->HasAura(id) && TryCast(bot, bot, id); };
@@ -1891,10 +1916,14 @@ namespace cmangos_module
             DepthGuard depth;
             MetaPassives(bot);
         }
-        Unit* victim = bot->GetVictim();
-        if (victim && (!victim->IsAlive() || !bot->CanAttack(victim)))
-            victim = nullptr;
-        bool combat = bot->IsInCombat() && victim;
+        Unit* victim = CibleCombat(bot);
+        bool combat = victim != nullptr;
+        if (victim && !bot->IsMoving())
+        {
+            bot->SetFacingToObject(victim);
+            if (bot->GetSelectionGuid() != victim->GetObjectGuid())
+                bot->SetSelectionGuid(victim->GetObjectGuid());
+        }
 
         auto selfBuff = [&](const uint32_t* arr, uint32 n) -> bool
         {
