@@ -41,13 +41,19 @@ namespace cmangos_module
         bool HandleInfo(WorldSession* session, const std::string& args);
         bool HandleSupprimer(WorldSession* session, const std::string& args);
         bool HandleGroupe(WorldSession* session, const std::string& args);
+        bool HandlePull(WorldSession* session, const std::string& args);
 
-        // compagnons (.bots groupe) : 4 personnages équipés niveau 15 qui suivent le joueur
+        // pilotage de tous les bots (chaque seconde) : soigneurs économes, tanks qui pullent, rôles, sortie des zones trop basses
+        uint32 timerPilote = 0, timerZones = 0;
+        void PiloterBots(bool zones);
+
+        // compagnons (.bots groupe 1 à 5) : groupes de personnages niveau 20 équipés qui suivent le joueur
         struct Compagnon
         {
             uint32 guid = 0;
             uint32 maitre = 0;          // guid du joueur
-            uint8 role = 0;             // index dans COMPAGNONS
+            uint8 groupe = 0;           // 1 à 5
+            uint8 role = 0;             // membre du groupe
             bool nouveau = false;       // à préparer (sorts, talents, équipement) à la connexion
             uint32 attente = 0;         // ms avant de lancer la connexion
             bool connecte = false;      // connexion demandée
@@ -56,6 +62,8 @@ namespace cmangos_module
         std::vector<Compagnon> compagnons;
         uint32 timerCompagnons = 0;
         void SuivreCompagnons(uint32 elapsed);
+        void RemplacerCompagnons(uint32 dt);
+        uint32 demandeGroupe = 0, demandeMaitre = 0, demandeAttente = 0;
         void PreparerCompagnon(Player* bot, Player* maitre, Compagnon const& c);
         uint32 VaguesPresentes() const;
         void Message(WorldSession* session, const std::string& text);

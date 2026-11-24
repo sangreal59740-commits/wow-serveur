@@ -1,0 +1,5 @@
+## Interface: 11200
+## Title: Pull du tank
+## Notes: Bouton qui ordonne au tank bot du groupe de puller ta cible (clic gauche) ; clic droit : pull automatique on/off.
+## SavedVariables: BotsPullAuto
+BotsPull.lua

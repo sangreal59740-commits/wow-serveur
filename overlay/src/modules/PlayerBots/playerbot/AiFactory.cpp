@@ -17,6 +17,10 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "BattleGround/BattleGroundMgr.h"
+#include <functional>
+
+// [custom] role impose par le module classes : -1 aucun, 0 tank, 1 soin, 2 DPS corps a corps, 3 DPS distance
+std::function<int(Player const*)> gRoleCustom;
 
 AiObjectContext* AiFactory::createAiObjectContext(Player* player, PlayerbotAI* ai)
 {
@@ -235,6 +239,16 @@ BotRoles AiFactory::GetPlayerRoles(uint8 cls, uint8 tab)
 
 BotRoles AiFactory::GetPlayerRoles(const Player* player)
 {
+    if (gRoleCustom)
+    {
+        int custom = gRoleCustom(player);
+        if (custom == 0)
+            return BOT_ROLE_TANK;
+        if (custom == 1)
+            return BOT_ROLE_HEALER;
+        if (custom >= 2)
+            return BOT_ROLE_DPS;
+    }
     uint8 cls = player->getClass();
     uint8 tab = GetPlayerSpecTab(player);
 
@@ -685,6 +699,26 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
             combatEngine->addStrategies("behind", "stealth", "poisons", "buff", NULL);
         }
     }
+
+    // [custom] role impose (4e spe, classes custom) : strategies de tank, de soigneur ou de DPS
+    if (!player->InBattleGround())
+    {
+        int custom = gRoleCustom ? gRoleCustom(player) : -1;
+        if (custom == 0)
+            combatEngine->ChangeStrategy("-dps assist,-ranged,-flee,-behind,+tank assist,+pull,+pull back,+close,+boost");
+        else if (custom == 1)
+            combatEngine->ChangeStrategy("-tank assist,-pull,-pull back,-close,-behind,+ranged,+flee,+boost");
+        else if (custom == 2)
+        {
+            combatEngine->ChangeStrategy("-tank assist,-pull,-pull back,-ranged,+dps assist,+close,+behind,+boost");
+            if (player->getClass() == CLASS_WARRIOR)
+                combatEngine->ChangeStrategy("-protection,+fury");
+        }
+        else if (custom == 3)
+            combatEngine->ChangeStrategy("-tank assist,-pull,-pull back,-close,-behind,+dps assist,+ranged,+boost");
+        else
+            combatEngine->addStrategy("boost");
+    }
 }
 
 Engine* AiFactory::createCombatEngine(Player* player, PlayerbotAI* const facade, AiObjectContext* AiObjectContext)
@@ -1111,6 +1145,16 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
             }
 #endif
         }
+    }
+
+    // [custom] role impose (4e spe, classes custom)
+    if (!player->InBattleGround())
+    {
+        int custom = gRoleCustom ? gRoleCustom(player) : -1;
+        if (custom == 0)
+            nonCombatEngine->ChangeStrategy("-dps assist,+tank assist");
+        else if (custom >= 1)
+            nonCombatEngine->ChangeStrategy("-tank assist,+dps assist");
     }
 }
 

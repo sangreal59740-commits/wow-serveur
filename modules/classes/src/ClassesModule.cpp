@@ -25,11 +25,17 @@
 #include "Grids/CellImpl.h"
 
 #include <algorithm>
+#include <functional>
 #include <mutex>
 #include <unordered_map>
 #include <cmath>
 
 using namespace classes_data;
+
+#ifdef ENABLE_PLAYERBOTS
+// rôle imposé aux bots, lu par playerbot (AiFactory) : -1 aucun, 0 tank, 1 soin, 2 DPS corps à corps, 3 DPS distance
+extern std::function<int(Player const*)> gRoleCustom;
+#endif
 
 namespace cmangos_module
 {
@@ -146,6 +152,33 @@ namespace cmangos_module
         return IsBot(player) && cls != C_NECRO && cls != C_SNIPER && cls != C_META && BotTab(player) == 3;
     }
 
+    // rôle d'un bot qui joue une 4e spé ou une classe custom : -1 (laissé à playerbot), 0 tank, 1 soin, 2 DPS cac, 3 DPS distance
+    static int RoleBot(Player* player)
+    {
+        if (!player || !IsBot(player))
+            return -1;
+        uint8 cls = player->getClass();
+        if (cls == C_NECRO || cls == C_SNIPER)
+            return 3;
+        int tab = BotTab(player);
+        if (cls == C_META)
+            return tab == 0 ? 1 : tab == 2 ? 0 : 2;     // Totémique soin, Druidique cac, Angélique tank
+        if (tab != 3)
+            return -1;
+        switch (cls)
+        {
+            case 1: return 2;   // Berserker
+            case 2: return 3;   // Soleil
+            case 3: return 1;   // Infirmier
+            case 4: return 2;   // Fantôme
+            case 5: return 1;   // Corrompu
+            case 7: return 0;   // Ruines
+            case 8: return 1;   // Nature
+            case 9: return 0;   // Transfuge
+        }
+        return -1;
+    }
+
     static int32 SpellValue(SpellEntry const* info, uint32 eff = 0)
     {
         return info ? info->CalculateSimpleValue(SpellEffectIndex(eff)) : 0;
@@ -186,7 +219,10 @@ namespace cmangos_module
         CharacterDatabase.Execute("CREATE TABLE IF NOT EXISTS `custom_bot_arbre` (`guid` INT UNSIGNED NOT NULL, `arbre` TINYINT UNSIGNED NOT NULL,"
                                   " PRIMARY KEY (`guid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
         ChargerArbres();
-        gEviteMort = [](Player const* p) { return instance && instance->NouvEviteMort(p); };   // Fil du destin, Refus du trépas
+        gEviteMort = [](Player const* p) { return instance && instance->NouvEviteMort(p); };
+#ifdef ENABLE_PLAYERBOTS
+        gRoleCustom = [](Player const* cp) -> int { return RoleBot(const_cast<Player*>(cp)); };
+#endif   // Fil du destin, Refus du trépas
         sLog.outString("Classes custom : %u invocations du Nécromancien, IA des bots active, %u bot(s) à arbre imposé", INVOCATIONS_N, uint32(arbreBots.size()));
     }
 
@@ -1643,6 +1679,12 @@ namespace cmangos_module
             case CLASS_MAGE:
                 if (self(A4_ARMURE[0]))
                     return;
+                // Lien de vie sur l'allié que le monstre frappe (le tank en général)
+                if (combat && victim && bot->HasSpell(A4_LIEN[0]))
+                    if (Unit* cible = victim->GetVictim())
+                        if (cible->GetTypeId() == TYPEID_PLAYER && cible != bot && !mine(cible, A4_LIEN[0])
+                            && std::find(allies.begin(), allies.end(), cible) != allies.end() && TryCast(bot, cible, A4_LIEN[0]))
+                            return;
                 if (low && lp < 0.9f)
                 {
                     if (lp < 0.6f && bot->HasSpell(A4_BOUCLIER[0]) && !low->HasAura(6788) && TryCast(bot, low, A4_BOUCLIER[0]))
@@ -1667,7 +1709,11 @@ namespace cmangos_module
                     return;
                 if (combat && victim)
                 {
+                    if (bot->HasSpell(R4_FORME[0]) && victim->GetHealth() * 2 > victim->GetMaxHealth() && TryCast(bot, bot, R4_FORME[0]))
+                        return;
                     if (bot->HasSpell(B4_HORDE[0]) && victim->GetHealth() * 2 > victim->GetMaxHealth() && TryCast(bot, bot, B4_HORDE[0]))
+                        return;
+                    if (bot->HasSpell(R4_SPECTRE[0]) && TryCast(bot, bot, R4_SPECTRE[0]))
                         return;
                     if (bot->GetComboPoints() >= 4 && bot->HasSpell(B4_SUPPLICE[0]) && TryCast(bot, victim, B4_SUPPLICE[0]))
                         return;
@@ -1703,7 +1749,9 @@ namespace cmangos_module
             case CLASS_PRIEST:
                 if (combat && victim && hurtBad >= 3 && bot->HasSpell(B4_NUEE[0]) && TryCast(bot, bot, B4_NUEE[0]))
                     return;
-                if (combat && victim && bot->HasSpell(B4_RATS[0]) && TryCast(bot, bot, B4_RATS[0]))
+                // soigneur : attaque seulement au-dessus de 60 % de mana
+                if (combat && victim && bot->GetPower(POWER_MANA) * 10 >= bot->GetMaxPower(POWER_MANA) * 6
+                    && bot->HasSpell(B4_RATS[0]) && TryCast(bot, bot, B4_RATS[0]))
                     return;
                 if (low && lp < 0.9f)
                 {
@@ -1827,17 +1875,19 @@ namespace cmangos_module
         {
             if (selfBuff(BM_LIEN, BM_LIEN_N))
                 return;
-            // soins d'abord : membre du groupe sous 50 %
+            // soins d'abord : membre du groupe sous 50 % (sous 85 % pour la spé Totémique, qui soigne)
+            bool soigneur = BotTab(bot) == 0;
+            float seuil = soigneur ? 85.0f : 50.0f;
             Unit* hurt = nullptr;
             if (Group* group = bot->GetGroup())
             {
                 for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
                     if (Player* m = ref->getSource())
-                        if (m->IsAlive() && m->IsInMap(bot) && m->IsWithinDistInMap(bot, 40.0f) && m->GetHealthPercent() < 50.0f)
+                        if (m->IsAlive() && m->IsInMap(bot) && m->IsWithinDistInMap(bot, 40.0f) && m->GetHealthPercent() < seuil)
                             if (!hurt || m->GetHealthPercent() < hurt->GetHealthPercent())
                                 hurt = m;
             }
-            else if (bot->GetHealthPercent() < 50.0f)
+            else if (bot->GetHealthPercent() < seuil)
                 hurt = bot;
             if (hurt)
             {
@@ -1848,6 +1898,9 @@ namespace cmangos_module
                     return;
             }
             if (!combat)
+                return;
+            // soigneur : attaque seulement au-dessus de 60 % de mana
+            if (soigneur && bot->GetPower(POWER_MANA) * 10 < bot->GetMaxPower(POWER_MANA) * 6)
                 return;
             if (dot(BM_TONNERRE, BM_TONNERRE_N))
                 return;
