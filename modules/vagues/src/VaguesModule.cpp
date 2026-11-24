@@ -472,7 +472,7 @@ namespace cmangos_module
                 Player* p = map->GetPlayer(guid);
                 if (!p || !p->IsInWorld() || !p->GetPlayerbotAI())
                     return;
-                p->GetMotionMaster()->Clear(false, true);
+                p->GetMotionMaster()->Clear(false);              // garde le mouvement de repos (pile jamais vide)
                 p->StopMoving(true);
                 if (teleporter)
                     sRandomPlayerbotMgr.RandomTeleportForLevel(p, false);
