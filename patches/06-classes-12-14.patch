@@ -95,7 +95,7 @@
  
  void Player::RewardRage(uint32 damage, bool attacker)
  {
-+    if (getClass() == CLASS_MARTYR)                         // [custom] le Martyr n'a pas de rage : il paie avec sa vie
++    if (getClass() == CLASS_MARTYR)                         // [custom] le Martyr utilise l'energie : pas de rage
 +        return;
 +
      float addRage;

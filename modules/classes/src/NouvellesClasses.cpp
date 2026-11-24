@@ -33,6 +33,7 @@ namespace cmangos_module
 {
     static const uint8 C_TISSERAND = 12;
     static const uint8 C_FOSSOYEUR = 13;
+    static const uint8 C_MARTYR = 14;
 
     static uint64 Raw(Unit const* u) { return u->GetObjectGuid().GetRawValue(); }
 
@@ -92,15 +93,112 @@ namespace cmangos_module
             out.push_back(p);
     }
 
+    // ennemis du lanceur à moins de `range` mètres de `center` (le centre peut être un ennemi : sa cible, par exemple)
     static void Ennemis(Unit* center, Unit* caster, float range, std::vector<Unit*>& out)
     {
         std::list<Unit*> list;
-        MaNGOS::AnyUnfriendlyUnitInObjectRangeCheck check(center, range);
-        MaNGOS::UnitListSearcher<MaNGOS::AnyUnfriendlyUnitInObjectRangeCheck> searcher(list, check);
+        MaNGOS::AnyUnitInObjectRangeCheck check(center, range);
+        MaNGOS::UnitListSearcher<MaNGOS::AnyUnitInObjectRangeCheck> searcher(list, check);
         Cell::VisitAllObjects(center, searcher, range);
         for (Unit* u : list)
-            if (u && u->IsAlive() && caster->CanAttack(u))
+            if (u && u != caster && u->IsAlive() && caster->CanAttack(u) &&
+                !(u->GetTypeId() == TYPEID_UNIT && static_cast<Creature*>(u)->IsTotem()))
                 out.push_back(u);
+    }
+
+    static bool Dans(const uint32_t* arr, uint32 n, uint32 id)
+    {
+        for (uint32 i = 0; i < n; ++i)
+            if (arr[i] == id)
+                return true;
+        return false;
+    }
+
+    // aura cachée dont les valeurs sont recalculées : remplacée seulement si une valeur change, retirée si tout vaut 0
+    static void Cachee(Unit* u, uint32 spellId, int32 b0, int32 b1 = 0, int32 b2 = 0, Unit* caster = nullptr)
+    {
+        SpellAuraHolder* h = u->GetSpellAuraHolder(spellId);
+        if (!b0 && !b1 && !b2)
+        {
+            if (h)
+                u->RemoveAurasDueToSpell(spellId);
+            return;
+        }
+        if (h)
+        {
+            int32 want[3] = { b0, b1, b2 };
+            bool same = true;
+            for (int i = 0; i < 3; ++i)
+                if (Aura* a = h->GetAuraByEffectIndex(SpellEffectIndex(i)))
+                    if (a->GetModifier()->m_amount != want[i])
+                        same = false;
+            if (same)
+                return;
+        }
+        u->RemoveAurasDueToSpell(spellId);
+        (caster ? caster : u)->CastCustomSpell(u, spellId, &b0, &b1, &b2, TRIGGERED_OLD_TRIGGERED);
+    }
+
+    // coup critique de ce sort sur cette cible
+    static bool Critique(Spell* spell, Unit* victim)
+    {
+        if (!spell)
+            return false;
+        for (auto const& t : spell->GetTargetList())
+            if (t.targetGUID == victim->GetObjectGuid())
+                return t.isCrit;
+        return false;
+    }
+
+    // cible étourdie ou hébétée
+    static bool Etourdi(Unit const* u)
+    {
+        if (u->IsStunned())
+            return true;
+        for (auto const& kv : u->GetSpellAuraHolderMap())
+            if (kv.second && kv.second->GetSpellProto() && kv.second->GetSpellProto()->Mechanic == 27)
+                return true;
+        return false;
+    }
+
+    static bool Roll(float pct)
+    {
+        return pct > 0.0f && frand(0.0f, 100.0f) < pct;
+    }
+
+    // Martyr : une charge de Ferveur (5 au maximum)
+    static void GagnerFerveur(Player* p, uint32 n = 1)
+    {
+        for (uint32 i = 0; i < n; ++i)
+            p->CastSpell(p, MA_FERVEUR[0], TRIGGERED_OLD_TRIGGERED);
+    }
+
+    // multiplie la valeur d'une aura déjà posée (effet 1) en la reposant
+    static void Renforcer(Player* p, Unit* target, uint32 spellId, float f, int32 plafond = 0)
+    {
+        SpellAuraHolder* h = target->GetSpellAuraHolder(spellId, p->GetObjectGuid());
+        Aura* a = h ? h->GetAuraByEffectIndex(EFFECT_INDEX_0) : nullptr;
+        if (!a || f <= 1.0f)
+            return;
+        int32 bp = int32(std::lround(a->GetModifier()->m_amount * f));
+        if (plafond && std::abs(bp) > std::abs(plafond))
+            bp = plafond;
+        int32 dur = h->GetAuraDuration();
+        target->RemoveAurasByCasterSpell(spellId, p->GetObjectGuid());
+        p->CastCustomSpell(target, spellId, &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+        if (SpellAuraHolder* h2 = target->GetSpellAuraHolder(spellId, p->GetObjectGuid()))
+        {
+            h2->SetAuraDuration(dur);
+            h2->UpdateAuraDuration();
+        }
+    }
+
+    // multiplie la valeur d'un effet périodique déjà posé (pas d'effet de stat : on peut changer la valeur en place)
+    static void Amplifier(Player* p, Unit* target, uint32 spellId, float f)
+    {
+        if (SpellAuraHolder* h = target->GetSpellAuraHolder(spellId, p->GetObjectGuid()))
+            if (Aura* a = h->GetAuraByEffectIndex(EFFECT_INDEX_0))
+                a->GetModifier()->m_amount = int32(std::lround(a->GetModifier()->m_amount * f));
     }
 
     static Unit* Cadavre(Unit* center, float range)
@@ -142,8 +240,53 @@ namespace cmangos_module
     }
 
     // ------------------------------------------------------------------ lancement (avant les effets)
-    void ClassesModule::NouvCast(Player* p, uint32 id, Unit* /*victim*/, Spell* /*spell*/)
+    void ClassesModule::NouvCast(Player* p, uint32 id, Unit* /*victim*/, Spell* spell)
     {
+        uint8 cls = p->getClass();
+        if (cls == C_FOSSOYEUR)
+        {
+            // Tombeau ouvert : une faille reste ouverte à l'endroit visé
+            if (id == F_TOMBEAU[0] && spell)
+            {
+                float x, y, z;
+                spell->m_targets.getDestination(x, y, z);
+                if (x != 0.0f || y != 0.0f)
+                    p->CastSpell(x, y, z, F_H_FAILLE[0], TRIGGERED_OLD_TRIGGERED);
+            }
+            return;
+        }
+        if (cls == C_MARTYR)
+        {
+            if (!spell || spell->m_IsTriggeredSpell || !spell->m_spellInfo)
+                return;
+            SpellEntry const* e = spell->m_spellInfo;
+            int32 k = -1;
+            for (uint32 i = 0; i < MA_SANG_N; ++i)
+                if (MA_SANG[i] == id)
+                    k = int32(i);
+            if (k >= 0)
+            {
+                // sort de sang : consomme la Ferveur (+20 % par charge), coûte un % des PV max sans pouvoir tuer
+                uint32 n = 0;
+                if (MA_SANG_CONSO[k])
+                {
+                    n = Piles(p, MA_FERVEUR[0], p->GetObjectGuid());
+                    if (n)
+                        p->RemoveAurasDueToSpell(MA_FERVEUR[0]);
+                }
+                ferveurConso[Raw(p)] = n;
+                if (!p->HasAura(MA_FORTERESSE[0]) && !p->HasAura(MA_SAINT[0]))
+                {
+                    int32 cost = int32(p->GetMaxHealth()) * int32(MA_SANG_PCT[k]) / 100;
+                    cost = std::min(cost, int32(p->GetHealth()) - 1);
+                    if (cost > 0)
+                        p->ModifyHealth(-cost);
+                }
+            }
+            else if (e->SpellFamilyName == 16 && e->powerType == POWER_ENERGY && e->manaCost > 0)
+                GagnerFerveur(p);                           // sort à énergie : 1 Ferveur
+            return;
+        }
         // Lame de trame : Trancher les fils sans recharge
         if (id == TW_TRANCHER[0] && p->HasAura(TW_LAME[0]))
             if (SpellEntry const* e = sSpellTemplate.LookupEntry<SpellEntry>(TW_TRANCHER[0]))
@@ -304,9 +447,255 @@ namespace cmangos_module
             return;
         }
 
+        if (cls == C_MARTYR)
+        {
+            uint32 n = ferveurConso[Raw(p)];
+            float f = 1.0f + 0.2f * float(n);
+            int32 dmg = int32(spell ? spell->GetTotalTargetDamage() : 0);
+            bool crit = Critique(spell, victim);
+            bool ennemi = victim != p && p->CanAttack(victim);
+            // Ferveur sanglante / bienveillante : un critique peut donner 1 Ferveur de plus
+            if (crit && spell && !spell->m_IsTriggeredSpell)
+            {
+                if (ennemi)
+                {
+                    if (uint32 r = Rank(p, TM_FERVEUR_S, TM_FERVEUR_S_N))
+                        if (Roll(15.0f * r))
+                            GagnerFerveur(p);
+                }
+                else if (uint32 r = Rank(p, TM_FERVEUR_B, TM_FERVEUR_B_N))
+                    if (Roll(33.0f * r))
+                        GagnerFerveur(p);
+            }
+            // Seigneur du sang : drains +50 %, soins reçus par la cible -25 %
+            if (Dans(MA_DRAINS, MA_DRAINS_N, id) && ennemi && p->HasAura(MA_SEIGNEUR[0]))
+            {
+                if (dmg > 0)
+                {
+                    int32 bp = dmg / 2;
+                    p->CastCustomSpell(victim, MA_LEECH_X[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
+                else
+                    Amplifier(p, victim, id, 1.5f);
+                p->CastSpell(victim, MA_SEIGNEUR_A[0], TRIGGERED_OLD_TRIGGERED);
+            }
+            if (id == MA_PLAIE[0] && ennemi)
+            {
+                uint32 k = Piles(p, MA_FERVEUR[0], pg);          // Plaie partagée : +20 % par Ferveur, sans la consommer
+                if (k && dmg > 0)
+                {
+                    int32 bp = dmg * int32(20 * k) / 100;
+                    p->CastCustomSpell(victim, MA_BONUS_D[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
+                if (uint32 r = Rank(p, TM_PLAIE_S, TM_PLAIE_S_N))
+                {
+                    int32 bp = std::max(1, AuNiveau(p, 50.0f * r) / 3);
+                    p->CastCustomSpell(victim, MA_PLAIE_D[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
+                return;
+            }
+            if (id == MA_CAILLOT[0])
+            {
+                if (Aura* a = p->GetAura(MA_CAILLOT[0], EFFECT_INDEX_0))
+                    a->GetModifier()->m_amount = int32(float(p->GetMaxHealth()) * 0.10f * f *
+                                                       (1.0f + 0.1f * Rank(p, TM_CAILLOT_A, TM_CAILLOT_A_N)));
+                return;
+            }
+            if (id == MA_COAGULATION[0] || id == MA_PACTE[0] || id == MA_FRENESIE_S[0])
+            {
+                Renforcer(p, p, id, f, id == MA_COAGULATION[0] ? -60 : 0);
+                return;
+            }
+            if (id == MA_MUR[0])
+            {
+                Renforcer(p, p, id, f, 60);
+                int32 bp = int32(float(p->GetMaxHealth()) * 0.30f * f);
+                p->CastCustomSpell(p, MA_BONUS_S[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                return;
+            }
+            if (id == MA_ANEMIE[0] && ennemi)
+            {
+                Renforcer(p, victim, id, f, -90);
+                return;
+            }
+            if ((id == MA_HACHOIR[0] || id == MA_FESTIN_S[0]) && ennemi && n && dmg > 0)
+            {
+                int32 bp = int32(dmg * (f - 1.0f));
+                p->CastCustomSpell(victim, id == MA_HACHOIR[0] ? MA_BONUS_D[0] : MA_LEECH_X[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                return;
+            }
+            if ((id == MA_HEMORRAGIE[0] || id == MA_CAILLE[0]) && ennemi)
+            {
+                Amplifier(p, victim, id, f);
+                return;
+            }
+            if (id == MA_GRAND_S[0] && n)
+            {
+                int32 bp = int32(AuNiveau(p, 2150.0f) * (f - 1.0f));
+                p->CastCustomSpell(victim, MA_BONUS_S[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                return;
+            }
+            if (id == MA_DON_U[0])
+            {
+                int32 bp = int32(float(victim->GetMaxHealth()) * 0.30f * f);
+                p->CastCustomSpell(victim, MA_BONUS_S[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                return;
+            }
+            if (id == MA_FONTAINE[0])
+            {
+                Fontaine& ft = fontaines[Raw(p)];
+                p->GetPosition(ft.x, ft.y, ft.z);
+                ft.secondes = 10 + 2 * Rank(p, TM_FONTAINE_A, TM_FONTAINE_A_N);
+                ft.soin = int32(AuNiveau(p, 60.0f) * f);
+                return;
+            }
+            if (id == MA_MARQUE[0] && ennemi)
+            {
+                marques[Raw(victim)] = std::make_pair(Raw(p), (20.0f + 5.0f * Rank(p, TM_MARQUE_P, TM_MARQUE_P_N)) * f);
+                return;
+            }
+            if (id == MA_FUREUR[0])
+            {
+                if (SpellAuraHolder* h = p->GetSpellAuraHolder(MA_FUREUR[0]))
+                    h->SetStackAmount(3, p);
+                return;
+            }
+            if (id == MA_FESTIN_L[0])
+            {
+                festinCoups[Raw(p)] = HasTalent(p, TM_FESTIN_P, TM_FESTIN_P_N) ? 5 : 3;
+                return;
+            }
+            if (id == MA_DESESPOIR[0] && ennemi && dmg > 0)
+            {
+                float seuil = (35.0f + 5.0f * Rank(p, TM_DESESPOIR, TM_DESESPOIR_N)) / 100.0f;
+                if (Pct(p) < seuil)
+                    p->CastCustomSpell(victim, MA_BONUS_D[0], &dmg, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                return;
+            }
+            if (id == MA_COMMUNION[0])
+            {
+                float rayon = 10.0f + 5.0f * Rank(p, TM_COMMUNION_E, TM_COMMUNION_E_N);
+                std::vector<Unit*> autour, groupe;
+                Ennemis(p, p, rayon, autour);
+                int32 total = 0;
+                for (Unit* e : autour)
+                {
+                    int32 bp = AuNiveau(p, 150.0f);
+                    p->CastCustomSpell(e, MA_COMMUNION_D[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                    total += bp;
+                }
+                Groupe(p, p, 30.0f, groupe);
+                if (total > 0 && !groupe.empty())
+                {
+                    int32 part = std::max(1, total / int32(groupe.size()));
+                    for (Unit* m : groupe)
+                        p->CastCustomSpell(m, MA_BONUS_S[0], &part, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
+                return;
+            }
+            if (id == MA_SEIGNEUR[0])
+            {
+                p->CastSpell(p, MA_SEIGNEUR_ST[0], TRIGGERED_OLD_TRIGGERED);
+                return;
+            }
+            return;
+        }
+
         if (cls == C_FOSSOYEUR)
         {
-            // fantômes du Passeur : pacte obligatoire, un fantôme par allié, 3 au maximum
+            // malédictions d'arme : une seule active (deux avec Malédictions jumelles), la plus ancienne disparaît
+            if (id == F_M_POURRITURE[0] || id == F_M_ENTRAVE[0] || id == F_M_EPUISE[0])
+            {
+                auto& v = malOrdre[Raw(p)];
+                v.erase(std::remove(v.begin(), v.end(), id), v.end());
+                v.push_back(id);
+                v.erase(std::remove_if(v.begin(), v.end(), [p](uint32 m) { return !p->HasAura(m); }), v.end());
+                size_t max = HasTalent(p, TF_JUMELLES, TF_JUMELLES_N) ? 2 : 1;
+                while (v.size() > max)
+                {
+                    p->RemoveAurasDueToSpell(v.front());
+                    v.erase(v.begin());
+                }
+                return;
+            }
+            // Fosse commune : la malédiction posée par l'arme se propage à un autre ennemi à 8 m
+            if (Dans(F_MALS, F_MALS_N, id))
+            {
+                if (p->HasAura(F_FOSSE[0]))
+                {
+                    std::vector<Unit*> autour;
+                    Ennemis(victim, p, 8.0f, autour);
+                    for (Unit* e : autour)
+                        if (e != victim)
+                        {
+                            p->CastSpell(e, id, TRIGGERED_OLD_TRIGGERED);
+                            break;
+                        }
+                }
+                return;
+            }
+            // Pelletée funèbre : un point de combo de plus
+            if (id == F_PELLE[0] || id == F_SORTIE[0])
+                if (uint32 r = Rank(p, TF_PELLETEE, TF_PELLETEE_N))
+                    if (Roll(4.0f * r))
+                        p->AddComboPoints(victim, 1);
+            // sorts du Requiem : Gravats, Acharnement, Écrasement
+            if (Dans(F_REQ, F_REQ_N, id) && victim != p)
+            {
+                int32 dmg = int32(spell ? spell->GetTotalTargetDamage() : 0);
+                bool crit = Critique(spell, victim);
+                if (dmg > 0)
+                {
+                    int32 extra = 0;
+                    bool etourdi = Etourdi(victim);
+                    if (etourdi)
+                        if (uint32 r = Rank(p, TF_ACHARNEMENT, TF_ACHARNEMENT_N))
+                            extra += dmg * int32(4 * r) / 100;
+                    if (id == F_PIERRE[0] && !crit && etourdi && HasTalent(p, TF_ECRASEMENT, TF_ECRASEMENT_N) && Roll(15.0f))
+                    {
+                        extra += dmg / 2;                   // critique de sort : +50 %
+                        crit = true;
+                    }
+                    if (extra > 0)
+                        p->CastCustomSpell(victim, F_H_TERRE[0], &extra, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                    if (crit)
+                        if (uint32 r = Rank(p, TF_GRAVATS, TF_GRAVATS_N))
+                        {
+                            int32 bp = std::max(1, dmg * int32(8 * r) / 100 / 2);     // 2 ticks en 4 s
+                            p->CastCustomSpell(victim, F_H_GRAVATS[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                        }
+                }
+                return;
+            }
+            // Hurlement : les ennemis à 10 m du sombredogue fuient
+            if (id == F_HURLEMENT[0])
+            {
+                Pet* pet = p->GetPet();
+                if (!pet || !pet->IsAlive() || pet->GetEntry() != C_SOMBREDOGUE[0])
+                {
+                    Dire(p, "Hurlement : il vous faut votre sombredogue.");
+                    return;
+                }
+                std::vector<Unit*> autour;
+                Ennemis(pet, p, 10.0f, autour);
+                for (Unit* e : autour)
+                    p->CastSpell(e, F_H_HURLEMENT[0], TRIGGERED_OLD_TRIGGERED);
+                return;
+            }
+            // Bouclier partagé : une part du bouclier protège aussi le Fossoyeur
+            if (id == F_BOUCLIER[0] && victim != p)
+                if (uint32 r = Rank(p, TF_BOUCLIER, TF_BOUCLIER_N))
+                {
+                    int32 bp = AuNiveau(p, 700.0f) * int32(20 * r) / 100;
+                    p->CastCustomSpell(p, F_H_BOUCLIER_P[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
+            // Passage amélioré : rend 10 % des points de vie
+            if (id == F_PASSAGE[0] && HasTalent(p, TF_PASSAGE, TF_PASSAGE_N))
+            {
+                int32 bp = int32(victim->GetMaxHealth()) / 10;
+                p->CastCustomSpell(victim, F_H_PASSAGE[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+            }
+            // fantômes du Passeur : pacte obligatoire, un fantôme par allié, 3 au maximum (4 avec Procession)
             if (EstFantome(id))
             {
                 if (!PeutFantomes(p))
@@ -328,7 +717,8 @@ namespace cmangos_module
                         ++it;
                 }
                 dq.emplace_back(Raw(victim), id);
-                while (dq.size() > 3)
+                size_t maxF = HasTalent(p, TF_PROCESSION, TF_PROCESSION_N) ? 4 : 3;
+                while (dq.size() > maxF)
                 {
                     if (Unit* old = p->GetMap()->GetUnit(ObjectGuid(dq.front().first)))
                         old->RemoveAurasByCasterSpell(dq.front().second, pg);
@@ -349,7 +739,7 @@ namespace cmangos_module
                         continue;
                     if (id == F_LIBERATION[0])
                     {
-                        int32 bp = int32(ally->GetMaxHealth()) * 15 / 100;
+                        int32 bp = int32(ally->GetMaxHealth()) * (15 + 5 * int32(Rank(p, TF_LIBERATION, TF_LIBERATION_N))) / 100;
                         p->CastCustomSpell(ally, F_LIBERATION_H[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
                         ally->RemoveAurasByCasterSpell(f.second, pg);
                         continue;
@@ -361,8 +751,9 @@ namespace cmangos_module
                         p->CastSpell(m, f.second, TRIGGERED_OLD_TRIGGERED);
                         if (SpellAuraHolder* h = m->GetSpellAuraHolder(f.second, pg))
                         {
-                            h->SetAuraMaxDuration(15000);
-                            h->SetAuraDuration(15000);
+                            int32 d = 15000 + 5000 * int32(Rank(p, TF_CORTEGE, TF_CORTEGE_N));
+                            h->SetAuraMaxDuration(d);
+                            h->SetAuraDuration(d);
                             h->UpdateAuraDuration();
                         }
                     }
@@ -396,7 +787,8 @@ namespace cmangos_module
                 if (k)
                 {
                     float mn = p->GetFloatValue(UNIT_FIELD_MINDAMAGE), mx = p->GetFloatValue(UNIT_FIELD_MAXDAMAGE);
-                    int32 bp = int32((mn + mx) / 2.0f + AuNiveau(p, 100.0f)) * int32(30 * k) / 100;
+                    int32 par = 30 + 5 * int32(Rank(p, TF_PROFANATION, TF_PROFANATION_N));
+                    int32 bp = int32((mn + mx) / 2.0f + AuNiveau(p, 100.0f)) * par * int32(k) / 100;
                     if (bp > 0)
                         p->CastCustomSpell(victim, F_CUREE_D[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
                 }
@@ -415,7 +807,7 @@ namespace cmangos_module
                     Dire(p, "Curée : votre sombredogue doit avoir une cible.");
                     return;
                 }
-                int32 bp = AuNiveau(p, 320.0f);
+                int32 bp = AuNiveau(p, 320.0f) * (100 + 10 * int32(Rank(p, TF_CUREE, TF_CUREE_N))) / 100;
                 pet->CastCustomSpell(cible, F_CUREE_D[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
                 return;
             }
@@ -431,10 +823,21 @@ namespace cmangos_module
                 int32 heal = int32(pet->GetMaxHealth()) * 30 / 100;
                 pet->ModifyHealth(heal);
                 p->CastSpell(pet, F_FESTIN_PET[0], TRIGGERED_OLD_TRIGGERED);
+                if (uint32 r = Rank(p, TF_FESTIN, TF_FESTIN_N))
+                    if (SpellAuraHolder* h = pet->GetSpellAuraHolder(F_FESTIN_PET[0]))
+                    {
+                        int32 d = 15000 + 5000 * int32(r);
+                        h->SetAuraMaxDuration(d);
+                        h->SetAuraDuration(d);
+                        h->UpdateAuraDuration();
+                    }
                 return;
             }
             if (chien && id == F_D_FORCE[0])
-                p->CastSpell(pet, F_FORCE_PET[0], TRIGGERED_OLD_TRIGGERED);
+            {
+                int32 bp = 20 + 5 * int32(Rank(p, TF_RAPPORT, TF_RAPPORT_N));
+                p->CastCustomSpell(pet, F_FORCE_PET[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+            }
             if (chien && id == F_D_CELERITE[0])
                 p->CastSpell(pet, F_CELERITE_PET[0], TRIGGERED_OLD_TRIGGERED);
             if (chien && id == F_D_MOELLE[0])
@@ -538,9 +941,15 @@ namespace cmangos_module
             {
                 Unit* v = target->GetVictim();
                 if (v && v->IsAlive() && p->CanAttack(v) && target->IsWithinDistInMap(v, 30.0f))
-                    p->CastSpell(v, F_VENGERESSE_D[0], TRIGGERED_OLD_TRIGGERED);
+                {
+                    int32 bp = AuNiveau(p, 80.0f) * (100 + 15 * int32(Rank(p, TF_VENGERESSE, TF_VENGERESSE_N))) / 100;
+                    p->CastCustomSpell(v, F_VENGERESSE_D[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
                 return true;
             }
+            // faille de Tombeau ouvert : hébète
+            if (id == F_H_FAILLE[0] && p->CanAttack(target))
+                p->CastSpell(target, F_H_DAZE_F[0], TRIGGERED_OLD_TRIGGERED);
         }
         return false;
     }
@@ -559,6 +968,20 @@ namespace cmangos_module
                 uint8 kind = it->second;
                 mortEvitee.erase(it);
                 Player* pv = static_cast<Player*>(victim);
+                if (kind == 3)
+                {
+                    // Dernier sacrifice : le groupe est soigné de 15 % (25 % avec Vie offerte)
+                    int32 pct = HasTalent(pv, TM_VIE_OFFERTE, TM_VIE_OFFERTE_N) ? 25 : 15;
+                    std::vector<Unit*> groupe;
+                    Groupe(pv, pv, 40.0f, groupe);
+                    for (Unit* m : groupe)
+                    {
+                        int32 bp = int32(m->GetMaxHealth()) * pct / 100;
+                        pv->CastCustomSpell(m, MA_BONUS_S[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                    }
+                    Dire(pv, "Dernier sacrifice !");
+                    return;
+                }
                 if (kind == 1)
                 {
                     victim->RemoveAurasDueToSpell(TW_DESTIN[0]);
@@ -570,6 +993,101 @@ namespace cmangos_module
                 return;
             }
         }
+        // Fossoyeur : rats zombies, Molosse d'os, Charogne (unités du joueur)
+        if (unit && unit->GetTypeId() == TYPEID_UNIT && unit != victim)
+            if (Unit* owner = unit->GetOwner())
+                if (owner->GetTypeId() == TYPEID_PLAYER && static_cast<Player*>(owner)->getClass() == C_FOSSOYEUR && owner->IsAlive())
+                {
+                    Player* po = static_cast<Player*>(owner);
+                    if (unit->GetEntry() == C_CHAROGNARD[0] && victim->IsAlive() && damage < health)
+                        po->CastSpell(victim, F_H_RAT[0], TRIGGERED_OLD_TRIGGERED);
+                    if (unit->GetEntry() == C_SOMBREDOGUE[0])
+                    {
+                        if (damage >= health)
+                        {
+                            if (uint32 r = Rank(po, TF_CHAROGNE, TF_CHAROGNE_N))
+                                po->ModifyPower(POWER_MANA, int32(po->GetMaxPower(POWER_MANA)) * int32(2 * r) / 100);
+                        }
+                        if (unit->HasAura(F_ALPHA[0]))
+                        {
+                            std::vector<Unit*> autour;
+                            Ennemis(victim, po, 8.0f, autour);
+                            int32 bp = int32(damage);
+                            for (Unit* e : autour)
+                                if (e != victim)
+                                    unit->CastCustomSpell(e, F_H_ALPHA_D[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                        }
+                    }
+                }
+        // Martyr : Festin de lames (ses coups le soignent)
+        if (unit && unit != victim && unit->GetTypeId() == TYPEID_PLAYER && static_cast<Player*>(unit)->getClass() == C_MARTYR)
+        {
+            auto it = festinCoups.find(Raw(unit));
+            if (it != festinCoups.end() && it->second && unit->HasAura(MA_FESTIN_L[0]))
+            {
+                int32 bp = int32(std::min(damage, health)) * 30 / 100;
+                if (bp > 0)
+                    unit->CastCustomSpell(unit, MA_BONUS_S[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                if (--it->second == 0)
+                    unit->RemoveAurasDueToSpell(MA_FESTIN_L[0]);
+            }
+        }
+        // Marque du sang : une part des dégâts subis par la cible soigne le Martyr
+        if (unit != victim)
+        {
+            auto it = marques.find(Raw(victim));
+            if (it != marques.end())
+            {
+                Unit* m = victim->GetMap()->GetUnit(ObjectGuid(it->second.first));
+                if (m && m->IsAlive() && victim->GetSpellAuraHolder(MA_MARQUE[0], m->GetObjectGuid()))
+                {
+                    int32 bp = int32(float(std::min(damage, health)) * it->second.second / 100.0f);
+                    if (bp > 0)
+                        m->CastCustomSpell(m, MA_BONUS_S[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
+                else
+                    marques.erase(it);
+            }
+        }
+        // Martyr frappé : Rempart vivant, Forteresse de sang, Ferveur du gardien, Caillot réflexe
+        if (victim->GetTypeId() == TYPEID_PLAYER && static_cast<Player*>(victim)->getClass() == C_MARTYR && unit && unit != victim &&
+            victim->IsAlive() && damage < health)
+        {
+            Player* pm = static_cast<Player*>(victim);
+            if (pm->HasAura(MA_REMPART[0]))
+                pm->ModifyPower(POWER_ENERGY, 5);
+            if (pm->HasAura(MA_FORTERESSE[0]))
+                GagnerFerveur(pm);
+            else if (uint32 r = Rank(pm, TM_GARDIEN, TM_GARDIEN_N))
+                if (Roll(10.0f * r))
+                    GagnerFerveur(pm);
+            if (HasTalent(pm, TM_REFLEXE, TM_REFLEXE_N) && (health - damage) * 4 < pm->GetMaxHealth())
+            {
+                time_t now = time(nullptr);
+                time_t& last = reflexeTime[Raw(pm)];
+                if (now - last >= 60)
+                {
+                    last = now;
+                    int32 bp = int32(pm->GetMaxHealth()) / 10;
+                    pm->CastCustomSpell(pm, MA_CAILLOT_H[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
+            }
+        }
+        // Sacrifice : 50 % des dégâts subis par l'allié vont au Martyr (moins 10 % par rang de Sacrifice renforcé)
+        if (victim->GetTypeId() == TYPEID_PLAYER && unit != victim && victim->IsAlive() && damage < health)
+            if (SpellAuraHolder* h = victim->GetSpellAuraHolder(MA_SACRIFICE[0]))
+                if (Unit* mu = victim->GetMap()->GetUnit(h->GetCasterGuid()))
+                    if (mu != victim && mu->IsAlive() && mu->GetTypeId() == TYPEID_PLAYER)
+                    {
+                        Player* pm = static_cast<Player*>(mu);
+                        uint32 part = damage / 2;
+                        uint32 pris = part * (100 - 10 * Rank(pm, TM_SACRIFICE_R, TM_SACRIFICE_R_N)) / 100;
+                        uint32 hm = pm->GetHealth();
+                        pris = std::min(pris, hm > 1 ? hm - 1 : 0);
+                        victim->ModifyHealth(int32(part));
+                        if (pris)
+                            pm->ModifyHealth(-int32(pris));
+                    }
         if (!victim->IsAlive() || damage >= health || unit == victim)
             return;
         // Liens partagés : les dégâts sont répartis entre les membres reliés à 30 m
@@ -613,8 +1131,29 @@ namespace cmangos_module
     {
         if (!unit || !victim || !addHealth || unit->GetTypeId() != TYPEID_PLAYER || victim->GetTypeId() != TYPEID_PLAYER)
             return;
-        // Fil conducteur : la cible reçoit 20 % des soins faits sur les autres membres du groupe
         Player* pv = static_cast<Player*>(victim);
+        // Sang béni : les soins reçus par l'allié soignent aussi le Martyr
+        if (SpellAuraHolder* h = victim->GetSpellAuraHolder(MA_BENI[0]))
+            if (Unit* mu = victim->GetMap()->GetUnit(h->GetCasterGuid()))
+                if (mu != victim && mu->IsAlive() && mu->GetTypeId() == TYPEID_PLAYER)
+                {
+                    int32 bp = int32(addHealth) * (20 + 5 * int32(Rank(static_cast<Player*>(mu), TM_BENI_A, TM_BENI_A_N))) / 100;
+                    if (bp > 0)
+                        mu->CastCustomSpell(mu, MA_BONUS_S[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
+        // Saint martyr : chaque soin du Martyr soigne aussi tout le groupe
+        Player* pu = static_cast<Player*>(unit);
+        if (pu->getClass() == C_MARTYR && pu->HasAura(MA_SAINT[0]))
+        {
+            std::vector<Unit*> groupe;
+            Groupe(pu, pu, 40.0f, groupe);
+            int32 bp = int32(addHealth) * (20 + 5 * int32(Rank(pu, TM_SAINT_P, TM_SAINT_P_N))) / 100;
+            if (bp > 0)
+                for (Unit* m : groupe)
+                    if (m != victim)
+                        pu->CastCustomSpell(m, MA_BONUS_S[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+        }
+        // Fil conducteur : la cible reçoit 20 % des soins faits sur les autres membres du groupe
         Group* g = pv->GetGroup();
         if (!g)
             return;
@@ -663,6 +1202,11 @@ namespace cmangos_module
             }
             return;
         }
+        if (cls == C_MARTYR)
+        {
+            MartyrUpkeep(p);
+            return;
+        }
         if (cls != C_FOSSOYEUR)
             return;
         // Posture du profanateur : énergie tant que la posture est active, mana sinon
@@ -686,17 +1230,66 @@ namespace cmangos_module
                 }
                 else if (pet->IsAlive())
                 {
-                    int32 bp = 4 * int32(Rank(p, TF_CHARNIER, TF_CHARNIER_N));
-                    int32 cur = INT32_MIN;
-                    if (Aura* a = pet->GetAura(F_PACTE_PET[0], EFFECT_INDEX_0))
-                        cur = a->GetModifier()->m_amount;
-                    if (cur != bp)
+                    // Pacte (dégâts et vie +4 %), Dressage macabre (dégâts +5 %), Os renforcés (vie +5 %, critique +1 %),
+                    // Peau de goule (armure +10 %), Lien de la meute (vitesse d'attaque +3 %), Crocs d'os (critique +2 %)
+                    int32 pacte = 4 * int32(Rank(p, TF_CHARNIER, TF_CHARNIER_N));
+                    int32 os = int32(Rank(p, TF_OS, TF_OS_N));
+                    Cachee(pet, F_PACTE_PET[0], pacte + 5 * int32(Rank(p, TF_DRESSAGE, TF_DRESSAGE_N)), pacte + 5 * os,
+                           10 * int32(Rank(p, TF_PEAU, TF_PEAU_N)));
+                    Cachee(pet, F_PACTE_PET2[0], 3 * int32(Rank(p, TF_LIEN, TF_LIEN_N)), 2 * int32(Rank(p, TF_CROCS, TF_CROCS_N)) + os);
+                }
+            }
+        // Maîtrise de la pelle : critique avec une autre arme à deux mains (l'arme d'hast est gérée par le talent)
+        {
+            int32 crit = 0;
+            if (uint32 r = Rank(p, TF_MAITRISE, TF_MAITRISE_N))
+                if (Item* w = p->GetWeaponForAttack(BASE_ATTACK, true, true))
+                {
+                    uint32 sc = w->GetProto()->SubClass;
+                    if (sc == ITEM_SUBCLASS_WEAPON_AXE2 || sc == ITEM_SUBCLASS_WEAPON_MACE2 || sc == ITEM_SUBCLASS_WEAPON_SWORD2 ||
+                        sc == ITEM_SUBCLASS_WEAPON_STAFF)
+                        crit = int32(r) / 2;
+                }
+            Cachee(p, F_H_MAITRISE[0], crit);
+        }
+        // Légion des trépassés : les fantômes frappent la cible de leur allié, puis explosent à la fin
+        {
+            bool active = p->HasAura(F_LEGION[0]);
+            auto& dq = fantomes[Raw(p)];
+            if (active)
+            {
+                legion.insert(Raw(p));
+                for (auto const& fa : dq)
+                {
+                    Unit* ally = p->GetMap()->GetUnit(ObjectGuid(fa.first));
+                    Unit* v = ally ? ally->GetVictim() : nullptr;
+                    if (v && v->IsAlive() && p->CanAttack(v) && ally->IsWithinDistInMap(v, 30.0f))
                     {
-                        pet->RemoveAurasDueToSpell(F_PACTE_PET[0]);
-                        pet->CastCustomSpell(pet, F_PACTE_PET[0], &bp, &bp, nullptr, TRIGGERED_OLD_TRIGGERED);
+                        p->CastSpell(v, F_H_LEGION_D[0], TRIGGERED_OLD_TRIGGERED);
+                        p->ModifyPower(POWER_MANA, int32(p->GetMaxPower(POWER_MANA)) / 100);
                     }
                 }
             }
+            else if (legion.erase(Raw(p)))
+            {
+                for (auto const& fa : dq)
+                {
+                    Unit* ally = p->GetMap()->GetUnit(ObjectGuid(fa.first));
+                    Unit* v = ally ? ally->GetVictim() : nullptr;
+                    if (!v || !v->IsAlive())
+                        continue;
+                    std::vector<Unit*> autour;
+                    Ennemis(v, p, 8.0f, autour);
+                    if (p->CanAttack(v) && std::find(autour.begin(), autour.end(), v) == autour.end())
+                        autour.push_back(v);
+                    for (Unit* e : autour)
+                    {
+                        p->CastSpell(e, F_H_LEGION_X[0], TRIGGERED_OLD_TRIGGERED);
+                        p->CastSpell(e, F_H_AME_MAUDITE[0], TRIGGERED_OLD_TRIGGERED);
+                    }
+                }
+            }
+        }
         // fantômes : liste nettoyée des auras disparues
         auto fit = fantomes.find(Raw(p));
         if (fit != fantomes.end())
@@ -720,9 +1313,96 @@ namespace cmangos_module
         }
     }
 
+    // Martyr, chaque seconde : énergie, Soif de sang, Instinct de survie, Prédateur, Seigneur du sang, Fontaine de sang
+    void ClassesModule::MartyrUpkeep(Player* p)
+    {
+        if (p->GetPowerType() != POWER_ENERGY)
+            p->SetPowerType(POWER_ENERGY);
+        float pct = Pct(p);
+        // Soif de sang : +1 % de dégâts par tranche de 2 % de PV manquants (25 %, +2 % par rang de Soif accrue)
+        int32 soif = 0;
+        if (p->HasSpell(MA_SOIF[0]))
+            soif = std::min(25 + 2 * int32(Rank(p, TM_SOIF_A, TM_SOIF_A_N)), int32((1.0f - pct) * 100.0f) / 2);
+        Cachee(p, MA_H_SOIF[0], soif);
+        int32 instinct = 0;
+        if (pct < 0.35f)
+            instinct = -2 * int32(Rank(p, TM_INSTINCT, TM_INSTINCT_N));
+        Cachee(p, MA_H_INSTINCT[0], instinct);
+        int32 pred = 0;
+        if (Unit* v = p->GetVictim())
+            if (v->IsAlive() && Pct(v) < 0.5f)
+                pred = 2 * int32(Rank(p, TM_PREDATEUR, TM_PREDATEUR_N));
+        Cachee(p, MA_H_PREDATEUR[0], pred);
+        // Seigneur du sang : camouflage entretenu tant qu'il dure, critique +10 % par rang de Seigneur prolongé
+        if (SpellAuraHolder* h = p->GetSpellAuraHolder(MA_SEIGNEUR[0]))
+        {
+            Cachee(p, MA_H_CRIT[0], 10 * int32(Rank(p, TM_SEIGNEUR_P, TM_SEIGNEUR_P_N)));
+            if (!p->HasAura(MA_SEIGNEUR_ST[0]))
+            {
+                p->CastSpell(p, MA_SEIGNEUR_ST[0], TRIGGERED_OLD_TRIGGERED);
+                if (SpellAuraHolder* st = p->GetSpellAuraHolder(MA_SEIGNEUR_ST[0]))
+                {
+                    st->SetAuraDuration(h->GetAuraDuration());
+                    st->UpdateAuraDuration();
+                }
+            }
+        }
+        else
+        {
+            Cachee(p, MA_H_CRIT[0], 0);
+            if (p->HasAura(MA_SEIGNEUR_ST[0]))
+                p->RemoveAurasDueToSpell(MA_SEIGNEUR_ST[0]);
+        }
+        // Fontaine de sang : soigne les alliés à 20 m de la fontaine
+        auto it = fontaines.find(Raw(p));
+        if (it != fontaines.end())
+        {
+            Fontaine& ft = it->second;
+            if (ft.secondes <= 0 || !p->IsAlive())
+            {
+                fontaines.erase(it);
+                return;
+            }
+            --ft.secondes;
+            std::vector<Unit*> groupe;
+            Groupe(p, p, 100.0f, groupe);
+            for (Unit* m : groupe)
+                if (m->GetDistance(ft.x, ft.y, ft.z) <= 20.0f)
+                {
+                    int32 bp = ft.soin;
+                    p->CastCustomSpell(m, MA_BONUS_S[0], &bp, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+                }
+        }
+    }
+
+    // Fureur du sang : les prochains coups du Martyr sont critiques (une charge par coup)
+    bool ClassesModule::OnCalculateEffectiveCritChance(const Unit* unit, const Unit* /*victim*/, uint8 /*attType*/, const SpellEntry* ability, float& outChance)
+    {
+        if (!unit || unit->GetTypeId() != TYPEID_PLAYER || static_cast<Player const*>(unit)->getClass() != C_MARTYR || !MA_FUREUR[0])
+            return false;
+        if (ability && IsPositiveSpell(ability))
+            return false;
+        Unit* u = const_cast<Unit*>(unit);
+        SpellAuraHolder* h = u->GetSpellAuraHolder(MA_FUREUR[0]);
+        if (!h)
+            return false;
+        if (h->GetStackAmount() > 1)
+            h->SetStackAmount(h->GetStackAmount() - 1, u);
+        else
+            u->RemoveAurasDueToSpell(MA_FUREUR[0]);
+        outChance = 100.0f;
+        return true;
+    }
+
     void ClassesModule::NouvLogOut(Player* p)
     {
         uint64 g = Raw(p);
+        malOrdre.erase(g);
+        legion.erase(g);
+        ferveurConso.erase(g);
+        fontaines.erase(g);
+        festinCoups.erase(g);
+        marques.erase(g);
         lienForce.erase(g);
         vieSauts.erase(g);
         fantomes.erase(g);
@@ -741,6 +1421,18 @@ namespace cmangos_module
         {
             mortEvitee[g] = 1;
             return true;
+        }
+        if (p->getClass() == C_MARTYR && p->HasSpell(MA_DERNIER[0]))
+        {
+            time_t now = time(nullptr);
+            time_t& last = dernierTime[g];
+            time_t cd = HasTalent(p, TM_VIE_OFFERTE, TM_VIE_OFFERTE_N) ? 300 : 600;
+            if (now - last >= cd)
+            {
+                last = now;
+                mortEvitee[g] = 3;
+                return true;
+            }
         }
         if (p->getClass() == C_TISSERAND && HasTalent(p, TT_TREPAS, TT_TREPAS_N))
         {

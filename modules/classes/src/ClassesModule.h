@@ -48,6 +48,7 @@ namespace cmangos_module
         void OnDealDamage(Unit* unit, Unit* victim, uint32 health, uint32 damage) override;
         void OnDealHeal(Unit* unit, Unit* victim, int32 gain, uint32 addHealth) override;
         bool OnLoadActionButtons(Player* player, ActionButtonList& actionButtons) override;
+        bool OnCalculateEffectiveCritChance(const Unit* unit, const Unit* victim, uint8 attType, const SpellEntry* ability, float& outChance) override;
 
     private:
         // Nécromancien
@@ -81,7 +82,17 @@ namespace cmangos_module
         std::unordered_map<uint64, uint32> vieSauts;                                 // Tisserand -> sauts restants du Fil de vie
         std::unordered_map<uint64, std::deque<std::pair<uint64, uint32>>> fantomes;  // Passeur -> (allié, sort du fantôme)
         std::unordered_map<uint64, time_t> trepasTime;                               // Tisserand -> dernier Refus du trépas
-        std::unordered_map<uint64, uint8> mortEvitee;                                // joueur -> 1 Fil du destin, 2 Refus du trépas
+        std::unordered_map<uint64, uint8> mortEvitee;                                // joueur -> 1 Fil du destin, 2 Refus du trépas, 3 Dernier sacrifice
+        std::unordered_map<uint64, std::vector<uint32>> malOrdre;                    // Fossoyeur -> malédictions d'arme (ordre de pose)
+        std::unordered_set<uint64> legion;                                           // Passeurs sous Légion des trépassés
+        std::unordered_map<uint64, uint32> ferveurConso;                             // Martyr -> Ferveur consommée par le dernier sort de sang
+        struct Fontaine { float x = 0, y = 0, z = 0; int32 secondes = 0; int32 soin = 0; };
+        std::unordered_map<uint64, Fontaine> fontaines;                              // Martyr -> Fontaine de sang
+        std::unordered_map<uint64, uint32> festinCoups;                              // Martyr -> coups restants de Festin de lames
+        std::unordered_map<uint64, std::pair<uint64, float>> marques;               // cible -> (Martyr, % des dégâts rendus)
+        std::unordered_map<uint64, time_t> dernierTime;                              // Martyr -> dernier Dernier sacrifice
+        std::unordered_map<uint64, time_t> reflexeTime;                              // Martyr -> dernier Caillot réflexe
+        void MartyrUpkeep(Player* player);
         // bots
         bool TryCast(Player* bot, Unit* target, uint32 spellId);
         bool TryCastAt(Player* bot, Unit* where, uint32 spellId);
