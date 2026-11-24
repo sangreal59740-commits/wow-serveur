@@ -152,6 +152,11 @@ namespace cmangos_module
         return IsBot(player) && cls != C_NECRO && cls != C_SNIPER && cls != C_META && BotTab(player) == 3;
     }
 
+    static bool EnGroupe(Player* p)
+    {
+        return p->GetGroup() && p->GetGroup()->GetMembersCount() > 1;
+    }
+
     // rôle d'un bot qui joue une 4e spé ou une classe custom : -1 (laissé à playerbot), 0 tank, 1 soin, 2 DPS cac, 3 DPS distance
     static int RoleBot(Player* player)
     {
@@ -1749,8 +1754,8 @@ namespace cmangos_module
             case CLASS_PRIEST:
                 if (combat && victim && hurtBad >= 3 && bot->HasSpell(B4_NUEE[0]) && TryCast(bot, bot, B4_NUEE[0]))
                     return;
-                // soigneur : attaque seulement au-dessus de 60 % de mana
-                if (combat && victim && bot->GetPower(POWER_MANA) * 10 >= bot->GetMaxPower(POWER_MANA) * 6
+                // soigneur en groupe : attaque seulement au-dessus de 60 % de mana
+                if (combat && victim && (!EnGroupe(bot) || bot->GetPower(POWER_MANA) * 10 >= bot->GetMaxPower(POWER_MANA) * 6)
                     && bot->HasSpell(B4_RATS[0]) && TryCast(bot, bot, B4_RATS[0]))
                     return;
                 if (low && lp < 0.9f)
@@ -1899,8 +1904,8 @@ namespace cmangos_module
             }
             if (!combat)
                 return;
-            // soigneur : attaque seulement au-dessus de 60 % de mana
-            if (soigneur && bot->GetPower(POWER_MANA) * 10 < bot->GetMaxPower(POWER_MANA) * 6)
+            // soigneur en groupe : attaque seulement au-dessus de 60 % de mana
+            if (soigneur && EnGroupe(bot) && bot->GetPower(POWER_MANA) * 10 < bot->GetMaxPower(POWER_MANA) * 6)
                 return;
             if (dot(BM_TONNERRE, BM_TONNERRE_N))
                 return;

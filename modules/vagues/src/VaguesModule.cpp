@@ -1044,14 +1044,15 @@ namespace cmangos_module
             }
         }
 
-        // soigneur : pas d'attaque sous 60 % de mana
+        // soigneur en groupe : pas d'attaque sous 60 % de mana ; seul, il joue normalement
         if (soin)
         {
+            bool enGroupe = p->GetGroup() && p->GetGroup()->GetMembersCount() > 1;
             uint32 mana = PctMana(p);
             bool dps = ai->HasStrategy("dps assist", BotState::BOT_STATE_COMBAT);
-            if (mana < 60 && dps)
+            if (enGroupe && mana < 60 && dps)
                 ai->ChangeStrategy("-dps assist,-offdps", BotState::BOT_STATE_COMBAT);
-            else if (mana >= 65 && !dps)
+            else if ((!enGroupe || mana >= 65) && !dps)
                 ai->ChangeStrategy("+dps assist", BotState::BOT_STATE_COMBAT);
         }
 
