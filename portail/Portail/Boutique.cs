@@ -18,7 +18,7 @@ namespace Portail
     class Article
     {
         public string id; public string nom; public string categorie; public int prix; public string desc = "";
-        public int item; public int quantite = 1; public int type;      // type 0 objet, 1 changement de nom
+        public int item; public int quantite = 1; public int type;      // type 0 objet, 1 changement de nom, 2 compagnon (item = identifiant du compagnon)
         public string qualite = "epique"; public bool bientot;
     }
     class Catalogue
@@ -42,7 +42,9 @@ namespace Portail
                     "CREATE TABLE IF NOT EXISTS portail_gen (compte INT UNSIGNED NOT NULL, solde INT NOT NULL DEFAULT 0, PRIMARY KEY (compte)) ENGINE=InnoDB",
                     "CREATE TABLE IF NOT EXISTS portail_operation (id INT UNSIGNED NOT NULL AUTO_INCREMENT, compte INT UNSIGNED NOT NULL, type VARCHAR(16) NOT NULL, gen INT NOT NULL, euros DECIMAL(8,2) NOT NULL DEFAULT 0, reference VARCHAR(64) NOT NULL DEFAULT '', detail VARCHAR(200) NOT NULL DEFAULT '', date DATETIME NOT NULL, PRIMARY KEY (id), KEY compte (compte)) ENGINE=InnoDB",
                     "CREATE TABLE IF NOT EXISTS portail_commande (id VARCHAR(64) NOT NULL, compte INT UNSIGNED NOT NULL, pack VARCHAR(32) NOT NULL, euros DECIMAL(8,2) NOT NULL, gen INT NOT NULL, statut VARCHAR(16) NOT NULL, date DATETIME NOT NULL, PRIMARY KEY (id)) ENGINE=InnoDB",
-                    "CREATE TABLE IF NOT EXISTS portail_session (jeton CHAR(64) NOT NULL, compte INT UNSIGNED NOT NULL, expire DATETIME NOT NULL, PRIMARY KEY (jeton)) ENGINE=InnoDB" })
+                    "CREATE TABLE IF NOT EXISTS portail_session (jeton CHAR(64) NOT NULL, compte INT UNSIGNED NOT NULL, expire DATETIME NOT NULL, PRIMARY KEY (jeton)) ENGINE=InnoDB",
+                    // copie du catalogue pour la boutique en jeu (module compagnons, addon Compagnons)
+                    "CREATE TABLE IF NOT EXISTS portail_catalogue (id VARCHAR(64) NOT NULL, categorie VARCHAR(32) NOT NULL, nom VARCHAR(100) NOT NULL, description VARCHAR(255) NOT NULL DEFAULT '', prix INT UNSIGNED NOT NULL, qualite VARCHAR(16) NOT NULL DEFAULT '', type TINYINT UNSIGNED NOT NULL DEFAULT 0, item INT UNSIGNED NOT NULL DEFAULT 0, quantite INT UNSIGNED NOT NULL DEFAULT 1, ordre INT UNSIGNED NOT NULL DEFAULT 0, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8" })
                     new MySqlCommand(q, c).ExecuteNonQuery();
             }
             using (var c = new MySqlConnection(ConnStr(C.bddPersos)))
@@ -58,9 +60,46 @@ namespace Portail
             try
             {
                 if (File.Exists(f)) Boutique = Json.Deserialize<Catalogue>(File.ReadAllText(f, Encoding.UTF8)) ?? new Catalogue();
+                PublierCatalogue();
                 Log("Boutique : " + Boutique.articles.Count + " articles, " + Boutique.packs.Count + " packs de Gen" + (string.IsNullOrEmpty(C.paypalClientId) ? " (PayPal pas encore configuré)" : " (PayPal " + C.paypalMode + ")"));
             }
             catch (Exception e) { Log("boutique.json illisible : " + e.Message); }
+        }
+
+        // le jeu lit le même catalogue (boutique en jeu) : recopié à chaque chargement de boutique.json
+        static void PublierCatalogue()
+        {
+            try
+            {
+                using (var c = new MySqlConnection(ConnStr(C.bddRealmd)))
+                {
+                    c.Open();
+                    using (var t = c.BeginTransaction())
+                    {
+                        new MySqlCommand("DELETE FROM portail_catalogue", c, t).ExecuteNonQuery();
+                        int ordre = 0;
+                        foreach (var a in Boutique.articles)
+                        {
+                            ordre++;
+                            if (a.bientot || a.prix <= 0) continue;
+                            var q = new MySqlCommand("INSERT INTO portail_catalogue (id, categorie, nom, description, prix, qualite, type, item, quantite, ordre) VALUES (@i, @c, @n, @d, @p, @q, @t, @it, @qt, @o)", c, t);
+                            q.Parameters.AddWithValue("@i", a.id);
+                            q.Parameters.AddWithValue("@c", a.categorie ?? "");
+                            q.Parameters.AddWithValue("@n", a.nom ?? "");
+                            q.Parameters.AddWithValue("@d", (a.desc ?? "").Length > 250 ? a.desc.Substring(0, 250) : (a.desc ?? ""));
+                            q.Parameters.AddWithValue("@p", a.prix);
+                            q.Parameters.AddWithValue("@q", a.qualite ?? "");
+                            q.Parameters.AddWithValue("@t", a.type);
+                            q.Parameters.AddWithValue("@it", a.item);
+                            q.Parameters.AddWithValue("@qt", a.quantite);
+                            q.Parameters.AddWithValue("@o", ordre);
+                            q.ExecuteNonQuery();
+                        }
+                        t.Commit();
+                    }
+                }
+            }
+            catch (Exception e) { Log("catalogue en jeu non publié : " + e.Message); }
         }
 
         // ------------------------------------------------------------------ sessions
@@ -202,6 +241,16 @@ namespace Portail
                 pq.Parameters.AddWithValue("@c", compte);
                 var perso = pq.ExecuteScalar() as string;
                 if (perso == null) return Erreur("Ce personnage n'est pas sur ton compte.");
+                if (a.type == 2)
+                {
+                    // un compagnon ne s'achète qu'une fois par personnage (déjà possédé ou en cours de livraison)
+                    var dq = new MySqlCommand($"SELECT (SELECT COUNT(*) FROM `{C.bddPersos}`.custom_cpg WHERE proprio = @g AND cpg = @i) + (SELECT COUNT(*) FROM `{C.bddPersos}`.custom_boutique_livraison WHERE guid = @g AND type = 2 AND item = @i AND statut = 0)", c);
+                    dq.Parameters.AddWithValue("@g", guid);
+                    dq.Parameters.AddWithValue("@i", a.item);
+                    long deja = 0;
+                    try { deja = Convert.ToInt64(dq.ExecuteScalar()); } catch { }     // table custom_cpg créée au premier démarrage du serveur
+                    if (deja > 0) return Erreur(perso + " possède déjà " + a.nom + ".");
+                }
                 using (var t = c.BeginTransaction())
                 {
                     var deb = new MySqlCommand("UPDATE portail_gen SET solde = solde - @p WHERE compte = @c AND solde >= @p", c, t);

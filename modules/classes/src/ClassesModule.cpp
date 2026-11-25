@@ -35,6 +35,7 @@ using namespace classes_data;
 #ifdef ENABLE_PLAYERBOTS
 // rôle imposé aux bots, lu par playerbot (AiFactory) : -1 aucun, 0 tank, 1 soin, 2 DPS corps à corps, 3 DPS distance
 extern std::function<int(Player const*)> gRoleCustom;
+extern bool (*gCpgEstCompagnon)(Player const*);            // module compagnons (patches/07-compagnons.patch)
 #endif
 
 namespace cmangos_module
@@ -264,6 +265,8 @@ namespace cmangos_module
         if (T_HORDE[0] && player->HasSpell(T_HORDE[0])) ++pts;
         if (T_ARMEE[0] && player->HasSpell(T_ARMEE[0])) ++pts;
         if (T_LEGION[0] && player->HasSpell(T_LEGION[0])) ++pts;
+        if (T_NEC_PACTE[0] && player->HasSpell(T_NEC_PACTE[0])) ++pts;        // Nécropole : Pacte des colosses
+        if (T_NEC_HORDE[0] && player->HasSpell(T_NEC_HORDE[0])) ++pts;        // Nécropole : Horde des tombes
         return pts;
     }
 
@@ -345,6 +348,8 @@ namespace cmangos_module
             }
         }
 
+        if (NecropoleCast(player, id, victim))
+            return;
         SpellEntry const* info = spell->m_spellInfo;
         if (In(N_PESTE_EXPLO, N_PESTE_EXPLO_N, id))
         {
@@ -434,6 +439,308 @@ namespace cmangos_module
         }
         else if (In(N_CAMOUFLAGE, N_CAMOUFLAGE_N, id))
             ForArmy(player, true, [&](Unit* u) { u->CastSpell(u, N_H_CAMOU, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid()); });
+    }
+
+    // ------------------------------------------------------------------ Nécromancien : Nécropole (4e spé, tank par les invocations)
+    static bool EstMineure(Unit* u)
+    {
+        uint32 e = u->GetEntry();
+        return e == INVOCATIONS[0].entry || e == INVOCATIONS[1].entry || e == INVOCATIONS[3].entry || e == INVOCATIONS[4].entry;
+    }
+
+    // invocation principale : le géant, sinon l'abomination, sinon la plus ancienne
+    Unit* ClassesModule::MainSummon(Player* player)
+    {
+        CleanArmy(player);
+        Unit* geant = nullptr;
+        Unit* abo = nullptr;
+        Unit* first = nullptr;
+        Map* map = player->GetMap();
+        for (auto const& e : armies[player->GetObjectGuid().GetRawValue()])
+            if (Pet* pet = map->GetPet(ObjectGuid(e.guid)))
+            {
+                if (!pet->IsAlive())
+                    continue;
+                if (!first) first = pet;
+                if (pet->GetEntry() == C_GEANT && !geant) geant = pet;
+                if (pet->GetEntry() == INVOCATIONS[2].entry && !abo) abo = pet;
+            }
+        return geant ? geant : abo ? abo : first;
+    }
+
+    // raccourcit la recharge d'un sort du joueur (talents Ordre rapide, Mur amélioré)
+    static void Recharge(Player* player, uint32 spellId, uint32 ms)
+    {
+        if (SpellEntry const* info = sSpellTemplate.LookupEntry<SpellEntry>(spellId))
+        {
+            player->RemoveSpellCooldown(*info, true);
+            player->AddCooldown(*info, nullptr, false, ms, true);
+        }
+    }
+
+    bool ClassesModule::NecropoleCast(Player* player, uint32 id, Unit* victim)
+    {
+        if (id != NEC_ORDRE && id != NEC_CRI && id != NEC_MUR && id != NEC_SACRIFICE && id != NEC_RUGISSEMENT && id != NEC_TITAN)
+            return false;
+        Unit* main = MainSummon(player);
+        if (!main)
+        {
+            Say(player, "Il vous faut une invocation.");
+            return true;
+        }
+        if (id == NEC_ORDRE)
+        {
+            if (victim && victim->IsAlive())
+                main->CastSpell(victim, NEC_H_TAUNT, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid());
+            if (uint32 r = TRank(player, T_NEC_ORDRE, T_NEC_ORDRE_N))
+                Recharge(player, NEC_ORDRE, 8000 - 2000 * r);
+        }
+        else if (id == NEC_CRI)
+            ForArmy(player, false, [&](Unit* u) { u->CastSpell(u, NEC_H_CRI, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid()); });
+        else if (id == NEC_MUR)
+        {
+            ForArmy(player, true, [&](Unit* u) { u->CastSpell(u, NEC_H_MUR, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid()); });
+            if (uint32 r = TRank(player, T_NEC_MUR, T_NEC_MUR_N))
+                Recharge(player, NEC_MUR, 180000 - 30000 * r);
+        }
+        else if (id == NEC_SACRIFICE)
+        {
+            Pet* mineure = nullptr;
+            Map* map = player->GetMap();
+            for (auto const& e : armies[player->GetObjectGuid().GetRawValue()])
+                if (Pet* pet = map->GetPet(ObjectGuid(e.guid)))
+                    if (pet != main && pet->IsAlive() && EstMineure(pet))
+                    {
+                        mineure = pet;
+                        break;
+                    }
+            if (!mineure)
+            {
+                Say(player, "Il vous faut une invocation mineure (squelette, goule, chien, squelette de givre).");
+                return true;
+            }
+            mineure->Unsummon(PET_SAVE_AS_DELETED, player);
+            CleanArmy(player);
+            main->SetHealth(std::min(main->GetMaxHealth(), main->GetHealth() + main->GetMaxHealth() * 15 / 100));
+        }
+        else
+        {
+            Unit* geant = main->GetEntry() == C_GEANT ? main : nullptr;
+            if (!geant)
+            {
+                Say(player, "Il vous faut un géant mort-vivant.");
+                return true;
+            }
+            if (id == NEC_RUGISSEMENT)
+            {
+                geant->CastSpell(geant, NEC_H_CRI15, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid());
+                geant->CastSpell(geant, NEC_H_MENACE3, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid());
+            }
+            else
+            {
+                geant->CastSpell(geant, NEC_H_TITAN, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid());
+                geant->CastSpell(geant, NEC_H_TITAN_TAILLE, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid());
+                if (uint32 r = TRank(player, T_NEC_TITAN, T_NEC_TITAN_N))
+                    for (uint32 sp : { NEC_H_TITAN, NEC_H_TITAN_TAILLE })
+                        if (SpellAuraHolder* h = geant->GetSpellAuraHolder(sp))
+                        {
+                            h->SetAuraMaxDuration(20000 + 2500 * r);
+                            h->SetAuraDuration(20000 + 2500 * r);
+                            h->UpdateAuraDuration();
+                        }
+            }
+        }
+        return true;
+    }
+
+    // remplace une aura cachée à 3 effets si une de ses valeurs a changé
+    static void SetHiddenAura3(Unit* u, uint32 spellId, int32 bp0, int32 bp1, int32 bp2, Unit* source)
+    {
+        int32 cur[3] = { INT32_MIN, INT32_MIN, INT32_MIN };
+        for (int i = 0; i < 3; ++i)
+            if (Aura* a = u->GetAura(spellId, SpellEffectIndex(i)))
+                cur[i] = a->GetModifier()->m_amount;
+        if (!bp0 && !bp1 && !bp2)
+        {
+            if (cur[0] != INT32_MIN || cur[1] != INT32_MIN || cur[2] != INT32_MIN)
+                u->RemoveAurasDueToSpell(spellId);
+            return;
+        }
+        if (cur[0] == bp0 && cur[1] == bp1 && cur[2] == bp2)
+            return;
+        u->RemoveAurasDueToSpell(spellId);
+        u->CastCustomSpell(u, spellId, &bp0, &bp1, &bp2, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, source ? source->GetObjectGuid() : ObjectGuid());
+    }
+
+    void ClassesModule::NecropoleUpkeep(Player* player, std::vector<Unit*> const& army)
+    {
+        // Pacte des colosses : apprend le géant, sorts du Nécromancien -40 %
+        uint32 rP = TRank(player, T_NEC_PACTE, T_NEC_PACTE_N);
+        uint32 geantFront = INVOCATIONS[INVOCATIONS_N - 1].front;
+        if (rP && !player->HasSpell(geantFront))
+            player->learnSpell(geantFront, false);
+        else if (!rP && player->HasSpell(geantFront))
+            player->removeSpell(geantFront, false, false);
+        SetHiddenAura(player, NEC_H_PACTE, rP ? -40 : 0, 0);
+
+        uint32 rOs = TRank(player, T_NEC_OS, T_NEC_OS_N), rF = TRank(player, T_NEC_FUREUR, T_NEC_FUREUR_N);
+        uint32 rC = TRank(player, T_NEC_CHAIR, T_NEC_CHAIR_N), rA = TRank(player, T_NEC_ANCRAGE, T_NEC_ANCRAGE_N);
+        bool colosse = T_NEC_COLOSSE[0] && player->HasSpell(T_NEC_COLOSSE[0]);
+        for (Unit* u : army)
+        {
+            bool gros = u->GetEntry() == C_GEANT || u->GetEntry() == INVOCATIONS[2].entry;
+            int32 arm = int32(6 * rOs), men = gros ? int32(20 * rF) : 0, pv = int32(4 * rC + (gros ? 4 * rP : 0));
+            if (u->GetEntry() == C_GEANT && colosse)
+                pv += 20;
+            SetHiddenAura3(u, NEC_H_OS, arm, men, pv, player);
+            SetHiddenAura3(u, NEC_H_ANCRAGE, int32(2 * rA), int32(2 * rA), gros ? int32(4 * rP) : 0, player);
+            if (u->GetEntry() == C_GEANT)
+            {
+                bool has = u->HasAura(NEC_H_COLOSSE);
+                if (colosse && !has)
+                    u->CastSpell(u, NEC_H_COLOSSE, TRIGGERED_OLD_TRIGGERED, nullptr, nullptr, player->GetObjectGuid());
+                else if (!colosse && has)
+                    u->RemoveAurasDueToSpell(NEC_H_COLOSSE);
+            }
+        }
+        // Moelle vivace : 1 % des PV par rang toutes les 5 s
+        if (uint32 rM = TRank(player, T_NEC_MOELLE, T_NEC_MOELLE_N))
+        {
+            uint32& t = moelleTick[player->GetObjectGuid().GetRawValue()];
+            if (++t >= 5)
+            {
+                t = 0;
+                for (Unit* u : army)
+                    if (u->IsAlive() && u->GetHealth() < u->GetMaxHealth())
+                        u->SetHealth(std::min(u->GetMaxHealth(), u->GetHealth() + u->GetMaxHealth() * rM / 100));
+            }
+        }
+        // Lien d'os : 30 % des dégâts subis (+10 % par rang du talent) vont sur l'invocation principale
+        Unit* main = MainSummon(player);
+        bool lienOs = player->HasAura(NEC_LIEN) && main;
+        if (lienOs)
+        {
+            int32 pct = int32(30 + 10 * TRank(player, T_NEC_LIEN, T_NEC_LIEN_N));
+            SpellAuraHolder* held = player->GetSpellAuraHolder(N_H_LIEN);
+            int32 cur = INT32_MIN;
+            if (Aura* a = player->GetAura(N_H_LIEN, EFFECT_INDEX_0))
+                cur = a->GetModifier()->m_amount;
+            if (!held || held->GetCasterGuid() != main->GetObjectGuid() || cur != pct)
+            {
+                player->RemoveAurasDueToSpell(N_H_LIEN);
+                main->CastCustomSpell(player, N_H_LIEN, &pct, nullptr, nullptr, TRIGGERED_OLD_TRIGGERED);
+            }
+        }
+        // Aimant à haine : les ennemis qui attaquent le Nécromancien ou un soigneur du groupe se tournent vers l'invocation principale
+        uint32 rAim = TRank(player, T_NEC_AIMANT, T_NEC_AIMANT_N);
+        if (rAim && main && player->IsInCombat())
+        {
+            std::vector<Unit*> proteges;
+            proteges.push_back(player);
+            if (Group* g = player->GetGroup())
+                for (GroupReference* ref = g->GetFirstMember(); ref; ref = ref->next())
+                    if (Player* m = ref->getSource())
+                        if (m != player && m->IsInMap(player) && (m->getClass() == CLASS_PRIEST || RoleBot(m) == 1))
+                            proteges.push_back(m);
+            float menace = float(player->GetLevel() * 5 * rAim);
+            for (Unit* pr : proteges)
+                for (Unit* att : pr->getAttackers())
+                    if (att && att->IsAlive() && att->GetTypeId() == TYPEID_UNIT && att->CanHaveThreatList())
+                        att->AddThreat(main, menace);
+        }
+    }
+
+    // sorts des invocations : Haine viscérale ; sort du joueur : Carapace améliorée
+    void ClassesModule::NecropoleHit(Unit* caster, uint32 id, Unit* victim)
+    {
+        if (caster->GetTypeId() == TYPEID_PLAYER)
+        {
+            if (id != NEC_CARAPACE)
+                return;
+            Player* p = static_cast<Player*>(caster);
+            if (uint32 r = TRank(p, T_NEC_CARAPACE, T_NEC_CARAPACE_N))
+                if (Aura* a = victim->GetAura(NEC_CARAPACE, EFFECT_INDEX_0))
+                    a->GetModifier()->m_amount = a->GetModifier()->m_amount * int32(100 + 10 * r) / 100;
+            return;
+        }
+        uint32 e = caster->GetEntry();
+        if (e != C_GEANT && e != INVOCATIONS[2].entry)
+            return;
+        Unit* owner = caster->GetOwner();
+        if (!owner || owner->GetTypeId() != TYPEID_PLAYER || !victim->CanHaveThreatList())
+            return;
+        Player* p = static_cast<Player*>(owner);
+        if (uint32 r = TRank(p, T_NEC_HAINE, T_NEC_HAINE_N))
+            victim->AddThreat(caster, float(caster->GetLevel() * 8 * r));
+    }
+
+    // Drain nécrotique : l'invocation principale est soignée des dégâts infligés
+    void ClassesModule::NecropoleDrain(Aura* aura)
+    {
+        Unit* c = aura->GetCaster();
+        if (!c || c->GetTypeId() != TYPEID_PLAYER)
+            return;
+        Player* p = static_cast<Player*>(c);
+        Unit* main = MainSummon(p);
+        if (!main || !main->IsAlive())
+            return;
+        int32 soin = aura->GetModifier()->m_amount * int32(100 + 10 * TRank(p, T_NEC_DRAIN, T_NEC_DRAIN_N)) / 100;
+        if (soin > 0)
+            main->SetHealth(std::min(main->GetMaxHealth(), main->GetHealth() + uint32(soin)));
+    }
+
+    // Aspect du gardien : la menace des dégâts du Nécromancien passe sur son invocation principale ;
+    // Titan de la Nécropole : chaque coup du géant provoque sa cible
+    void ClassesModule::NecropoleDamage(Unit* unit, Unit* victim, uint32 damage)
+    {
+        if (!victim->CanHaveThreatList() || !victim->IsAlive())
+            return;
+        if (unit->GetTypeId() == TYPEID_PLAYER)
+        {
+            Player* p = static_cast<Player*>(unit);
+            if (p->getClass() != C_NECRO || !p->HasAura(NEC_ASPECT))
+                return;
+            if (Unit* main = MainSummon(p))
+                victim->AddThreat(main, float(damage));
+            return;
+        }
+        if (unit->GetEntry() == C_GEANT && unit->HasAura(NEC_H_TITAN))
+            victim->AddThreat(unit, float(damage) * 2.0f);
+    }
+
+    // IA du bot Nécropole : protège et soigne ses invocations, garde l'aggro sur le géant
+    bool ClassesModule::NecropoleBot(Player* bot, Unit* victim)
+    {
+        if (bot->HasSpell(NEC_ASPECT) && !bot->HasAura(NEC_ASPECT) && TryCast(bot, bot, NEC_ASPECT))
+            return true;
+        Unit* main = MainSummon(bot);
+        if (bot->HasSpell(NEC_LIEN) && !bot->HasAura(NEC_LIEN) && main && TryCast(bot, bot, NEC_LIEN))
+            return true;
+        if (!victim || !main)
+            return false;
+        uint32 ennemis = 0;
+        for (Unit* att : main->getAttackers())
+            if (att && att->IsAlive())
+                ++ennemis;
+        for (Unit* att : bot->getAttackers())
+            if (att && att->IsAlive())
+                ++ennemis;
+        float pv = main->GetHealthPercent();
+        if (pv < 60.0f && TryCast(bot, bot, NEC_TITAN))
+            return true;
+        if (pv < 40.0f && TryCast(bot, bot, NEC_MUR))
+            return true;
+        if (pv < 45.0f && TryCast(bot, bot, NEC_SACRIFICE))
+            return true;
+        if (pv < 75.0f && !main->HasAura(NEC_CARAPACE) && TryCast(bot, main, NEC_CARAPACE))
+            return true;
+        if (victim->GetVictim() != main && TryCast(bot, victim, NEC_ORDRE))
+            return true;
+        if (ennemis >= 3 && (TryCast(bot, bot, NEC_RUGISSEMENT) || TryCast(bot, bot, NEC_CRI)))
+            return true;
+        if (pv < 90.0f && TryCast(bot, victim, NEC_DRAIN))
+            return true;
+        return false;
     }
 
     // ------------------------------------------------------------------ Sniper
@@ -915,6 +1222,12 @@ namespace cmangos_module
 
     void ClassesModule::OnHit(Spell* spell, Unit* caster, Unit* victim)
     {
+        if (spell && caster && victim && spell->m_spellInfo && s_depth == 0)
+        {
+            std::lock_guard<std::recursive_mutex> guard(lock);
+            DepthGuard depth;
+            NecropoleHit(caster, spell->m_spellInfo->Id, victim);
+        }
         if (!spell || !caster || !victim || caster->GetTypeId() != TYPEID_PLAYER || !spell->m_spellInfo)
             return;
         if (s_depth > 0)
@@ -1082,6 +1395,12 @@ namespace cmangos_module
 
     bool ClassesModule::OnPeriodicTick(Aura* aura)
     {
+        if (aura && s_depth == 0 && aura->GetId() == NEC_DRAIN)
+        {
+            std::lock_guard<std::recursive_mutex> guard(lock);
+            DepthGuard depth;
+            NecropoleDrain(aura);
+        }
         if (aura && s_depth == 0)
             if (Unit* c = aura->GetCaster())
                 if (c->GetTypeId() == TYPEID_PLAYER && static_cast<Player*>(c)->getClass() >= 12)
@@ -1184,6 +1503,12 @@ namespace cmangos_module
 
     void ClassesModule::OnDealDamage(Unit* unit, Unit* victim, uint32 health, uint32 damage)
     {
+        if (unit && victim && damage && s_depth == 0)
+        {
+            std::lock_guard<std::recursive_mutex> guard(lock);
+            DepthGuard depth;
+            NecropoleDamage(unit, victim, damage);
+        }
         if (victim && s_depth == 0)
         {
             std::lock_guard<std::recursive_mutex> guard(lock);
@@ -1445,8 +1770,8 @@ namespace cmangos_module
                 u->GetMotionMaster()->MoveFollow(player, dist, angle);
             }
         }
-        if (IsBot(player) && BotTab(player) >= 0)
-            BotTalents(player);
+        if (IsBot(player) && BotTab(player) >= 0 && !(gCpgEstCompagnon && gCpgEstCompagnon(player)))
+            BotTalents(player);         // les compagnons ont leurs propres talents (module compagnons)
         if (cls != C_NECRO && cls != C_SNIPER && cls != C_META)
         {
             Spe4Upkeep(player);
@@ -1505,13 +1830,14 @@ namespace cmangos_module
             // Lien des morts : 20 % des dégâts subis vont à l'invocation principale
             bool lien = T_LIEN[0] && player->HasSpell(T_LIEN[0]) && !army.empty();
             SpellAuraHolder* held = player->GetSpellAuraHolder(N_H_LIEN);
-            if (!lien && held)
+            if (!lien && held && !player->HasAura(NEC_LIEN))
                 player->RemoveAurasDueToSpell(N_H_LIEN);
             else if (lien && (!held || held->GetCasterGuid() != army.front()->GetObjectGuid()))
             {
                 player->RemoveAurasDueToSpell(N_H_LIEN);
                 army.front()->CastSpell(player, N_H_LIEN, TRIGGERED_OLD_TRIGGERED);
             }
+            NecropoleUpkeep(player, army);
         }
         else if (cls == C_SNIPER)
         {
@@ -1949,6 +2275,8 @@ namespace cmangos_module
         if (cls == C_NECRO)
         {
             if (selfBuff(BN_ARMURE, BN_ARMURE_N))
+                return;
+            if (BotTab(bot) == 3 && NecropoleBot(bot, victim))
                 return;
             // armée : invoquer si des points sont libres (hors combat de préférence)
             CleanArmy(bot);

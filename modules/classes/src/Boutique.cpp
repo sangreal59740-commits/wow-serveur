@@ -27,7 +27,8 @@ namespace cmangos_module
                 " ENGINE=InnoDB DEFAULT CHARSET=utf8");
             pret = true;
         }
-        auto r = CharacterDatabase.Query("SELECT `id`, `guid`, `type`, `item`, `quantite`, `titre` FROM `custom_boutique_livraison` WHERE `statut` = 0 ORDER BY `id` LIMIT 20");
+        // type 2 (compagnon) : livré par le module compagnons
+        auto r = CharacterDatabase.Query("SELECT `id`, `guid`, `type`, `item`, `quantite`, `titre` FROM `custom_boutique_livraison` WHERE `statut` = 0 AND `type` <> 2 ORDER BY `id` LIMIT 20");
         if (!r)
             return;
         std::vector<std::pair<uint32, uint32>> faits;            // id, statut (1 livré, 2 erreur)

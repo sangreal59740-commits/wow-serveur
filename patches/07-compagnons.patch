@@ -1,0 +1,108 @@
+diff -ru a/src/game/Entities/CharacterHandler.cpp b/src/game/Entities/CharacterHandler.cpp
+--- a/src/game/Entities/CharacterHandler.cpp	2026-11-25 20:13:58.861824442 +0100
++++ b/src/game/Entities/CharacterHandler.cpp	2026-11-25 20:14:16.216670821 +0100
+@@ -112,6 +112,8 @@
+     CharacterDatabase.DelayQueryHolder(this, &PlayerbotHolder::HandlePlayerBotLoginCallback, holder);
+ }
+ 
++bool (*gCpgAutorise)(uint32 botGuidLow) = nullptr;              // [serveur] module compagnons
++
+ void PlayerbotHolder::HandlePlayerBotLoginCallback(QueryResult* dummy, SqlQueryHolder* holder)
+ {
+     if (!holder)
+@@ -157,6 +159,10 @@
+     {
+         allowed = true;
+     }
++    else if (gCpgAutorise && gCpgAutorise(bot->GetGUIDLow()))
++    {
++        allowed = true;
++    }
+ 
+     if (allowed)
+     {
+diff -ru a/src/game/Entities/QueryHandler.cpp b/src/game/Entities/QueryHandler.cpp
+--- a/src/game/Entities/QueryHandler.cpp	2026-11-25 20:13:58.859863175 +0100
++++ b/src/game/Entities/QueryHandler.cpp	2026-11-25 20:14:16.215590299 +0100
+@@ -105,6 +105,8 @@
+     delete result;
+ }
+ 
++const char* (*gCpgNom)(uint32 guidLow) = nullptr;               // [serveur] module compagnons
++
+ void WorldSession::HandleNameQueryOpcode(WorldPacket& recv_data)
+ {
+     ObjectGuid guid;
+@@ -128,6 +130,9 @@
+ 
+         response.guid = pChar->GetObjectGuid();
+         response.name = pChar->GetName();
++        if (gCpgNom)
++            if (const char* nom = gCpgNom(pChar->GetGUIDLow()))
++                response.name = nom;
+         response.realm = "";
+         response.race = uint32(pChar->getRace());
+         response.gender = uint32(pChar->getGender());
+diff -ru a/src/game/Groups/Group.cpp b/src/game/Groups/Group.cpp
+--- a/src/game/Groups/Group.cpp	2026-11-25 20:13:58.857790536 +0100
++++ b/src/game/Groups/Group.cpp	2026-11-25 20:14:16.214894316 +0100
+@@ -616,6 +616,8 @@
+     BroadcastPacket(data, true);
+ }
+ 
++bool (*gCpgEstCompagnon)(Player const* player) = nullptr;        // [serveur] module compagnons
++
+ static void GetDataForXPAtKill_helper(Player* player, Unit const* victim, uint32& sum_level, Player*& member_with_max_level, Player*& not_gray_member_with_max_level)
+ {
+     const uint32 level = player->GetLevel();
+@@ -644,6 +646,9 @@
+         if (member == additional)
+             continue;
+ 
++        if (gCpgEstCompagnon && gCpgEstCompagnon(member))  // [serveur] compagnon : pas de part d'XP
++            continue;
++
+         if (!member->IsAtGroupRewardDistance(victim))       // at req. distance
+             continue;
+ 
+@@ -651,7 +656,7 @@
+         GetDataForXPAtKill_helper(member, victim, sum_level, member_with_max_level, not_gray_member_with_max_level);
+     }
+ 
+-    if (additional)
++    if (additional && !(gCpgEstCompagnon && gCpgEstCompagnon(additional)))
+     {
+         if (additional->IsAtGroupRewardDistance(victim))    // at req. distance
+         {
+@@ -1596,10 +1601,13 @@
+             if (!pGroupGuy->IsAtGroupRewardDistance(pVictim))
+                 continue;                               // member (alive or dead) or his corpse at req. distance
+ 
++            if (gCpgEstCompagnon && gCpgEstCompagnon(pGroupGuy))
++                continue;
++
+             RewardGroupAtKill_helper(pGroupGuy, pVictim, count, PvP, group_rate, sum_level, is_dungeon, not_gray_member_with_max_level, member_with_max_level, xp);
+         }
+ 
+-        if (player_tap)
++        if (player_tap && !(gCpgEstCompagnon && gCpgEstCompagnon(player_tap)))
+         {
+             // member (alive or dead) or his corpse at req. distance
+             if (player_tap->IsAtGroupRewardDistance(pVictim))
+diff -ru a/src/game/Loot/LootMgr.cpp b/src/game/Loot/LootMgr.cpp
+--- a/src/game/Loot/LootMgr.cpp	2026-11-25 20:13:58.863859040 +0100
++++ b/src/game/Loot/LootMgr.cpp	2026-11-25 20:14:16.217094333 +0100
+@@ -1588,8 +1588,13 @@
+     }
+ }
+ 
++extern bool (*gCpgEstCompagnon)(Player const* player);
++
+ bool IsEligibleForLoot(Player* looter, WorldObject* lootTarget)
+ {
++    if (gCpgEstCompagnon && gCpgEstCompagnon(looter))          // [serveur] module compagnons
++        return false;
++
+     if (looter->IsAtGroupRewardDistance(lootTarget))
+         return true;
+ 

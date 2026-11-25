@@ -70,7 +70,7 @@ h1, h2, h3 { font-family: var(--titre); font-weight: 700; letter-spacing: .04em;
 .bq-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
 .bq-article { --q: #4fa3ff; position: relative; display: flex; flex-direction: column; border-radius: 10px; padding: 18px; background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--q) 22%, transparent), transparent 65%), var(--carte); border: 1px solid color-mix(in srgb, var(--q) 35%, transparent); transition: transform .2s, box-shadow .2s; }
 .bq-article:hover { transform: translateY(-3px); box-shadow: 0 12px 34px color-mix(in srgb, var(--q) 18%, transparent); }
-.bq-article.q-commun { --q: #c8c8c8; } .bq-article.q-rare { --q: #4fa3ff; } .bq-article.q-epique { --q: #b26cff; } .bq-article.q-legendaire { --q: #ff9d2e; }
+.bq-article.q-commun { --q: #c8c8c8; } .bq-article.q-rare { --q: #4fa3ff; } .bq-article.q-epique { --q: #b26cff; } .bq-article.q-legendaire { --q: #ff9d2e; } .bq-article.q-peu { --q: #3fd94a; }
 .bq-article.bientot { opacity: .7; }
 .bq-ico { width: 54px; height: 54px; border-radius: 10px; display: grid; place-items: center; background: rgba(0, 0, 0, .4); border: 1px solid color-mix(in srgb, var(--q) 60%, transparent); box-shadow: 0 0 18px color-mix(in srgb, var(--q) 30%, transparent); }
 .bq-ico svg { width: 28px; height: 28px; fill: var(--q); }

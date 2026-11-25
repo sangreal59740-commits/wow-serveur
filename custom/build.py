@@ -15,6 +15,7 @@ MET=json.load(open('/home/claude/wow/metiers/metiers_rows.json',encoding='utf-8'
 LEG=json.load(open('/home/claude/wow/donjons/legendaires_rows.json',encoding='utf-8'))
 CLS=json.load(open('/home/claude/wow/classes/classes_rows.json',encoding='utf-8'))
 SRT=json.load(open('/home/claude/wow/classes/sorts_rows.json',encoding='utf-8'))
+CPG=json.load(open('/home/claude/wow/compagnons/gen/compagnons_rows.json',encoding='utf-8'))
 files={}; stats=[]
 for f in sorted(os.listdir('dbc_en')):
     try: d=DBC('dbc_en/'+f)
@@ -74,7 +75,7 @@ for f in sorted(os.listdir('dbc_en')):
         data=append_rows(data, itemset_rows.rows(d.rows[0][9]))
         n+=1
     if f=='Spell.dbc':
-        data=append_rows(data, MET['spell']+LEG['spell']+SRT['spell']); n+=1
+        data=append_rows(data, MET['spell']+LEG['spell']+SRT['spell']+CPG['spell']); n+=1
     if f=='ChrClasses.dbc':
         data=append_rows(data, CLS['chr_new']); n+=1
     if f=='SkillLine.dbc':
@@ -96,6 +97,11 @@ stats.append(('SkillLineAbility.dbc',len(MET['sla'])))
 for f in ('CharBaseInfo.dbc','CharStartOutfit.dbc','SkillRaceClassInfo.dbc'):
     files['DBFilesClient\\'+f]=open('/home/claude/wow/classes/out/'+f,'rb').read(); stats.append((f,'classes'))
 files['DBFilesClient\\Talent.dbc']=open('/home/claude/wow/classes/out/Talent.dbc','rb').read(); stats.append(('Talent.dbc','classes'))
+# fichiers d'interface (écran de création des classes custom, icônes) : dossier interface/
+for _root, _dirs, _fs in os.walk('interface'):
+    for _f in _fs:
+        _p = os.path.join(_root, _f)
+        files[os.path.relpath(_p, 'interface').replace('/', '\\')] = open(_p, 'rb').read(); stats.append((_f, 'interface'))
 os.makedirs('build',exist_ok=True)
 mpq.write('build/patch-3.MPQ',files)
 g=mpq.read('build/patch-3.MPQ')

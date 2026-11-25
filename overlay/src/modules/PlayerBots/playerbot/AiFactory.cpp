@@ -21,6 +21,7 @@
 
 // [custom] role impose par le module classes : -1 aucun, 0 tank, 1 soin, 2 DPS corps a corps, 3 DPS distance
 std::function<int(Player const*)> gRoleCustom;
+std::function<int(Player const*)> gTabCustom;        // [serveur] onglet de talents imposé (compagnons), -1 sinon
 
 AiObjectContext* AiFactory::createAiObjectContext(Player* player, PlayerbotAI* ai)
 {
@@ -55,6 +56,12 @@ AiObjectContext* AiFactory::createAiObjectContext(Player* player, PlayerbotAI* a
 
 int AiFactory::GetPlayerSpecTab(const Player* bot)
 {
+    if (gTabCustom)
+    {
+        int custom = gTabCustom(bot);
+        if (custom >= 0 && custom <= 2)
+            return custom;
+    }
     std::map<uint32, int32> tabs = GetPlayerSpecTabs(bot);
 
     if (bot->GetLevel() >= 10 && ((tabs[0] + tabs[1] + tabs[2]) > 0))

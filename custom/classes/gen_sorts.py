@@ -7,7 +7,7 @@ from spellgen import Gen, q, esc, icon, visual, rank_levels, rank_value, DUR, CA
 
 OUT = '/home/claude/wow/classes/'
 NECRO, SNIPER, META = 6, 10, 11
-CBIT = {c: 1 << (c - 1) for c in range(1, 12)}
+CBIT = {c: 1 << (c - 1) for c in range(1, 15)}
 
 BASEMANA = {}
 for c, lv, m in q("select class, level, basemana from player_classlevelstats"):
@@ -1031,6 +1031,9 @@ def talent_spell(gen, name, rk, nranks, effects, desc, icon_sid):
                 TAL_PROC.append((sid, e[4], e[5], flags, e[6]))
         elif e[0] == 'dummy':
             sets.update({'Effect%d' % n: 6, 'EffectApplyAuraName%d' % n: 4})
+        elif e[0] == 'sets':       # ('sets', {champs}) : objet équipé requis, etc. (n'occupe pas d'effet)
+            sets.update(e[1])
+            continue
         elif e[0] == 'learn':      # ('learn', sort appris avec le talent, retiré au reset)
             sets.update({'Effect%d' % n: 36, 'EffectTriggerSpell%d' % n: e[1], 'EffectImplicitTargetA%d' % n: 1})
     TALG.add(sid, PASSIVE_BASE, name, desc, "Rang %d" % (rk + 1) if nranks > 1 else "", family=False, sets=sets)
@@ -1359,15 +1362,15 @@ def trainer_sql():
     L = ["-- Maîtres de classe des classes custom",
          "DELETE FROM npc_trainer_template WHERE entry BETWEEN 900 AND 909;",
          "DELETE FROM creature WHERE guid BETWEEN 9903000 AND 9903099;",
-         "DELETE FROM creature_template WHERE Entry BETWEEN 990170 AND 990185 OR Entry BETWEEN 990190 AND 990199;"]
+         "DELETE FROM creature_template WHERE Entry BETWEEN 990170 AND 990185 OR Entry BETWEEN 990190 AND 990199 OR Entry BETWEEN 990700 AND 990714;"]
     for tpl, lst in sorted(TRAINER_SPELLS.items()):
         for tid, cost, lv in lst:
             L.append("INSERT INTO npc_trainer_template (entry, spell, spellcost, reqskill, reqskillvalue, reqlevel) VALUES (%d, %d, %d, 0, 0, %d);" % (tpl, tid, cost, lv))
     L.append("DROP TEMPORARY TABLE IF EXISTS tmp_ct;")
     L.append("CREATE TEMPORARY TABLE tmp_ct LIKE creature_template;")
     guid = 9903000
-    for tpl, entry, nom, sous, src, _, disp in TRAINERS:
-        cls = {900: NECRO, 901: SNIPER, 902: META}[tpl]
+    for tpl, entry, nom, sous, src, dec, disp in TRAINERS:
+        cls = {900: NECRO, 901: SNIPER, 902: META, 906: 12, 907: 13, 908: 14}[tpl]
         L.append("INSERT INTO tmp_ct SELECT * FROM creature_template WHERE Entry=%d;" % src)
         sets = ["Entry=%d" % entry, "Name='%s'" % esc(nom), "SubName='%s'" % esc(sous), "TrainerType=0", "TrainerClass=%d" % cls,
                 "TrainerTemplateId=%d" % tpl, "NpcFlags=17", "GossipMenuId=0", "ScriptName=''"]
@@ -1375,15 +1378,22 @@ def trainer_sql():
             sets += ["DisplayId1=%d" % disp, "DisplayId2=0", "DisplayId3=0", "DisplayId4=0", "DisplayIdProbability1=100",
                      "DisplayIdProbability2=0", "DisplayIdProbability3=0", "DisplayIdProbability4=0"]
         L.append("UPDATE tmp_ct SET %s WHERE Entry=%d;" % (", ".join(sets), src))
-        # placé à côté du PNJ modèle, à 2 m sur sa gauche
+        # placé à côté du PNJ modèle, à 2 m sur sa gauche (décalage 1 : à droite, 2 : à 4 m à gauche, 3 : à 4 m à droite)
+        _sg = '-' if dec in (1, 3) else '+'
+        _d = 4 if dec in (2, 3) else 2
         L.append("INSERT INTO creature (guid, id, map, spawnMask, position_x, position_y, position_z, orientation, spawntimesecsmin, "
-                 "spawntimesecsmax, spawndist, MovementType) SELECT %d, %d, map, spawnMask, position_x + 2 * COS(orientation + PI() / 2), "
-                 "position_y + 2 * SIN(orientation + PI() / 2), position_z + 0.3, orientation, 300, 300, 0, 0 FROM creature WHERE id=%d LIMIT 1;"
-                 % (guid, entry, src))
+                 "spawntimesecsmax, spawndist, MovementType) SELECT %d, %d, map, spawnMask, position_x + %d * COS(orientation %s PI() / 2), "
+                 "position_y + %d * SIN(orientation %s PI() / 2), position_z + 0.3, orientation, 300, 300, 0, 0 FROM creature WHERE id=%d LIMIT 1;"
+                 % (guid, entry, _d, _sg, _d, _sg, src))
         guid += 1
     L.append("INSERT INTO creature_template SELECT * FROM tmp_ct;")
     L.append("DROP TEMPORARY TABLE tmp_ct;")
     return L
+
+# nouvelles classes du 23/11 : Tisserand de vie, Fossoyeur, Martyr
+exec(open(OUT + 'nouvelles.py', encoding='utf-8').read())
+# Nécromancien : 4e spé Nécropole (25/11)
+exec(open(OUT + 'necropole.py', encoding='utf-8').read())
 
 # ======================================================================== sorts de changement de spécialisation (module specs)
 # appris au déblocage de la 2e spé chez le maître de classe ; 5 s d'incantation, hors combat
@@ -1526,6 +1536,10 @@ for _g, _a, _b in V4_GENS:
 L += T4G.sql(56000, 56999)
 L += SPG.sql(65500, 65509)
 L += AG.sql(65590, 65699)
+for _g, _a, _b in NV_GENS:
+    L += _g.sql(_a, _b)
+L += T5G.sql(44000, 44999)
+L += NV_SQL
 # Pierre de foyer sans temps de recharge (demande d'Alexis)
 VPATCH.setdefault(8690, {})['CategoryRecoveryTime'] = 0
 VPATCH[8690].update({'Category': 0, 'RecoveryTime': 0})
@@ -1587,17 +1601,17 @@ for entry, (name, src, passive) in sorted(TOTEMS.items()):
 L.append("INSERT INTO creature_template SELECT * FROM tmp_ct;")
 L.append("DROP TEMPORARY TABLE tmp_ct;")
 # groupes exclusifs : balles, aspects
-L.append("DELETE FROM spell_group_spell WHERE Id IN (900, 901, 902);")
-L.append("DELETE FROM spell_group WHERE Id IN (900, 901, 902);")
-for gid, (gname, ids) in zip((900, 901, 902), [('Sniper balles', GROUPS.get('balle', [])), ('Sniper aspects', GROUPS.get('aspect', [])),
-                                                ('Metamorphe buffs', GROUPS.get('meta', []))]):
+L.append("DELETE FROM spell_group_spell WHERE Id IN (900, 901, 902, 903);")
+L.append("DELETE FROM spell_group WHERE Id IN (900, 901, 902, 903);")
+for gid, (gname, ids) in zip((900, 901, 902, 903), [('Sniper balles', GROUPS.get('balle', [])), ('Sniper aspects', GROUPS.get('aspect', [])),
+                                                ('Metamorphe buffs', GROUPS.get('meta', [])), ('Fossoyeur maledictions', GROUPS.get('fossoyeur_mal', []))]):
     if not ids:
         continue
     L.append("INSERT INTO spell_group (Id, Rule, Name) VALUES (%d, 2, '%s');" % (gid, gname))
     for sid in ids:
         L.append("INSERT INTO spell_group_spell (Id, SpellId) VALUES (%d, %d);" % (gid, sid))
-L.append("DELETE FROM spell_affect WHERE entry BETWEEN 62000 AND 64499 OR entry BETWEEN 55000 AND 56999;")
-L.append("DELETE FROM spell_proc_event WHERE entry BETWEEN 62000 AND 64499 OR entry BETWEEN 55000 AND 56999;")
+L.append("DELETE FROM spell_affect WHERE entry BETWEEN 62000 AND 64499 OR entry BETWEEN 55000 AND 56999 OR entry BETWEEN 40000 AND 44999;")
+L.append("DELETE FROM spell_proc_event WHERE entry BETWEEN 62000 AND 64499 OR entry BETWEEN 55000 AND 56999 OR entry BETWEEN 40000 AND 44999;")
 for sid, fam, m, flags, pex in TAL_PROC:
     L.append("INSERT INTO spell_proc_event (entry, SchoolMask, SpellFamilyName, SpellFamilyMask0, SpellFamilyMask1, SpellFamilyMask2, procFlags, procEx, ppmRate, CustomChance, Cooldown) "
              "VALUES (%d, 0, %d, %d, %d, %d, %d, %d, 0, 0, 0);" % (sid, fam, m, m, m, flags, pex))
@@ -1606,7 +1620,7 @@ for sid, e, m in AFFECT_N + AFFECT + TAL_AFFECT:
 
 # lignes de compétence (onglets du grimoire)
 SKILLLINES = [(900, "Invocateur", 354), (901, "Malédiction", 355), (902, "Magicien", 593),
-              (903, "Tireur d'élite", 163), (904, "Bestial", 50), (905, "Mécanisme", 51)]
+              (903, "Tireur d'élite", 163), (904, "Bestial", 50), (905, "Mécanisme", 51)] + NV_SKILLLINES + NEC_SKILLLINES
 RENAME_SKILL = {573: "Totémique", 134: "Druidique", 574: "Angélique"}
 SLA_ROWS = []
 sla_id = 21000
@@ -1616,6 +1630,13 @@ for cls, lst in ((NECRO, NSLA), (NECRO, NCX.sla), (SNIPER, SC.sla), (META, MC.sl
         sla_id += 1
 for cls, skill, sid in V4_SLA:
     SLA_ROWS.append([sla_id, skill, sid, 0, CBIT[cls], 0, 0, 1, 0, 0, 0, 0, 0, 0, 0])
+    sla_id += 1
+for cls, lst in ((TISS, TWC.sla), (FOSS, FSC.sla), (MART, MAC.sla)):
+    for skill, sid in lst:
+        SLA_ROWS.append([sla_id, skill, sid, 0, CBIT[cls], 0, 0, 1, 0, 0, 0, 0, 0, 0, 0])
+        sla_id += 1
+for skill, sid in NPC.sla:                   # Nécropole (ajoutée à la fin : les identifiants déjà attribués ne bougent pas)
+    SLA_ROWS.append([sla_id, skill, sid, 0, CBIT[NECRO], 0, 0, 1, 0, 0, 0, 0, 0, 0, 0])
     sla_id += 1
 
 # DBC serveur : SkillLine (nouvelles lignes + Métamorphe) et SkillLineAbility (base + métiers + sorts custom)
@@ -1730,7 +1751,7 @@ print('talents', len(TALENT_ROWS), 'sorts de talent', len(TALG.spells), 'sans ef
 json.dump(DUMMY_TALENTS, open(OUT + 'talents_a_coder.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=0)
 
 json.dump({'talenttab_new': tab_new, 'talenttab_meta': {str(k): v for k, v in META_TABS.items()},
-           'spell': NG.dbc_rows() + SG.dbc_rows() + MG.dbc_rows() + TG.dbc_rows() + TALG.dbc_rows() + sum((_g.dbc_rows() for _g, _a, _b in V4_GENS), []) + T4G.dbc_rows() + SPG.dbc_rows() + AG.dbc_rows(),
+           'spell': NG.dbc_rows() + SG.dbc_rows() + MG.dbc_rows() + TG.dbc_rows() + TALG.dbc_rows() + sum((_g.dbc_rows() for _g, _a, _b in V4_GENS), []) + T4G.dbc_rows() + SPG.dbc_rows() + AG.dbc_rows() + sum((_g.dbc_rows() for _g, _a, _b in NV_GENS), []) + T5G.dbc_rows(),
            'spell_patch': SPELL_PATCH, 'spell_text': SPELL_TEXT, 'spellvisual_new': SV_NEW, 'form_patch': {str(k): v for k, v in globals().get('FORM_PATCH', {}).items()}, 'sla': SLA_ROWS, 'skilllines': sk_new, 'rename_skill': RENAME_SKILL,
            'masks': {'necro': NG.masks, 'sniper': SG.masks, 'meta': MG.masks}, 'ids': {'necro': N, 'sniper': S, 'meta': M}},
           open(OUT + 'sorts_rows.json', 'w', encoding='utf-8'), ensure_ascii=False)
@@ -1832,6 +1853,21 @@ for t in T4G.spells:
     T4NAMES.setdefault(t['name'], []).append(t['id'])
 for _n, _t in V4T:
     arr(_n, T4NAMES.get(_t, []))
+H.append("    // Nécromancien : Nécropole")
+one("C_GEANT", C_GEANT)
+for _k, _v in NEC.items():
+    one("NEC_" + _k.upper(), _v)
+for _k, _v in NEC_H.items():
+    one("NEC_H_" + _k.upper(), _v)
+for _tn, _cn in [("Pacte des colosses", "T_NEC_PACTE"), ("Os épais", "T_NEC_OS"), ("Fureur du colosse", "T_NEC_FUREUR"),
+                 ("Haine viscérale", "T_NEC_HAINE"), ("Chair cousue", "T_NEC_CHAIR"), ("Lien d'os amélioré", "T_NEC_LIEN"),
+                 ("Ancrage", "T_NEC_ANCRAGE"), ("Colosse d'os", "T_NEC_COLOSSE"), ("Horde des tombes", "T_NEC_HORDE"),
+                 ("Aimant à haine", "T_NEC_AIMANT"), ("Moelle vivace", "T_NEC_MOELLE"), ("Titan prolongé", "T_NEC_TITAN"),
+                 ("Carapace améliorée", "T_NEC_CARAPACE"), ("Ordre rapide", "T_NEC_ORDRE"), ("Drain amélioré", "T_NEC_DRAIN"), ("Mur amélioré", "T_NEC_MUR")]:
+    arr(_cn, TNAMES.get(_tn, []))
+H.append("    // nouvelles classes : Tisserand de vie, Fossoyeur")
+for _n, _v in NVH:
+    arr(_n, _v)
 arr("BIEN_NOURRI", BIEN_NOURRI)
 one("ROUTE_SPELL", ROUTE_SPELL)
 H.append("}")

@@ -59,6 +59,15 @@ namespace cmangos_module
         void CleanArmy(Player* player);
         template<typename F> void ForArmy(Player* player, bool withPet, F f);
         void NecroCast(Player* player, uint32 spellId, Unit* victim, Spell* spell);
+        // Nécromancien : Nécropole (4e spé, tank par les invocations)
+        Unit* MainSummon(Player* player);
+        bool NecropoleCast(Player* player, uint32 spellId, Unit* victim);
+        void NecropoleUpkeep(Player* player, std::vector<Unit*> const& army);
+        void NecropoleHit(Unit* caster, uint32 spellId, Unit* victim);
+        void NecropoleDrain(Aura* aura);
+        void NecropoleDamage(Unit* unit, Unit* victim, uint32 damage);
+        bool NecropoleBot(Player* bot, Unit* victim);
+        std::unordered_map<uint64, uint32> moelleTick;              // Nécromancien -> secondes depuis la dernière Moelle vivace
         // Sniper
         void SniperCast(Player* player, uint32 spellId, Unit* victim);
         // Métamorphe

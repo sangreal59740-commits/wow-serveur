@@ -18,18 +18,25 @@ def q(sql):
 HUMAN, ORC, DWARF, NE, UD, TAUREN, GNOME, TROLL = 1, 2, 3, 4, 5, 6, 7, 8
 RACEMASK = {r: 1 << (r - 1) for r in range(1, 9)}
 NECRO, SNIPER, META = 6, 10, 11
+TISS, FOSS, MART = 12, 13, 14       # nouvelles classes (23/11) : Tisserand de vie, Fossoyeur, Martyr
 # nouvelle classe -> (classe de base, race de base, races)
 NEW = {
     NECRO: (9, HUMAN, [HUMAN, TROLL, UD]),
     SNIPER: (3, DWARF, [DWARF, ORC]),
     META: (11, NE, [NE, GNOME, TROLL, TAUREN]),
+    TISS: (5, NE, [NE, TROLL, TAUREN]),
+    FOSS: (4, HUMAN, [HUMAN, GNOME, UD]),
+    MART: (2, HUMAN, [DWARF, HUMAN, ORC, TROLL]),
 }
-NAMES = {NECRO: "Nécromancien", SNIPER: "Sniper", META: "Métamorphe"}
+NAMES = {NECRO: "Nécromancien", SNIPER: "Sniper", META: "Métamorphe", TISS: "Tisserand de vie", FOSS: "Fossoyeur", MART: "Martyr"}
+# nouvelles classes : (classe dont la ligne ChrClasses est copiée, ressource 0 mana / 1 rage / 3 énergie, famille de sorts)
+NEW2 = {TISS: (5, 0, 14), FOSS: (4, 0, 15), MART: (1, 3, 16)}
+NEWCLS = (TISS, FOSS, MART)
 # classes vanilla ouvertes à une race de plus : (race, classe, race modèle de la classe)
 EXTRA = [(3, 7, 2), (5, 2, 1)]       # Nain chaman (modèle : Orc), Mort-vivant paladin (modèle : Humain)
 # paires vanilla retirées (race, classe) : Elfe de la nuit et Troll guerriers, Humain voleur, Nain prêtre
 REMOVED = [(4, 1), (8, 1), (1, 4), (3, 5), (8, 3), (5, 1), (3, 4)]   # + Troll chasseur, Mort-vivant guerrier, Nain voleur
-CBIT = {c: 1 << (c - 1) for c in range(1, 12)}
+CBIT = {c: 1 << (c - 1) for c in range(1, 15)}
 
 # ---------------------------------------------------------------- ChrClasses
 d = DBC(SRV + 'ChrClasses.dbc')
@@ -45,6 +52,10 @@ def clone_class(cid, base, name, power):
     r[14] = d.str(r[14])
     return r
 new_rows = [clone_class(NECRO, 9, NAMES[NECRO], 0), clone_class(SNIPER, 3, NAMES[SNIPER], 0)]
+for _c in NEWCLS:
+    _r = clone_class(_c, NEW2[_c][0], NAMES[_c], NEW2[_c][1])
+    _r[15] = NEW2[_c][2]                 # famille de sorts propre (modificateurs de talents)
+    new_rows.append(_r)
 # Métamorphe : on renomme la ligne du druide (le texte est ajouté au bloc de chaînes)
 data = open(SRV + 'ChrClasses.dbc', 'rb').read()
 nrec, nf, rs, ss = struct.unpack('<4I', data[4:20])
@@ -109,6 +120,43 @@ for race, c, src in EXTRA:
         r[4], r[5], r[6] = race, c, g
         recs.append(r)
         nextid += 1
+# tenues propres aux classes custom : torse (couleur) et armes, objets créés dans classes.sql (990740 à 990749)
+# (objet, apparence, emplacement) ; les objets existants gardent leur apparence
+STYLE_ITEMS = [  # (entrée, objet de base, nom, apparence, sous-classe ou None)
+    (990740, 56, "Robe de linceul", 25245, None),
+    (990741, 35, "Bâton au crâne noir", 24343, None),
+    (990742, 1364, "Gilet de traqueur", 8665, None),
+    (990743, 1364, "Veste de fourrure fauve", 16868, None),
+    (990744, 36, "Massue en bois flotté", 5204, None),
+    (990745, 56, "Robe de fil-de-givre", 24612, None),
+    (990746, 35, "Bâton fuseau", 24483, None),
+    (990747, 12282, "Pelle de fossoyeur", 7495, 5),
+    (990748, 2656, "Haubert écarlate", 19049, None),
+]
+_disp = {e: d for e, _b, _n, d, _s in STYLE_ITEMS}
+_disp.update({2508: 6606, 2092: 6442, 1364: 14339, 37: 14029, 2362: 18730})
+STYLE = {
+    NECRO: [(990740, 20), (990741, 17)],
+    SNIPER: [(990742, 5), (2508, 26), (2092, 13)],
+    META: [(990743, 5), (990744, 21)],
+    TISS: [(990745, 20), (990746, 17)],
+    FOSS: [(1364, 5), (990747, 17)],
+    MART: [(990748, 5), (37, 21), (2362, 14)],
+}
+_REMOVE = {5, 20, 13, 14, 15, 17, 21, 22, 23, 25, 26}
+for r in recs:
+    if r[5] not in STYLE:
+        continue
+    items = [list(struct.unpack_from('<3i', r, 8 + 4 * k)) for k in range(0)]
+    ids = list(struct.unpack_from('<12i', r, 8))
+    disp = list(struct.unpack_from('<12i', r, 56))
+    inv = list(struct.unpack_from('<12i', r, 104))
+    keep = [(ids[k], disp[k], inv[k]) for k in range(12) if ids[k] > 0 and inv[k] not in _REMOVE]
+    keep += [(e, _disp[e], it) for e, it in STYLE[r[5]]]
+    keep = keep[:12] + [(-1, -1, -1)] * (12 - len(keep[:12]))
+    struct.pack_into('<12i', r, 8, *[k[0] for k in keep])
+    struct.pack_into('<12i', r, 56, *[k[1] for k in keep])
+    struct.pack_into('<12i', r, 104, *[k[2] for k in keep])
 out = b'WDBC' + struct.pack('<4I', len(recs), nf, rs, len(strings)) + b''.join(bytes(r) for r in recs) + strings
 open(OUT + 'CharStartOutfit.dbc', 'wb').write(out)
 
@@ -120,8 +168,8 @@ extra = []
 nid = max(r[0] for r in srows) + 1
 for r in srows:
     cm = r[3]
-    if cm in (1503, 1535, 0xffffffff):               # toutes les classes
-        r[3] = cm | CBIT[NECRO] | CBIT[SNIPER]
+    if cm in (1503, 1535, 0xffffffff) or (cm & 0x5DF) == 0x5DF:   # toutes les classes
+        r[3] = cm | CBIT[NECRO] | CBIT[SNIPER] | CBIT[TISS] | CBIT[FOSS] | CBIT[MART]
         continue
     if cm & CBIT[9]:
         r[3] |= CBIT[NECRO]
@@ -150,6 +198,26 @@ for r in srows:
         r[3] &= ~CBIT[SNIPER]
 for skill, c in ((900, NECRO), (901, NECRO), (902, NECRO), (903, SNIPER), (904, SNIPER), (905, SNIPER)):
     extra.append([nid, skill, ALLRACES, CBIT[c], 1040, 0, 0, 0]); nid += 1
+# nouvelles classes : armures et armes choisies (lignes « toutes races » existantes complétées, sinon créées)
+NEW_SKILLS = {
+    TISS: [415, 136, 173, 54, 228],                       # tissu ; bâton, dague, masse 1M, baguette
+    FOSS: [415, 414, 136, 229, 173, 54, 160],             # tissu, cuir ; bâton, arme d'hast, dague, masse 1M et 2M
+    MART: [415, 414, 413, 293, 433, 44, 172, 54, 160, 43, 55],   # tissu à plaques, bouclier ; haches, masses, épées 1M et 2M
+}
+for c, skills in NEW_SKILLS.items():
+    for sk in skills:
+        done = False
+        for r in sorted(srows, key=lambda r: r[5]):          # de préférence la ligne sans niveau minimum
+            if r[1] == sk and (r[2] & ALLRACES) == ALLRACES and r[4] == 128:
+                r[3] |= CBIT[c]; done = True; break
+        if not done:
+            src = next(r for r in srows if r[1] == sk)
+            nr = list(src); nr[0] = nid; nid += 1; nr[2] = ALLRACES; nr[3] = CBIT[c]
+            extra.append(nr)
+# onglets de sorts des nouvelles classes (lignes de compétence 906 à 913)
+for skill, c in ((906, TISS), (907, TISS), (908, TISS), (909, TISS), (910, FOSS), (911, FOSS), (912, FOSS), (913, FOSS),
+                 (914, MART), (915, MART), (916, MART), (917, MART)):
+    extra.append([nid, skill, ALLRACES, CBIT[c], 1040, 0, 0, 0]); nid += 1
 data = open(SRV + 'SkillRaceClassInfo.dbc', 'rb').read()
 nrec, nf, rs, ss = struct.unpack('<4I', data[4:20])
 body = b''.join(struct.pack('<%dI' % nf, *[v & 0xffffffff for v in r]) for r in srows)
@@ -171,21 +239,25 @@ def racial(race):
 L = []
 w = L.append
 # stats : classe et race de référence (le document : démoniste, chasseur, chaman)
-STATBASE = {NECRO: (9, HUMAN), SNIPER: (3, DWARF), META: (7, ORC)}
+STATBASE = {NECRO: (9, HUMAN), SNIPER: (3, DWARF), META: (7, ORC), TISS: (5, NE), FOSS: (3, DWARF), MART: (1, HUMAN)}
+# nouvelles classes : maîtrises données à la création (armures, armes ; plaques du Martyr au niveau 40 chez son maître)
+NEWPROF = {TISS: [9078, 227, 1180, 198, 5009, 5019],
+           FOSS: [9078, 9077, 227, 200, 1180, 198, 199],
+           MART: [9078, 9077, 8737, 9116, 107, 196, 197, 198, 199, 201, 202, 3127]}
 w("-- Classes custom : création des personnages (généré)")
 w("SET NAMES utf8mb4;")
-for c in (NECRO, SNIPER):
+for c in (NECRO, SNIPER) + NEWCLS:
     for t in ('playercreateinfo', 'playercreateinfo_spell', 'playercreateinfo_action', 'playercreateinfo_item'):
         w("DELETE FROM %s WHERE class=%d;" % (t, c))
 for t in ('playercreateinfo', 'playercreateinfo_spell', 'playercreateinfo_action', 'playercreateinfo_item'):
     w("DELETE FROM %s WHERE class=%d AND race NOT IN (%d, %d);" % (t, META, NE, TAUREN))
-w("DELETE FROM player_levelstats WHERE class IN (%d, %d, %d);" % (NECRO, SNIPER, META))
-w("DELETE FROM player_classlevelstats WHERE class IN (%d, %d, %d);" % (NECRO, SNIPER, META))
+w("DELETE FROM player_levelstats WHERE class IN (%d, %d, %d, %d, %d, %d);" % (NECRO, SNIPER, META, TISS, FOSS, MART))
+w("DELETE FROM player_classlevelstats WHERE class IN (%d, %d, %d, %d, %d, %d);" % (NECRO, SNIPER, META, TISS, FOSS, MART))
 
 for c, (bc, br, races) in NEW.items():
     sc, sr = STATBASE[c]
     w("INSERT INTO player_classlevelstats (class, level, basehp, basemana) SELECT %d, level, basehp, basemana FROM player_classlevelstats WHERE class=%d;" % (c, sc))
-    classSpells = spells[(br, bc)] - racial(br)
+    classSpells = set(NEWPROF[c]) if c in NEWCLS else spells[(br, bc)] - racial(br)
     for race in races:
         # stats : classe de référence (race de référence) - guerrier (race de référence) + guerrier (race)
         w("INSERT INTO player_levelstats (race, class, level, str, agi, sta, inte, spi) "
@@ -200,6 +272,9 @@ for c, (bc, br, races) in NEW.items():
           "SELECT %d, %d, map, zone, position_x, position_y, position_z, orientation FROM playercreateinfo WHERE race=%d AND class<>%d ORDER BY class LIMIT 1;" % (race, c, race, c))
         for sp in sorted(racial(race) | classSpells):
             w("INSERT IGNORE INTO playercreateinfo_spell (race, class, Spell, Note) VALUES (%d, %d, %d, 'Custom');" % (race, c, sp))
+        if c in NEWCLS:
+            w("INSERT INTO playercreateinfo_action (race, class, button, action, type) VALUES (%d, %d, 0, 6603, 0);" % (race, c))
+            continue                                   # barres et sorts de départ : gen_sorts.py (nouvelles.py)
         w("INSERT INTO playercreateinfo_action (race, class, button, action, type) SELECT %d, %d, button, action, type FROM playercreateinfo_action WHERE race=%d AND class=%d;" % (race, c, br, bc))
         w("INSERT INTO playercreateinfo_item (race, class, itemid, amount) SELECT %d, %d, itemid, amount FROM playercreateinfo_item WHERE race=%d AND class=%d;" % (race, c, br, bc))
 # compétences de départ
@@ -213,6 +288,17 @@ w("DELETE FROM playercreateinfo_skills WHERE classMask=%d AND skill IN (354, 355
 for sk, note in ((900, 'Necro: Invocateur'), (901, 'Necro: Malediction'), (902, 'Necro: Magicien')):
     w("INSERT INTO playercreateinfo_skills (raceMask, classMask, skill, step, note) VALUES (0, %d, %d, 0, '%s');" % (CBIT[NECRO], sk, note))
 w("DELETE FROM playercreateinfo_skills WHERE classMask=%d AND skill IN (50, 51, 163);" % CBIT[SNIPER])
+# nouvelles classes : armures, armes (sauf plaques) et onglets de sorts
+w("DELETE FROM playercreateinfo_skills WHERE classMask IN (%d, %d, %d);" % (CBIT[TISS], CBIT[FOSS], CBIT[MART]))
+_SKN = {906: 'Tisserand: Trame', 907: 'Tisserand: Lien', 908: 'Tisserand: Fil tranchant', 909: 'Tisserand: Moire',
+        910: 'Fossoyeur: Profanateur', 911: 'Fossoyeur: Requiem', 912: 'Fossoyeur: Charnier', 913: 'Fossoyeur: Passeur',
+        914: 'Martyr: Bastion', 915: 'Martyr: Saignee', 916: 'Martyr: Offrande', 917: 'Martyr: Hemophage'}
+for c in NEWCLS:
+    for sk in NEW_SKILLS[c] + [k for k in _SKN if {TISS: 906, FOSS: 910, MART: 914}[c] <= k < {TISS: 906, FOSS: 910, MART: 914}[c] + 4]:
+        if sk == 293:
+            continue
+        w("INSERT INTO playercreateinfo_skills (raceMask, classMask, skill, step, note) VALUES (0, %d, %d, 0, '%s');"
+          % (CBIT[c], sk, _SKN.get(sk, '%s (classe %d)' % (sk, c))))
 for sk, note in ((903, 'Sniper: Tireur'), (904, 'Sniper: Bestial'), (905, 'Sniper: Mecanisme')):
     w("INSERT INTO playercreateinfo_skills (raceMask, classMask, skill, step, note) VALUES (0, %d, %d, 0, '%s');" % (CBIT[SNIPER], sk, note))
 w("UPDATE playercreateinfo_skills SET raceMask=0 WHERE classMask=%d AND raceMask<>0;" % CBIT[META])
@@ -265,6 +351,16 @@ w("CREATE TABLE IF NOT EXISTS custom_backup_playercreateinfo_retire SELECT * FRO
 for t in ('playercreateinfo', 'playercreateinfo_spell', 'playercreateinfo_action', 'playercreateinfo_item'):
     for r_, c_ in REMOVED:
         w("DELETE FROM %s WHERE race=%d AND class=%d;" % (t, r_, c_))
+# objets des tenues de départ des classes custom (copies d'objets de départ, autre apparence)
+w("DELETE FROM item_template WHERE entry BETWEEN 990740 AND 990749;")
+w("DROP TEMPORARY TABLE IF EXISTS tmp_it_cls;")
+w("CREATE TEMPORARY TABLE tmp_it_cls LIKE item_template;")
+for e, base, nom, disp, sub in STYLE_ITEMS:
+    w("INSERT INTO tmp_it_cls SELECT * FROM item_template WHERE entry=%d;" % base)
+    w("UPDATE tmp_it_cls SET entry=%d, name='%s', displayid=%d, RequiredLevel=1, AllowableClass=-1, AllowableRace=-1%s WHERE entry=%d;"
+      % (e, nom.replace("'", "''"), disp, (", subclass=%d" % sub) if sub is not None else "", base))
+w("INSERT INTO item_template SELECT * FROM tmp_it_cls;")
+w("DROP TEMPORARY TABLE tmp_it_cls;")
 w("SELECT 'Classes OK' AS resultat;")
 open('/home/claude/wow/classes/classes.sql', 'w', encoding='utf-8').write("\n".join(L) + "\n")
 print('paires', len(pairs), 'tenues', len(recs), 'compétences ajoutées', len(extra))

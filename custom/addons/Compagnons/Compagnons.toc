@@ -1,0 +1,6 @@
+## Interface: 11200
+## Title: Compagnons
+## Notes: Galerie des compagnons, fiche (équipement, talents) et boutique en jeu. Boutons dans la barre du bas.
+## SavedVariables: Compagnons_Reglages
+Donnees.lua
+Compagnons.lua

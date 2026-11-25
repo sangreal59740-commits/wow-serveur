@@ -376,7 +376,7 @@ namespace Portail
                 using (var c = new MySqlConnection(ConnStr(C.bddRealmd)))
                 {
                     c.Open();
-                    comptes = Convert.ToInt64(new MySqlCommand("SELECT COUNT(*) FROM account WHERE username NOT LIKE 'RNDBOT%'", c).ExecuteScalar());
+                    comptes = Convert.ToInt64(new MySqlCommand("SELECT COUNT(*) FROM account WHERE username NOT LIKE 'RNDBOT%' AND username NOT LIKE 'CPG%'", c).ExecuteScalar());
                     // tous les personnages connectés comptent comme joueurs en ligne
                     joueurs = Convert.ToInt64(new MySqlCommand($"SELECT COUNT(*) FROM `{C.bddPersos}`.characters WHERE online = 1", c).ExecuteScalar());
                 }
@@ -405,7 +405,7 @@ namespace Portail
             var nom = Champ(d, "nom").ToUpperInvariant();
             var mdp = Champ(d, "motdepasse");
             if (!Regex.IsMatch(nom, "^[A-Z0-9]{3,16}$")) return Erreur("Le nom de compte doit faire 3 à 16 caractères : lettres et chiffres, sans accent ni espace.");
-            if (nom.StartsWith("RNDBOT")) return Erreur("Ce nom est réservé.");
+            if (nom.StartsWith("RNDBOT") || nom.StartsWith("CPG")) return Erreur("Ce nom est réservé.");
             if (mdp.Length < 4 || mdp.Length > 16) return Erreur("Le mot de passe doit faire 4 à 16 caractères.");
             if (!Regex.IsMatch(mdp, "^[\\x21-\\x7E]+$")) return Erreur("Le mot de passe ne peut contenir ni espace ni accent.");
             if (TropDEssais("i" + ip, 10, TimeSpan.FromMinutes(10))) return Erreur("Trop d'essais, réessaie dans quelques minutes.");
