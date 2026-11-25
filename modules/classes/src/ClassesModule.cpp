@@ -1353,6 +1353,11 @@ namespace cmangos_module
             arbreTimer = 0;
             ChargerArbres();
         }
+        if (++boutiqueTimer >= 10)
+        {
+            boutiqueTimer = 0;
+            BoutiqueLivrer();
+        }
 
         std::vector<std::pair<Map*, ObjectGuid>> todo;
         {

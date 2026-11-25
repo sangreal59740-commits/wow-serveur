@@ -99,3 +99,8 @@ main { flex: 1; display: flex; min-height: 0; }
 #barre { height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, var(--arcane), var(--or)); box-shadow: 0 0 14px rgba(90, 200, 220, .6); transition: width .3s; }
 .jouer { min-width: 230px; height: 62px; font: 900 22px var(--titre); letter-spacing: .14em; }
 .jouer.annuler { background: transparent; color: var(--doux); border-color: rgba(255, 255, 255, .2); font-size: 15px; box-shadow: none; }
+
+.bq-tete { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding: 14px 18px; border-radius: 10px; background: var(--carte); border: 1px solid var(--bord); }
+.bq-solde { font-family: var(--titre); color: var(--or); }
+.bq-solde b { font-size: 28px; color: var(--or-clair); }
+.bq-grille { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }

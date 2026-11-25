@@ -28,11 +28,17 @@
       <button class="on" data-o="accueil">Accueil</button>
       <button data-o="classes">Classes</button>
       <button data-o="actus">Nouveautés</button>
+      <button data-o="boutique">Boutique</button>
     </nav>
     <div class="panneaux">
       <div class="panneau on" id="p-accueil"><div class="atouts" id="atouts"></div></div>
       <div class="panneau" id="p-classes"><div class="classes" id="listeClasses"></div><div class="quatriemes" id="quatriemes"></div></div>
       <div class="panneau" id="p-actus"><div class="actus" id="listeActus"></div></div>
+      <div class="panneau" id="p-boutique">
+        <div class="bq-tete"><div><span class="doux petit">Ton solde</span><div class="bq-solde"><b id="solde">–</b> Gen</div></div>
+          <button class="btn plein" id="acheterGen">Obtenir des Gen</button></div>
+        <div id="articles"><p class="doux">Connecte-toi pour accéder à la boutique.</p></div>
+      </div>
     </div>
   </section>
 
@@ -57,7 +63,7 @@
       <div id="vueCompte" hidden>
         <div class="compte-tete">
           <div class="avatar" id="avatar">?</div>
-          <div><div class="doux petit">Connecté</div><div class="nom-compte" id="nomCompte"></div></div>
+          <div><div class="doux petit">Connecté</div><div class="nom-compte" id="nomCompte"></div><div class="petit gen" id="soldeCompte"></div></div>
         </div>
         <div class="persos" id="persos"></div>
         <button class="lien" id="deconnexion">Changer de compte</button>
@@ -81,6 +87,7 @@
 </footer>
 
 <script src="/data.js"></script>
+<script src="/boutique-commun.js"></script>
 <script src="/launcher.js"></script>
 </body>
 </html>

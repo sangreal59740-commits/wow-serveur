@@ -33,7 +33,7 @@ jobs:
           cp build/portail/*.exe build/portail/*.dll build/portail/*.config out/ 2>/dev/null || true
           cp build/launcher/Launcher.exe out/
           cp -r portail/site out/site
-          cp portail/lancer_portail.bat out/
+          cp portail/lancer_portail.bat portail/boutique.json out/
           ls -la out
       - name: Publier sur la branche portail-bin
         shell: bash

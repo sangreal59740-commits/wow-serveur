@@ -1,0 +1,32 @@
+{
+  "categories": ["Montures", "Compagnons", "Cosmétiques", "Confort"],
+  "packs": [
+    { "id": "p5", "euros": 5.00, "gen": 500, "badge": "" },
+    { "id": "p10", "euros": 10.00, "gen": 1050, "badge": "+5 %" },
+    { "id": "p20", "euros": 20.00, "gen": 2200, "badge": "+10 %" },
+    { "id": "p50", "euros": 50.00, "gen": 6000, "badge": "+20 %" }
+  ],
+  "articles": [
+    { "id": "m_destrier_mort", "categorie": "Montures", "nom": "Destrier de la mort", "desc": "Le cheval squelette du baron Vaillefendre, rapide et sinistre.", "item": 13335, "prix": 2500, "qualite": "epique" },
+    { "id": "m_tigre_zulien", "categorie": "Montures", "nom": "Tigre zulien rapide", "desc": "Monture rapide rapportée des profondeurs de Zul'Gurub.", "item": 19902, "prix": 2000, "qualite": "epique" },
+    { "id": "m_raptor_razzashi", "categorie": "Montures", "nom": "Raptor razzashi rapide", "desc": "Le raptor écarlate des trolls Gurubashi.", "item": 19872, "prix": 2000, "qualite": "epique" },
+    { "id": "m_qiraji_noir", "categorie": "Montures", "nom": "Cristal qiraji noir", "desc": "Le char d'assaut des insectoïdes d'Ahn'Qiraj, la monture la plus rare d'Azeroth.", "item": 21176, "prix": 4000, "qualite": "legendaire" },
+    { "id": "m_kodo_blanc", "categorie": "Montures", "nom": "Grand kodo blanc", "desc": "Un kodo massif et majestueux.", "item": 18793, "prix": 1200, "qualite": "epique" },
+    { "id": "m_sabre_hiver", "categorie": "Montures", "nom": "Sabre-de-givre du Berceau-de-l'Hiver", "desc": "Le félin blanc des neiges du Berceau-de-l'Hiver.", "item": 13086, "prix": 1500, "qualite": "epique" },
+
+    { "id": "c_bientot", "categorie": "Compagnons", "nom": "Compagnons d'aventure", "desc": "Des compagnons de chaque spécialisation, à invoquer pour t'accompagner en donjon. Bientôt disponibles.", "item": 0, "prix": 0, "qualite": "legendaire", "bientot": true },
+
+    { "id": "x_zergling", "categorie": "Cosmétiques", "nom": "Laisse de zergling", "desc": "Un petit zergling qui te suit partout.", "item": 13582, "prix": 300, "qualite": "rare" },
+    { "id": "x_panda", "categorie": "Cosmétiques", "nom": "Collier de panda", "desc": "Un bébé panda adorable.", "item": 13583, "prix": 300, "qualite": "rare" },
+    { "id": "x_diablo", "categorie": "Cosmétiques", "nom": "Pierre de Diablo", "desc": "Un mini seigneur de la Terreur.", "item": 13584, "prix": 300, "qualite": "rare" },
+    { "id": "x_murloc_bleu", "categorie": "Cosmétiques", "nom": "Œuf de murloc bleu", "desc": "Mrgllgll !", "item": 20371, "prix": 250, "qualite": "rare" },
+    { "id": "x_murloc_rose", "categorie": "Cosmétiques", "nom": "Œuf de murloc rose", "desc": "Mrgllgll, en rose.", "item": 22114, "prix": 250, "qualite": "rare" },
+    { "id": "x_orbe", "categorie": "Cosmétiques", "nom": "Orbe de tromperie", "desc": "Prends l'apparence d'une autre race pendant quelques minutes.", "item": 1973, "prix": 400, "qualite": "epique" },
+    { "id": "x_tabard", "categorie": "Cosmétiques", "nom": "Tabard du vainqueur", "desc": "Le tabard des champions du concours.", "item": 19160, "prix": 200, "qualite": "rare" },
+
+    { "id": "f_sac", "categorie": "Confort", "nom": "Sac sans fond", "desc": "Un sac de 18 emplacements.", "item": 14156, "prix": 600, "qualite": "epique" },
+    { "id": "f_soins", "categorie": "Confort", "nom": "20 potions de soins majeures", "desc": "De quoi tenir un donjon complet.", "item": 13446, "quantite": 20, "prix": 200, "qualite": "commun" },
+    { "id": "f_mana", "categorie": "Confort", "nom": "20 potions de mana majeures", "desc": "Pour ne jamais être à sec.", "item": 13444, "quantite": 20, "prix": 200, "qualite": "commun" },
+    { "id": "f_nom", "categorie": "Confort", "nom": "Changement de nom", "desc": "Renomme ton personnage à sa prochaine connexion.", "type": 1, "item": 0, "prix": 500, "qualite": "rare" }
+  ]
+}

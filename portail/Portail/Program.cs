@@ -36,6 +36,9 @@ namespace Portail
         public int portMangos = 8085;
         public int portRealmd = 3724;
         public int comptesParIp = 3;
+        public string paypalMode = "sandbox";          // sandbox pour les essais, live pour les vrais paiements
+        public string paypalClientId = "";
+        public string paypalSecret = "";
     }
 
     static class Srp6
@@ -91,7 +94,7 @@ namespace Portail
 
     class Fichier { public string chemin; public long taille; public string md5; public long date; }
 
-    static class Program
+    static partial class Program
     {
         static Config C;
         static string Racine;           // dossier de l'exe
@@ -128,6 +131,8 @@ namespace Portail
             try { PreparerBase(); Log("Base de données : OK"); }
             catch (Exception e) { Log("Base de données injoignable (" + e.Message + "). Lance la base SPP (option 2)."); }
             Task.Run(() => CalculerManifeste());
+            ChargerBoutique();
+            new Thread(Console_) { IsBackground = true }.Start();
             Task.Run(() => { while (true) { Thread.Sleep(TimeSpan.FromMinutes(2)); CalculerManifeste(); } });
 
             var l = new HttpListener();
@@ -158,6 +163,7 @@ namespace Portail
                 c.Open();
                 new MySqlCommand("CREATE TABLE IF NOT EXISTS portail_inscription (id INT UNSIGNED NOT NULL, ip VARCHAR(64) NOT NULL, date DATETIME NOT NULL, PRIMARY KEY (id), KEY ip (ip))", c).ExecuteNonQuery();
             }
+            PreparerBoutique();
         }
 
         // ------------------------------------------------------------------ HTTP
@@ -167,13 +173,14 @@ namespace Portail
             try
             {
                 rep.AddHeader("Access-Control-Allow-Origin", "*");
-                rep.AddHeader("Access-Control-Allow-Headers", "Content-Type");
+                rep.AddHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
                 if (req.HttpMethod == "OPTIONS") { rep.StatusCode = 204; rep.Close(); return; }
                 var p = Uri.UnescapeDataString(req.Url.AbsolutePath);
                 if (p == "/api/statut") EnvoyerJson(rep, Statut());
                 else if (p == "/api/manifeste") EnvoyerJson(rep, new { pret = ManifestePret, royaume = C.adresseRoyaume, exe = C.exeJeu, fichiers = Manifeste });
                 else if (p == "/api/inscription" && req.HttpMethod == "POST") EnvoyerJson(rep, Inscription(LireCorps(req), Ip(req)));
                 else if (p == "/api/connexion" && req.HttpMethod == "POST") EnvoyerJson(rep, Connexion(LireCorps(req), Ip(req)));
+                else if (p.StartsWith("/api/") && RouteBoutique(p, req, rep)) { }
                 else if (p.StartsWith("/client/")) EnvoyerClient(req, rep, p.Substring(8));
                 else if (p == "/telecharger" || p == "/telecharger/") EnvoyerLauncher(rep);
                 else EnvoyerSite(rep, p);
@@ -466,7 +473,7 @@ namespace Portail
                             persos.Add(new { nom = r.GetString(0), niveau = Convert.ToInt32(r.GetValue(1)), race = Convert.ToInt32(r.GetValue(2)), classe = Convert.ToInt32(r.GetValue(3)) });
                 }
                 catch { }
-                return new { ok = true, nom, persos };
+                return new { ok = true, nom, persos, jeton = NouvelleSession(id), solde = Solde(id) };
             }
         }
     }

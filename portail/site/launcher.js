@@ -48,32 +48,52 @@
     $('#formConnexion').hidden = b.dataset.t !== 'connexion';
     $('#formInscription').hidden = b.dataset.t !== 'inscription';
   });
+  const B = window.Boutique;
+  let moi = null, catalogue = null;
   function afficherCompte(nom, persos) {
     compte = nom || '';
     $('#vueConnexion').hidden = !!compte;
     $('#vueCompte').hidden = !compte;
-    if (!compte) return;
+    if (!compte) { $('#articles').innerHTML = '<p class="doux">Connecte-toi pour accéder à la boutique.</p>'; $('#solde').textContent = '–'; majBouton(); return; }
     $('#nomCompte').textContent = compte;
     $('#avatar').textContent = compte[0];
+    $('#soldeCompte').textContent = moi ? moi.solde.toLocaleString('fr-FR') + ' Gen' : '';
+    $('#solde').textContent = moi ? moi.solde.toLocaleString('fr-FR') : '–';
     const p = $('#persos');
     if (persos && persos.length)
       p.innerHTML = persos.map(x => `<div class="perso"><b>${esc(x.nom)}</b><span>${esc(CLASSES[x.classe] || '')} niv. ${x.niveau}</span></div>`).join('');
     else if (persos) p.innerHTML = '<div class="doux petit">Aucun personnage pour l\'instant : crée-le dans le jeu.</div>';
     else p.innerHTML = '';
+    if (moi && catalogue) B.rendre($('#articles'), catalogue, { acheter: a => B.confirmer(a, moi, () => chargerMoi()) });
     majBouton();
   }
-  async function api(url, corps) {
-    return (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps) })).json();
+  async function chargerMoi() {
+    if (!B.jeton.lire()) return false;
+    try {
+      const r = await B.api('/api/moi');
+      if (!r.ok) { B.jeton.ecrire(''); return false; }
+      moi = r;
+      afficherCompte(r.nom, r.persos);
+      return true;
+    } catch { return false; }
   }
+  async function connecter(nom, mdp) {
+    const r = await B.api('/api/connexion', { nom, motdepasse: mdp });
+    if (!r.ok) return r;
+    B.jeton.ecrire(r.jeton);
+    envoyer({ cmd: 'compte', nom: r.nom });
+    await chargerMoi();
+    return r;
+  }
+  fetch('/api/boutique').then(r => r.json()).then(c => { catalogue = c; if (moi) afficherCompte(moi.nom, moi.persos); }).catch(() => { });
+  $('#acheterGen').onclick = () => envoyer({ cmd: 'ouvrir', url: location.origin + '/boutique' });
   $('#formConnexion').onsubmit = async e => {
     e.preventDefault();
     const m = $('#cMsg'); m.className = 'msg'; m.textContent = 'Connexion…';
     try {
-      const r = await api('/api/connexion', { nom: $('#cNom').value.trim(), motdepasse: $('#cMdp').value });
+      const r = await connecter($('#cNom').value.trim(), $('#cMdp').value);
       if (!r.ok) { m.className = 'msg err'; m.textContent = r.message; return; }
       m.textContent = ''; $('#cMdp').value = '';
-      envoyer({ cmd: 'compte', nom: r.nom });
-      afficherCompte(r.nom, r.persos);
     } catch { m.className = 'msg err'; m.textContent = 'Le portail ne répond pas.'; }
   };
   $('#formInscription').onsubmit = async e => {
@@ -82,15 +102,20 @@
     if ($('#iMdp').value !== $('#iMdp2').value) { m.className = 'msg err'; m.textContent = 'Les mots de passe ne correspondent pas.'; return; }
     m.textContent = 'Création…';
     try {
-      const r = await api('/api/inscription', { nom: $('#iNom').value.trim(), motdepasse: $('#iMdp').value });
+      const nom = $('#iNom').value.trim(), mdp = $('#iMdp').value;
+      const r = await B.api('/api/inscription', { nom, motdepasse: mdp });
       if (!r.ok) { m.className = 'msg err'; m.textContent = r.message; return; }
       m.textContent = '';
-      envoyer({ cmd: 'compte', nom: r.nom });
-      afficherCompte(r.nom, []);
+      await connecter(nom, mdp);
       statut();
     } catch { m.className = 'msg err'; m.textContent = 'Le portail ne répond pas.'; }
   };
-  $('#deconnexion').onclick = () => { envoyer({ cmd: 'compte', nom: '' }); afficherCompte(''); };
+  $('#deconnexion').onclick = async () => {
+    try { await B.api('/api/deconnexion', {}); } catch { }
+    B.jeton.ecrire(''); moi = null;
+    envoyer({ cmd: 'compte', nom: '' }); afficherCompte('');
+  };
+  chargerMoi();
 
   // ---------------------------------------------------------------- jeu
   let etat = { installe: false, dossier: '' }, aTelecharger = null, occupe = false;
@@ -125,7 +150,7 @@
         const change = etat.dossier && etat.dossier !== m.dossier;
         etat = m;
         $('#dossier').textContent = m.dossier;
-        if (m.compte && !compte) afficherCompte(m.compte, null);
+        if (m.compte && !compte && !B.jeton.lire()) $('#cNom').value = m.compte;
         if (change || aTelecharger === null) { occupe = true; majBouton(); envoyer({ cmd: 'verifier' }); }
         break;
       case 'progres':
