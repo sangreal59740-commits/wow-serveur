@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
-    paths: [ 'overlay/**', 'patches/**', 'modules/**', 'sources.txt', '.github/workflows/**' ]
+    paths: [ 'overlay/**', 'patches/**', 'modules/**', 'sources.txt', '.github/workflows/build.yml' ]
 
 env:
   BUILD_TYPE: RelWithDebInfo
