@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>{{NOM}}</title>
+<link rel="stylesheet" href="/commun.css">
+<link rel="stylesheet" href="/launcher.css">
+</head>
+<body>
+<div class="ciel"></div>
+<div class="braises" id="braises"></div>
+
+<header class="titre" id="titre">
+  <img src="/img/emblem.png" alt=""><span>{{NOM}}</span>
+  <div class="statut" id="statut"><span class="pastille"></span>…</div>
+  <button class="fen" data-a="reduire" title="Réduire"><svg viewBox="0 0 12 12"><path d="M2 6h8" /></svg></button>
+  <button class="fen fermer" data-a="fermer" title="Fermer"><svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" /></svg></button>
+</header>
+
+<main>
+  <section class="gauche">
+    <div class="hero">
+      <p class="sur-titre">WoW Classic 1.12 · serveur privé</p>
+      <h1>{{NOM}}</h1>
+      <p class="accroche" id="accroche"></p>
+    </div>
+    <nav class="onglets" id="onglets">
+      <button class="on" data-o="accueil">Accueil</button>
+      <button data-o="classes">Classes</button>
+      <button data-o="actus">Nouveautés</button>
+    </nav>
+    <div class="panneaux">
+      <div class="panneau on" id="p-accueil"><div class="atouts" id="atouts"></div></div>
+      <div class="panneau" id="p-classes"><div class="classes" id="listeClasses"></div><div class="quatriemes" id="quatriemes"></div></div>
+      <div class="panneau" id="p-actus"><div class="actus" id="listeActus"></div></div>
+    </div>
+  </section>
+
+  <aside class="droite">
+    <div class="carte" id="carteCompte">
+      <div id="vueConnexion">
+        <div class="tabs"><button class="on" data-t="connexion">Connexion</button><button data-t="inscription">Inscription</button></div>
+        <form id="formConnexion" autocomplete="off">
+          <div class="champ"><label>Nom de compte</label><input id="cNom" maxlength="16"></div>
+          <div class="champ"><label>Mot de passe</label><input id="cMdp" type="password" maxlength="16"></div>
+          <div class="msg" id="cMsg"></div>
+          <button class="btn large" type="submit">Se connecter</button>
+        </form>
+        <form id="formInscription" autocomplete="off" hidden>
+          <div class="champ"><label>Nom de compte</label><input id="iNom" maxlength="16" placeholder="Lettres et chiffres"></div>
+          <div class="champ"><label>Mot de passe</label><input id="iMdp" type="password" maxlength="16" placeholder="4 à 16 caractères"></div>
+          <div class="champ"><label>Confirmation</label><input id="iMdp2" type="password" maxlength="16"></div>
+          <div class="msg" id="iMsg"></div>
+          <button class="btn large" type="submit">Créer mon compte</button>
+        </form>
+      </div>
+      <div id="vueCompte" hidden>
+        <div class="compte-tete">
+          <div class="avatar" id="avatar">?</div>
+          <div><div class="doux petit">Connecté</div><div class="nom-compte" id="nomCompte"></div></div>
+        </div>
+        <div class="persos" id="persos"></div>
+        <button class="lien" id="deconnexion">Changer de compte</button>
+      </div>
+    </div>
+    <div class="carte infos">
+      <div><b id="nJoueurs">–</b><span>joueurs en ligne</span></div>
+      <div><b id="nBots">–</b><span>bots dans le monde</span></div>
+    </div>
+    <button class="lien site" id="ouvrirSite">Ouvrir le site ↗</button>
+  </aside>
+</main>
+
+<footer class="bas">
+  <div class="progression">
+    <div class="ligne"><span id="etape">Préparation…</span><span id="detail"></span></div>
+    <div class="jauge"><div id="barre"></div></div>
+    <div class="ligne petit"><span class="doux">Dossier : <span id="dossier"></span></span><button class="lien" id="changerDossier">Changer</button></div>
+  </div>
+  <button class="btn plein jouer" id="action" disabled>…</button>
+</footer>
+
+<script src="/data.js"></script>
+<script src="/launcher.js"></script>
+</body>
+</html>

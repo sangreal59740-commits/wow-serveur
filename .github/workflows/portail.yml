@@ -1,0 +1,46 @@
+name: Portail et launcher
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: [ 'portail/**', '.github/workflows/portail.yml' ]
+
+permissions:
+  contents: write
+
+jobs:
+  portail:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compiler le portail
+        shell: bash
+        run: dotnet build portail/Portail/Portail.csproj -c Release -o build/portail
+      - name: Vérifier le calcul des mots de passe (SRP6)
+        shell: bash
+        run: |
+          v=$(build/portail/Portail.exe --test | tr -d '\r')
+          echo "$v"
+          test "$v" = "6F64E10D7BDF71F4CF4DB314D3BF6E60D1398EA66B6F77C6D789970873791417"
+      - name: Compiler le launcher
+        shell: bash
+        run: dotnet build portail/Launcher/Launcher.csproj -c Release -o build/launcher
+      - name: Assembler
+        shell: bash
+        run: |
+          mkdir -p out
+          cp build/portail/*.exe build/portail/*.dll build/portail/*.config out/ 2>/dev/null || true
+          cp build/launcher/Launcher.exe out/
+          cp -r portail/site out/site
+          cp portail/lancer_portail.bat out/
+          ls -la out
+      - name: Publier sur la branche portail-bin
+        shell: bash
+        run: |
+          cd out
+          git init -q && git checkout -q -b portail-bin
+          git config user.name "build" && git config user.email "build@localhost"
+          echo "${{ github.sha }}" > source.txt
+          git add . && git commit -qm "portail ${{ github.sha }}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" portail-bin

@@ -1,0 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Inter:wght@400;500;600&display=swap');
+:root {
+  --fond: #0a0b10;
+  --fond2: #11131c;
+  --carte: rgba(22, 25, 38, .72);
+  --bord: rgba(217, 179, 108, .22);
+  --or: #d9b36c;
+  --or-clair: #f1d9a4;
+  --arcane: #5ac8dc;
+  --texte: #e8e2d0;
+  --doux: #9aa0b4;
+  --rouge: #e06464;
+  --vert: #6fd08c;
+  --titre: 'Cinzel', Georgia, serif;
+  --corps: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--fond); color: var(--texte); font-family: var(--corps); }
+a { color: var(--or); text-decoration: none; }
+h1, h2, h3 { font-family: var(--titre); font-weight: 700; letter-spacing: .04em; margin: 0; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 14px 28px; border-radius: 6px; cursor: pointer; font: 600 15px var(--corps);
+  letter-spacing: .06em; text-transform: uppercase; border: 1px solid var(--or); color: var(--or);
+  background: transparent; transition: background .2s, box-shadow .2s, transform .1s, color .2s;
+}
+.btn:hover { background: rgba(217, 179, 108, .12); box-shadow: 0 0 24px rgba(217, 179, 108, .25); }
+.btn:active { transform: translateY(1px); }
+.btn.plein { background: linear-gradient(180deg, #e9c983, #b98d45); color: #1a1408; border-color: #f1d9a4; box-shadow: 0 6px 24px rgba(217, 179, 108, .25), inset 0 1px 0 rgba(255, 255, 255, .4); }
+.btn.plein:hover { box-shadow: 0 8px 34px rgba(217, 179, 108, .45), inset 0 1px 0 rgba(255, 255, 255, .5); }
+.btn:disabled { opacity: .45; cursor: default; box-shadow: none; }
+
+.champ { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.champ label { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--doux); }
+.champ input {
+  padding: 12px 14px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, .1); background: rgba(0, 0, 0, .35);
+  color: var(--texte); font: 15px var(--corps); outline: none; transition: border-color .2s, box-shadow .2s;
+}
+.champ input:focus { border-color: var(--or); box-shadow: 0 0 0 3px rgba(217, 179, 108, .15); }
+.msg { min-height: 20px; font-size: 14px; margin: 4px 0 12px; }
+.msg.ok { color: var(--vert); }
+.msg.err { color: var(--rouge); }
+
+.pastille { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--doux); margin-right: 8px; vertical-align: middle; }
+.pastille.on { background: var(--vert); box-shadow: 0 0 10px var(--vert); animation: pouls 2s infinite; }
+.pastille.off { background: var(--rouge); }
+@keyframes pouls { 50% { box-shadow: 0 0 2px var(--vert); } }
+
+/* braises qui montent */
+.braises { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.braises i {
+  position: absolute; bottom: -10px; width: 3px; height: 3px; border-radius: 50%;
+  background: var(--or-clair); box-shadow: 0 0 8px 2px rgba(241, 217, 164, .6); opacity: 0;
+  animation: monte linear infinite;
+}
+.braises i.bleu { background: #bdf1ff; box-shadow: 0 0 8px 2px rgba(90, 200, 220, .6); }
+@keyframes monte {
+  0% { transform: translate(0, 0); opacity: 0; }
+  10% { opacity: .9; }
+  100% { transform: translate(var(--dx, 30px), -110vh); opacity: 0; }
+}
