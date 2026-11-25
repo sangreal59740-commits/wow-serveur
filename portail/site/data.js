@@ -1,11 +1,11 @@
 // Contenu partagé par le site et le launcher
 window.DATA = {
   accroche: "WoW Classic 1.12, réinventé entre amis",
-  intro: "Un royaume privé construit pièce par pièce : de nouvelles classes, une quatrième spécialisation pour chacune, un monde peuplé de bots qui jouent comme des joueurs, et des addons faits maison. Tout le contenu d'origine est là, avec ce qu'on a toujours rêvé d'y ajouter.",
+  intro: "Un royaume privé construit pièce par pièce : de nouvelles classes, une quatrième spécialisation pour chacune, un monde toujours peuplé d'aventuriers, et des addons faits maison. Tout le contenu d'origine est là, avec ce qu'on a toujours rêvé d'y ajouter.",
   atouts: [
     { titre: "6 nouvelles classes", texte: "Nécromancien, Sniper, Métamorphe, Tisserand de vie, Fossoyeur et Martyr, avec leurs sorts, leurs arbres de talents et leurs maîtres de classe.", icone: "classes" },
     { titre: "4 spécialisations", texte: "Chaque classe gagne une quatrième voie : Berserker, Soleil, Fantôme, Ruines, Transfuge… Tank, soin, DPS ou soutien.", icone: "specs" },
-    { titre: "Un monde vivant", texte: "Des centaines de bots parcourent Azeroth, font leurs quêtes et leurs donjons. Invoque tes compagnons et garde leur progression.", icone: "bots" },
+    { titre: "Un monde vivant", texte: "Azeroth grouille d'aventuriers qui quêtent, commercent et écument les donjons. Tu ne seras jamais seul pour former un groupe.", icone: "bots" },
     { titre: "Addons maison", texte: "Damage meter, guide de quêtes, flèche de suivi, hôtel des ventes amélioré, chronos de DoT : livrés et à jour automatiquement.", icone: "addons" }
   ],
   classes: [

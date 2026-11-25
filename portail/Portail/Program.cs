@@ -363,24 +363,19 @@ namespace Portail
         static object Statut()
         {
             bool monde = PortOuvert(C.portMangos), connexion = PortOuvert(C.portRealmd);
-            long joueurs = 0, bots = 0, comptes = 0;
+            long joueurs = 0, comptes = 0;
             try
             {
                 using (var c = new MySqlConnection(ConnStr(C.bddRealmd)))
                 {
                     c.Open();
                     comptes = Convert.ToInt64(new MySqlCommand("SELECT COUNT(*) FROM account WHERE username NOT LIKE 'RNDBOT%'", c).ExecuteScalar());
-                    var q = $"SELECT SUM(a.username NOT LIKE 'RNDBOT%'), SUM(a.username LIKE 'RNDBOT%') FROM `{C.bddPersos}`.characters ch JOIN account a ON a.id = ch.account WHERE ch.online = 1";
-                    using (var r = new MySqlCommand(q, c).ExecuteReader())
-                        if (r.Read())
-                        {
-                            joueurs = r.IsDBNull(0) ? 0 : Convert.ToInt64(r.GetValue(0));
-                            bots = r.IsDBNull(1) ? 0 : Convert.ToInt64(r.GetValue(1));
-                        }
+                    // tous les personnages connectés comptent comme joueurs en ligne
+                    joueurs = Convert.ToInt64(new MySqlCommand($"SELECT COUNT(*) FROM `{C.bddPersos}`.characters WHERE online = 1", c).ExecuteScalar());
                 }
             }
             catch { }
-            return new { nom = C.nom, enLigne = monde && connexion, monde, connexion, joueurs, bots, comptes, royaume = C.adresseRoyaume, jeuPret = ManifestePret };
+            return new { nom = C.nom, enLigne = monde && connexion, monde, connexion, joueurs, comptes, royaume = C.adresseRoyaume, jeuPret = ManifestePret };
         }
 
         // ------------------------------------------------------------------ comptes

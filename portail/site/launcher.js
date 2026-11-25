@@ -36,7 +36,7 @@
     try {
       const s = await (await fetch('/api/statut')).json();
       $('#statut').innerHTML = `<span class="pastille ${s.enLigne ? 'on' : 'off'}"></span>${s.enLigne ? 'Royaume en ligne' : 'Royaume hors ligne'}`;
-      $('#nJoueurs').textContent = s.joueurs; $('#nBots').textContent = s.bots;
+      $('#nJoueurs').textContent = s.joueurs; $('#nComptes').textContent = s.comptes;
     } catch { $('#statut').innerHTML = '<span class="pastille off"></span>Portail injoignable'; }
   }
   statut(); setInterval(statut, 30000);
