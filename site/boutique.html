@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Boutique · {{NOM}}</title>
+<link rel="icon" href="/img/favicon.png">
+<link rel="stylesheet" href="/commun.css">
+<link rel="stylesheet" href="/site.css">
+<style>
+  .page { padding: 120px 32px 80px; max-width: 1240px; margin: 0 auto; }
+  .bandeau { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; justify-content: space-between; background: var(--carte); border: 1px solid var(--bord); border-radius: 12px; padding: 20px 24px; margin-bottom: 40px; }
+  .solde b { font: 900 34px var(--titre); color: var(--or-clair); }
+  .solde span { color: var(--doux); margin-left: 6px; }
+  .login { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .login .champ { margin: 0; }
+  .login .msg { width: 100%; margin: 0; }
+  h2.sect { font-size: 26px; margin: 0 0 18px; display: flex; align-items: center; gap: 12px; }
+  h2.sect small { font: 14px var(--corps); color: var(--doux); letter-spacing: 0; }
+  #paypal { max-width: 420px; margin: 20px auto 0; min-height: 10px; }
+  .achat-gen { margin-bottom: 56px; }
+  .note { color: var(--doux); font-size: 13px; text-align: center; margin-top: 12px; }
+  table.hist { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .hist td { padding: 10px 8px; border-bottom: 1px solid rgba(255, 255, 255, .06); color: var(--doux); }
+  .hist td.plus { color: var(--vert); } .hist td.moins { color: var(--rouge); }
+</style>
+</head>
+<body>
+<header class="barre">
+  <a class="marque" href="/"><img src="/img/emblem.png" alt=""><span>{{NOM}}</span></a>
+  <nav><a href="/#projet">Le projet</a><a href="/#classes">Classes</a><a href="/boutique" style="color:var(--or)">Boutique</a><a href="/#jouer">Jouer</a></nav>
+  <div class="statut" id="statut"><span class="pastille"></span>…</div>
+</header>
+
+<div class="page">
+  <div class="entete"><span class="rune">✦</span><h2>Boutique</h2><p>Montures, compagnons, cosmétiques et confort, payés en <b class="gen">Gen</b>. Chaque achat soutient le serveur et arrive par courrier dans le jeu.</p></div>
+
+  <div class="bandeau" id="bandeau"></div>
+
+  <section class="achat-gen" id="achatGen">
+    <h2 class="sect">Obtenir des Gen <small>PayPal ou carte bancaire</small></h2>
+    <div class="bq-packs" id="packs"></div>
+    <div id="paypal"></div>
+    <p class="note" id="notePaiement">Choisis un pack pour afficher le paiement.</p>
+  </section>
+
+  <section>
+    <h2 class="sect">Articles</h2>
+    <div id="articles"></div>
+  </section>
+
+  <section id="blocHist" hidden style="margin-top:56px">
+    <h2 class="sect">Historique</h2>
+    <table class="hist" id="hist"></table>
+  </section>
+</div>
+
+<footer>
+  <img src="/img/emblem.png" alt=""><span>{{NOM}} · les Gen financent l'hébergement et le développement du serveur.</span>
+</footer>
+
+<script src="/data.js"></script>
+<script src="/boutique-commun.js"></script>
+<script>
+(function () {
+  const B = window.Boutique, $ = s => document.querySelector(s), esc = B.esc;
+  let cat = null, moi = null, packChoisi = null, paypalCharge = false;
+
+  fetch('/api/statut').then(r => r.json()).then(s => $('#statut').innerHTML = `<span class="pastille ${s.enLigne ? 'on' : 'off'}"></span>${s.enLigne ? 'Royaume en ligne' : 'Royaume hors ligne'}`).catch(() => { });
+
+  function bandeau() {
+    if (moi) {
+      $('#bandeau').innerHTML = `<div><div class="doux">Connecté en tant que <b style="color:var(--texte)">${esc(moi.nom)}</b></div>
+        <div class="solde"><b>${moi.solde.toLocaleString('fr-FR')}</b><span>Gen</span></div></div>
+        <button class="btn" id="deco">Se déconnecter</button>`;
+      $('#deco').onclick = async () => { await B.api('/api/deconnexion', {}); B.jeton.ecrire(''); moi = null; bandeau(); };
+      const h = moi.historique || [];
+      $('#blocHist').hidden = !h.length;
+      $('#hist').innerHTML = h.map(x => `<tr><td>${esc(x.date)}</td><td>${esc(x.detail)}</td><td class="${x.gen >= 0 ? 'plus' : 'moins'}">${x.gen >= 0 ? '+' : ''}${x.gen} Gen</td></tr>`).join('');
+    } else {
+      $('#blocHist').hidden = true;
+      $('#bandeau').innerHTML = `<div><b style="font-family:var(--titre);font-size:18px">Connecte-toi</b><div class="doux">pour voir ton solde et acheter.</div></div>
+        <form class="login" id="login"><div class="champ"><label>Compte</label><input id="lNom" maxlength="16"></div>
+        <div class="champ"><label>Mot de passe</label><input id="lMdp" type="password" maxlength="16"></div>
+        <button class="btn plein">Connexion</button><div class="msg" id="lMsg"></div></form>`;
+      $('#login').onsubmit = async e => {
+        e.preventDefault();
+        const r = await B.api('/api/connexion', { nom: $('#lNom').value.trim(), motdepasse: $('#lMdp').value });
+        if (!r.ok) { $('#lMsg').className = 'msg err'; $('#lMsg').textContent = r.message; return; }
+        B.jeton.ecrire(r.jeton); await charger();
+      };
+    }
+  }
+
+  async function charger() {
+    if (B.jeton.lire()) {
+      const r = await B.api('/api/moi');
+      moi = r.ok ? r : null;
+      if (!r.ok) B.jeton.ecrire('');
+    }
+    bandeau();
+  }
+
+  function packs() {
+    $('#packs').innerHTML = cat.packs.map(p => `<div class="bq-pack" data-p="${esc(p.id)}">${p.badge ? `<div class="badge">${esc(p.badge)}</div>` : ''}<b>${p.gen.toLocaleString('fr-FR')}</b><span>Gen</span><em>${p.euros.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}</em></div>`).join('');
+    document.querySelectorAll('.bq-pack').forEach(el => el.onclick = () => {
+      document.querySelectorAll('.bq-pack').forEach(x => x.classList.toggle('on', x === el));
+      packChoisi = el.dataset.p;
+      paiement();
+    });
+  }
+
+  function paiement() {
+    const note = $('#notePaiement');
+    if (!cat.paypal) { note.textContent = 'Le paiement en ligne ouvre bientôt.'; return; }
+    if (!moi) { note.textContent = 'Connecte-toi en haut de la page pour acheter des Gen.'; return; }
+    note.textContent = 'Paiement sécurisé par PayPal. Les Gen arrivent aussitôt sur ton compte.';
+    const go = () => {
+      $('#paypal').innerHTML = '';
+      paypal.Buttons({
+        style: { color: 'gold', shape: 'rect', label: 'pay' },
+        createOrder: async () => {
+          const r = await B.api('/api/paypal/commande', { pack: packChoisi });
+          if (!r.ok) { note.textContent = r.message; throw new Error(r.message); }
+          return r.id;
+        },
+        onApprove: async data => {
+          note.textContent = 'Validation du paiement…';
+          const r = await B.api('/api/paypal/capture', { commande: data.orderID });
+          note.textContent = r.message;
+          if (r.ok) await charger();
+        },
+        onError: () => { note.textContent = 'Le paiement a échoué, rien n\'a été débité.'; }
+      }).render('#paypal');
+    };
+    if (window.paypal) return go();
+    if (paypalCharge) return;
+    paypalCharge = true;
+    const s = document.createElement('script');
+    s.src = 'https://www.paypal.com/sdk/js?client-id=' + encodeURIComponent(cat.paypal) + '&currency=EUR&intent=capture&locale=fr_FR';
+    s.onload = go;
+    document.head.appendChild(s);
+  }
+
+  (async () => {
+    cat = await (await fetch('/api/boutique')).json();
+    await charger();
+    packs();
+    B.rendre($('#articles'), cat, {
+      acheter: a => {
+        if (!moi) { window.scrollTo({ top: 0, behavior: 'smooth' }); $('#lNom') && $('#lNom').focus(); return; }
+        B.confirmer(a, moi, async () => { await charger(); });
+      }
+    });
+  })();
+})();
+</script>
+</body>
+</html>
