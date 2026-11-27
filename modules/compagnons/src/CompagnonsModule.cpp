@@ -185,6 +185,18 @@ namespace cmangos_module
         }
     }
 
+    // équilibrage (27/11) : dégâts et soins réduits selon la rareté, les tanks tapent encore moins (menace compensée)
+    static const int32 MALUS[5] = { 45, 30, 20, 10, 0 };
+    static const int32 MALUS_TANK[5] = { 65, 50, 40, 30, 20 };
+    static int32 PuissanceDegats(Compagnon const* d)
+    {
+        return PUISSANCE[d->rarete] * (100 - (d->role == 0 ? MALUS_TANK : MALUS)[d->rarete]) / 100;
+    }
+    static int32 PuissanceSoins(Compagnon const* d)
+    {
+        return PUISSANCE[d->rarete] * (100 - MALUS[d->rarete]) / 100;
+    }
+
     // stuff de base : bleu 60 (avec le +50 % des objets du serveur) x ratio de la rareté x niveau
     static void Stuff(Compagnon const* d, uint32 L, bool bouclier, int32* vals)
     {
@@ -1012,8 +1024,10 @@ namespace cmangos_module
         uint32 L = bot->GetLevel();
         int32 vals[CANAUX_N] = {};
         int32 pets[CANAUX_N] = {};
-        vals[CA_DEGATS] += PUISSANCE[d->rarete] - 100;
-        vals[CA_SOINS] += PUISSANCE[d->rarete] - 100;
+        vals[CA_DEGATS] += PuissanceDegats(d) - 100;
+        vals[CA_SOINS] += PuissanceSoins(d) - 100;
+        if (d->role == 0 && PuissanceDegats(d) > 0)     // tank : même menace qu'avant la baisse de ses dégâts
+            vals[CA_MENACE] += int32(std::lround(100.0f * PUISSANCE[d->rarete] / PuissanceDegats(d))) - 100;
         bool bouclier = false;
         for (uint32 i = 0; i < d->nArmes; ++i)
             if (d->armesGenre[i] == 11)
@@ -1086,7 +1100,7 @@ namespace cmangos_module
             for (uint32 k = 0; k < CANAUX_N; ++k)
                 if (k == CA_DEGATS || k == CA_CRIT || k == CA_PV || k == CA_ARMURE_PCT || k == CA_HATE || k == CA_SUBIS || k == CA_MENACE ||
                     k == CA_ESQUIVE || k == CA_PARADE)
-                    SetSort(u, CANAL_SORT[k], pets[k] + (k == CA_DEGATS ? PUISSANCE[d->rarete] - 100 : 0));
+                    SetSort(u, CANAL_SORT[k], pets[k] + (k == CA_DEGATS ? PuissanceDegats(d) - 100 : 0));
     }
 
     void CompagnonsModule::Groupe(Player* bot, Player* maitre, CpgActif& a)
