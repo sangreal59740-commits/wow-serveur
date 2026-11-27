@@ -2,6 +2,7 @@
 #include "CompagnonsData.h"
 
 #include "Accounts/AccountMgr.h"
+#include "Auth/SRP6.h"
 #include "Chat/Chat.h"
 #include "Database/DatabaseEnv.h"
 #include "Entities/Creature.h"
@@ -26,6 +27,8 @@
 #include "playerbot/playerbot.h"
 #include "playerbot/PlayerbotAI.h"
 #include "playerbot/PlayerbotMgr.h"
+
+#include <openssl/crypto.h>
 
 #include <algorithm>
 #include <cmath>
@@ -345,9 +348,22 @@ namespace cmangos_module
         uint32 id = sAccountMgr.GetId(nom);
         if (!id)
         {
+            // création immédiate : AccountMgr::CreateAccount passe par une requête différée, le compte n'existerait pas encore ici
             std::string mdp = std::to_string(urand(100000, 999999)) + std::to_string(urand(100000, 999999));
-            sAccountMgr.CreateAccount(nom, mdp);
+            AccountMgr::normalizeString(nom);
+            AccountMgr::normalizeString(mdp);
+            SRP6 srp;
+            srp.CalculateVerifier(sAccountMgr.CalculateShaPassHash(nom, mdp));
+            const char* s_hex = srp.GetSalt().AsHexStr();
+            const char* v_hex = srp.GetVerifier().AsHexStr();
+            LoginDatabase.DirectPExecute("INSERT INTO account (username, v, s, joindate) VALUES ('%s', '%s', '%s', NOW())", nom.c_str(), v_hex, s_hex);
+            OPENSSL_free((void*)s_hex);
+            OPENSSL_free((void*)v_hex);
+            LoginDatabase.DirectExecute("INSERT INTO realmcharacters (realmid, acctid, numchars) SELECT realmlist.id, account.id, 0 FROM realmlist, account "
+                                        "LEFT JOIN realmcharacters ON acctid = account.id WHERE acctid IS NULL");
             id = sAccountMgr.GetId(nom);
+            if (!id)
+                sLog.outError("Compagnons : impossible de créer le compte %s", nom.c_str());
         }
         return id;
     }

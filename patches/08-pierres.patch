@@ -1,0 +1,20 @@
+diff --git a/src/game/Spells/SpellHandler.cpp b/src/game/Spells/SpellHandler.cpp
+index 8c44c481e..192ead22d 100644
+--- a/src/game/Spells/SpellHandler.cpp
++++ b/src/game/Spells/SpellHandler.cpp
+@@ -147,6 +147,15 @@ void WorldSession::HandleUseItemOpcode(WorldPacket& recvPacket)
+         return;
+     }
+ 
++#ifdef ENABLE_MODULES
++    // objets gérés par un module (pierres des compagnons) : le sort de l'objet n'est pas lancé
++    if (sModuleMgr.OnUseItem(pUser, pItem))
++    {
++        pUser->SendEquipError(EQUIP_ERR_NONE, pItem, nullptr);   // libère l'objet grisé côté client
++        return;
++    }
++#endif
++
+     // Note: If script stop casting it must send appropriate data to client to prevent stuck item in gray state.
+     if (!sScriptDevAIMgr.OnItemUse(pUser, pItem, targets))
+     {
