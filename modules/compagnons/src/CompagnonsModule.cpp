@@ -286,6 +286,7 @@ namespace cmangos_module
             { "liste", std::bind(&CompagnonsModule::HandleListe, this, std::placeholders::_1, std::placeholders::_2), SEC_PLAYER },
             { "fiche", std::bind(&CompagnonsModule::HandleFiche, this, std::placeholders::_1, std::placeholders::_2), SEC_PLAYER },
             { "invoquer", std::bind(&CompagnonsModule::HandleInvoquer, this, std::placeholders::_1, std::placeholders::_2), SEC_PLAYER },
+            { "renvoyer", std::bind(&CompagnonsModule::HandleRenvoyer, this, std::placeholders::_1, std::placeholders::_2), SEC_PLAYER },
             { "talent", std::bind(&CompagnonsModule::HandleTalent, this, std::placeholders::_1, std::placeholders::_2), SEC_PLAYER },
             { "reset", std::bind(&CompagnonsModule::HandleReset, this, std::placeholders::_1, std::placeholders::_2), SEC_PLAYER },
             { "equiper", std::bind(&CompagnonsModule::HandleEquiper, this, std::placeholders::_1, std::placeholders::_2), SEC_PLAYER },
@@ -700,9 +701,16 @@ namespace cmangos_module
             }
         }
 
+        std::vector<std::pair<uint32, uint32>> renvois;
         for (auto it = actifs.begin(); it != actifs.end();)
         {
             CpgActif& a = *it;
+            if (a.renvoi)
+            {
+                renvois.emplace_back(a.proprio, a.cpg);
+                ++it;
+                continue;
+            }
             Player* maitre = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, a.proprio));
             if (!maitre || !maitre->IsInWorld() || !maitre->GetPlayerbotMgr())
             {
@@ -759,6 +767,8 @@ namespace cmangos_module
             a.pret = true;
             ++it;
         }
+        for (auto const& r : renvois)
+            Renvoyer(r.first, r.second, true);
     }
 
     // ------------------------------------------------------------------ entretien du compagnon
@@ -779,6 +789,7 @@ namespace cmangos_module
         {
             Sorts(bot, a.cpg);
             Equipement(bot, a.cpg);
+            bot->UpdateSkillsForLevel(true);     // armes et défense toujours au maximum du niveau
             if (!a.pret)
             {
                 if (PlayerbotAI* ai = bot->GetPlayerbotAI())
@@ -804,7 +815,7 @@ namespace cmangos_module
         if (bot->GetTeam() != maitre->GetTeam() && bot->GetUInt32Value(UNIT_FIELD_FACTIONTEMPLATE) != maitre->GetUInt32Value(UNIT_FIELD_FACTIONTEMPLATE))
             bot->setFaction(maitre->GetUInt32Value(UNIT_FIELD_FACTIONTEMPLATE));
         Auras(bot, maitre, *p, a);
-        Groupe(bot, maitre);
+        Groupe(bot, maitre, a);
         // loin du joueur (autre carte, plus de 80 m) : téléporté à côté de lui
         if (bot->IsAlive() && (bot->GetMapId() != maitre->GetMapId() || (!bot->IsInCombat() && bot->GetDistance(maitre) > 80.0f)))
             bot->TeleportTo(maitre->GetMapId(), maitre->GetPositionX(), maitre->GetPositionY(), maitre->GetPositionZ(), maitre->GetOrientation());
@@ -1078,11 +1089,20 @@ namespace cmangos_module
                     SetSort(u, CANAL_SORT[k], pets[k] + (k == CA_DEGATS ? PUISSANCE[d->rarete] - 100 : 0));
     }
 
-    void CompagnonsModule::Groupe(Player* bot, Player* maitre)
+    void CompagnonsModule::Groupe(Player* bot, Player* maitre, CpgActif& a)
     {
         Group* g = maitre->GetGroup();
         if (g && g->IsMember(bot->GetObjectGuid()))
+        {
+            a.groupe = true;
             return;
+        }
+        if (a.groupe)
+        {
+            // le joueur l'a exclu du groupe (ou a quitté le groupe) : il rentre chez lui
+            a.renvoi = true;
+            return;
+        }
         if (!g)
         {
             g = new Group();
@@ -1098,7 +1118,8 @@ namespace cmangos_module
             bot->RemoveFromGroup();
         if (g->IsFull())
             return;
-        g->AddMember(bot->GetObjectGuid(), NomAffiche(bot->GetGUIDLow()));
+        if (g->AddMember(bot->GetObjectGuid(), NomAffiche(bot->GetGUIDLow())))
+            a.groupe = true;
     }
 
     // ultime : lancé par le module selon le rôle (recharge 3 min)
@@ -1529,6 +1550,28 @@ namespace cmangos_module
             return true;
         }
         Invoquer(p, uint32(atoi(args.c_str())));
+        return true;
+    }
+
+    // .cpg renvoyer : tous les compagnons présents ; .cpg renvoyer <n> : celui-là
+    bool CompagnonsModule::HandleRenvoyer(WorldSession* session, const std::string& args)
+    {
+        std::lock_guard<std::recursive_mutex> l(lock);
+        Player* p = session->GetPlayer();
+        if (!p)
+            return true;
+        uint32 voulu = uint32(atoi(args.c_str()));
+        std::vector<uint32> liste;
+        for (auto const& a : actifs)
+            if (a.proprio == p->GetGUIDLow() && (!voulu || a.cpg == voulu))
+                liste.push_back(a.cpg);
+        if (liste.empty())
+        {
+            Dire(p, voulu ? "Ce compagnon n'est pas avec toi." : "Aucun compagnon avec toi.");
+            return true;
+        }
+        for (uint32 c : liste)
+            Renvoyer(p->GetGUIDLow(), c, true);
         return true;
     }
 

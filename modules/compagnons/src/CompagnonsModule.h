@@ -44,6 +44,8 @@ namespace cmangos_module
         uint32 attente = 0;          // ms avant la connexion
         bool connecte = false;       // connexion demandée
         bool pret = false;           // préparé une fois connecté
+        bool groupe = false;         // a déjà été mis dans le groupe du joueur
+        bool renvoi = false;         // sorti du groupe par le joueur : renvoyé
         uint32 essais = 0;
         uint32 entretien = 0;        // ms depuis le dernier entretien complet
         uint32 niveau = 0;           // niveau au dernier entretien
@@ -82,6 +84,7 @@ namespace cmangos_module
         bool HandleListe(WorldSession* session, const std::string& args);
         bool HandleFiche(WorldSession* session, const std::string& args);
         bool HandleInvoquer(WorldSession* session, const std::string& args);
+        bool HandleRenvoyer(WorldSession* session, const std::string& args);
         bool HandleTalent(WorldSession* session, const std::string& args);
         bool HandleReset(WorldSession* session, const std::string& args);
         bool HandleEquiper(WorldSession* session, const std::string& args);
@@ -103,7 +106,7 @@ namespace cmangos_module
         void Sorts(Player* bot, uint32 cpg);
         void Equipement(Player* bot, uint32 cpg);
         void Auras(Player* bot, Player* proprio, CpgPossession const& p, CpgActif& a);
-        void Groupe(Player* bot, Player* proprio);
+        void Groupe(Player* bot, Player* proprio, CpgActif& a);
         void Ultime(Player* bot, Player* proprio, CpgActif& a);
         std::vector<uint32> Rangs(CpgPossession const& p, uint32 niveau) const;
         void EnvoyerFiche(Player* proprio, uint32 cpg);
