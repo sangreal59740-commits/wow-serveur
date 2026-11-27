@@ -1,0 +1,83 @@
+--- a/src/game/Groups/Group.h
++++ b/src/game/Groups/Group.h
+@@ -38,6 +38,7 @@
+ struct LFGGroupQueueInfo;
+ 
+ #define MAX_GROUP_SIZE 5
++#define MAX_PARTY_SIZE 6                                    // [serveur] groupe de 6 (le jeu n'affiche que 4 coéquipiers)
+ #define MAX_RAID_SIZE 40
+ #define MAX_RAID_SUBGROUPS (MAX_RAID_SIZE / MAX_GROUP_SIZE)
+ #define TARGET_ICON_COUNT 8
+@@ -157,8 +158,9 @@
+ 
+         // properties accessories
+         uint32 GetId() const { return m_Id; }
+-        bool IsFull() const { return (m_groupFlags == GROUP_FLAG_NORMAL) ? (m_memberSlots.size() >= MAX_GROUP_SIZE) : (m_memberSlots.size() >= MAX_RAID_SIZE); }
++        bool IsFull() const { return (m_groupFlags == GROUP_FLAG_NORMAL) ? (m_memberSlots.size() >= MAX_PARTY_SIZE) : (m_memberSlots.size() >= MAX_RAID_SIZE); }
+         bool IsRaidGroup() const { return m_groupFlags == GROUP_FLAG_RAID; }
++        ObjectGuid GetHiddenMemberFor(ObjectGuid receiver) const;   // [serveur] membre que le jeu de receiver ne peut pas afficher
+         bool IsBattleGroup() const { return m_bgGroup != nullptr; }
+         bool IsCreated()   const { return GetMembersCount() > 0; }
+         ObjectGuid const& GetLeaderGuid() const { return m_leaderGuid; }
+--- a/src/game/Groups/Group.cpp
++++ b/src/game/Groups/Group.cpp
+@@ -215,6 +215,15 @@
+ 
+     _initRaidSubGroupsCounter();
+ 
++    // [serveur] groupe de 6 : le 6e passe dans le sous-groupe 2
++    for (auto itr = m_memberSlots.rbegin(); itr != m_memberSlots.rend() && m_subGroupsCounts[0] > MAX_GROUP_SIZE; ++itr)
++    {
++        if (itr->group != 0)
++            continue;
++        SubGroupCounterDecrease(0);
++        _setMembersGroup(itr->guid, 1);
++    }
++
+     if (!IsBattleGroup())
+         CharacterDatabase.PExecute("UPDATE `groups` SET isRaid = 1 WHERE groupId='%u'", m_Id);
+     SendUpdate();
+@@ -705,10 +714,12 @@
+         data << (uint8)m_groupFlags;                         // group type
+         data << (uint8)(citr->group | (citr->assistant ? 0x80 : 0)); // own flags (groupid | (assistant?0x80:0))
+ 
+-        data << uint32(GetMembersCount() - 1);
++        // [serveur] groupe de 6 : le jeu n'affiche que 4 coéquipiers, le membre en trop est affiché par l'addon
++        ObjectGuid cache = GetHiddenMemberFor(citr->guid);
++        data << uint32(GetMembersCount() - 1 - (cache ? 1 : 0));
+         for (member_citerator citr2 = m_memberSlots.begin(); citr2 != m_memberSlots.end(); ++citr2)
+         {
+-            if (citr->guid == citr2->guid)
++            if (citr->guid == citr2->guid || citr2->guid == cache)
+                 continue;
+             data << citr2->name;
+             data << citr2->guid;
+@@ -730,6 +741,28 @@
+     }
+ }
+ 
++// [serveur] groupe de 6 : membre que le jeu de receiver ne peut pas afficher (un compagnon de préférence, le dernier arrivé sinon).
++// Les compagnons n'ont pas de jeu : ils reçoivent la liste complète.
++ObjectGuid Group::GetHiddenMemberFor(ObjectGuid receiver) const
++{
++    if (m_groupFlags != GROUP_FLAG_NORMAL || m_memberSlots.size() <= MAX_GROUP_SIZE)
++        return ObjectGuid();
++    Player* moi = sObjectMgr.GetPlayer(receiver);
++    if (moi && gCpgEstCompagnon && gCpgEstCompagnon(moi))
++        return ObjectGuid();
++    ObjectGuid compagnon, dernier;
++    for (member_citerator itr = m_memberSlots.begin(); itr != m_memberSlots.end(); ++itr)
++    {
++        if (itr->guid == receiver)
++            continue;
++        dernier = itr->guid;
++        Player* m = sObjectMgr.GetPlayer(itr->guid);
++        if (m && gCpgEstCompagnon && gCpgEstCompagnon(m))
++            compagnon = itr->guid;
++    }
++    return compagnon ? compagnon : dernier;
++}
++
+ void Group::SendUpdate()
+ {
+     for (member_citerator citr = m_memberSlots.begin(); citr != m_memberSlots.end(); ++citr)

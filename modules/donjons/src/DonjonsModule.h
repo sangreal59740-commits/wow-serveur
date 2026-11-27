@@ -20,6 +20,7 @@ namespace cmangos_module
     #define DONJONS_NPC_BASE        990100      // Gardien des epreuves : 990100 + index du donjon (0 a 12)
     #define DONJONS_NPC_LAST        990124
     #define DONJONS_MODES_4050      13          // modes 40 / 50 : donjons 0 a 12 seulement
+    #define DONJONS_BASE_MULT       1.2f        // tous les donjons : PV et degats des monstres +20 %
     #define DONJONS_MYTHIC          100         // niveau de mode 100 + M = mythique M+M
     #define DONJONS_MYTHIC_MAX      10
     #define DONJONS_MYTHIC_LOOT     997000      // butin des boss : 997000 + M (2 objets), boss final 997100 + M (3 objets)

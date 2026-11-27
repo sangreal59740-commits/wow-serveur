@@ -51,7 +51,10 @@ namespace cmangos_module
     static thread_local int s_depth = 0;     // évite de se rappeler soi-même (dégâts lancés par le module), par fil d'exécution
     struct Profondeur { Profondeur() { ++s_depth; } ~Profondeur() { --s_depth; } };
 
-    static const uint32 MAX_ACTIFS = 4;
+    static const uint32 MAX_ACTIFS = 5;         // groupe de 6 : le joueur et 5 compagnons
+    static const uint32 NIVEAU_MIN = 10;        // compagnons disponibles à partir de ce niveau
+    static const uint32 CPG_OFFERT = 5;         // Rémy Deux-Fois, offert au niveau 10
+    static const uint32 SORT_GROUPE_COMPLET = 46991;   // buff « Groupe complet » : 6 vrais joueurs dans le même donjon
 
     // ------------------------------------------------------------------ outils
     static Compagnon const* Def(uint32 id)
@@ -498,13 +501,18 @@ namespace cmangos_module
                 Renvoyer(proprio->GetGUIDLow(), cpg, true);
                 return;
             }
+        if (proprio->GetLevel() < NIVEAU_MIN)
+        {
+            Dire(proprio, "Les compagnons sont disponibles à partir du niveau 10.");
+            return;
+        }
         uint32 n = 0;
         for (auto const& a : actifs)
             if (a.proprio == proprio->GetGUIDLow())
                 ++n;
         if (n >= MAX_ACTIFS)
         {
-            Dire(proprio, "Tu as déjà 4 compagnons avec toi. Renvoie-en un avant d'en appeler un autre.");
+            Dire(proprio, "Tu as déjà 5 compagnons avec toi. Renvoie-en un avant d'en appeler un autre.");
             return;
         }
         if (!proprio->GetPlayerbotMgr())
@@ -602,6 +610,8 @@ namespace cmangos_module
         actifs.erase(std::remove_if(actifs.begin(), actifs.end(), [&](CpgActif const& a) { return a.proprio == g; }), actifs.end());
         charges.erase(g);
         possessions.erase(g);
+        offerts.erase(g);
+        sixiemeAffiche.erase(g);
     }
 
     void CompagnonsModule::OnDeleteFromDB(uint32 playerId)
@@ -634,7 +644,137 @@ namespace cmangos_module
             if (n)
                 xp = uint32(xp * (1.0f + 0.1f * n) + 0.5f);
         }
+        // Groupe complet (6 vrais joueurs dans le même donjon) : +50 % sur les monstres du donjon
+        if (victim && player->HasAura(SORT_GROUPE_COMPLET) && player->GetMap() && player->GetMap()->IsDungeon() && !player->GetMap()->IsRaid())
+            xp = uint32(xp * 1.5f + 0.5f);
         return false;
+    }
+
+    // ------------------------------------------------------------------ niveau 10 : compagnon offert
+    void CompagnonsModule::OnGiveLevel(Player* player, uint32 level)
+    {
+        if (level < NIVEAU_MIN)
+            return;
+        std::lock_guard<std::recursive_mutex> l(lock);
+        Offrir(player);
+    }
+
+    void CompagnonsModule::Offrir(Player* p)
+    {
+        if (!p || !p->GetSession() || EstBot(p) || p->GetLevel() < NIVEAU_MIN)
+            return;
+        uint32 g = p->GetGUIDLow();
+        if (offerts.count(g))
+            return;
+        offerts.insert(g);
+        Compagnon const* d = Def(CPG_OFFERT);
+        if (!d || Possession(g, CPG_OFFERT))
+            return;
+        CharacterDatabase.PExecute("INSERT IGNORE INTO `custom_cpg` (`proprio`, `cpg`, `date`) VALUES (%u, %u, NOW())", g, CPG_OFFERT);
+        CpgPossession po;
+        po.cpg = CPG_OFFERT;
+        possessions[g].push_back(po);
+        MailDraft draft(std::string("Cadeau : ") + d->nom, std::string("Bravo pour ton niveau 10 ! ") + d->nom +
+                        " te rejoint gratuitement. Utilise sa pierre pour l'appeler à tes côtés (ou ouvre l'onglet Compagnons).");
+        if (Item* it = Item::CreateItem(d->pierre, 1, p))
+        {
+            it->SaveToDB();
+            draft.AddItem(it);
+        }
+        draft.SendMailTo(MailReceiver(p, p->GetObjectGuid()), MailSender(MAIL_NORMAL, uint32(0), MAIL_STATIONERY_GM));
+        Dire(p, std::string("|cff00ff00Niveau 10 : ") + d->nom + " te rejoint gratuitement ! Sa pierre t'attend dans ta boîte aux lettres.|r");
+        EnvoyerListe(p);
+    }
+
+    // ------------------------------------------------------------------ groupe de 6
+    // invitation d'un vrai joueur dans un groupe plein : un compagnon cède sa place
+    bool CompagnonsModule::OnPreInviteMember(Group* group, Player* player, Player* recipient)
+    {
+        if (!group || !player || !recipient || EstBot(recipient) || !group->IsFull() || group->IsRaidGroup())
+            return false;
+        std::lock_guard<std::recursive_mutex> l(lock);
+        for (auto it = actifs.rbegin(); it != actifs.rend(); ++it)
+        {
+            Player* bot = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, it->bot));
+            if (!bot || bot->GetGroup() != group)
+                continue;
+            uint32 proprio = it->proprio, cpg = it->cpg;
+            Renvoyer(proprio, cpg, true);
+            break;
+        }
+        return false;
+    }
+
+    // 6e membre : le jeu ne l'affiche pas, l'addon le montre (H nom|nom affiché|PV|PV max|puissance|max|type|classe|état)
+    void CompagnonsModule::Sixieme(uint32 dt)
+    {
+        timerSixieme += dt;
+        if (timerSixieme < 1000)
+            return;
+        timerSixieme = 0;
+        std::vector<Player*> joueurs;
+        {
+            HashMapHolder<Player>::ReadGuard g(HashMapHolder<Player>::GetLock());
+            for (auto const& kv : HashMapHolder<Player>::GetContainer())
+                if (Player* p = kv.second)
+                    if (p->IsInWorld() && p->GetSession() && !EstBot(p))
+                        joueurs.push_back(p);
+        }
+        for (Player* p : joueurs)
+        {
+            GroupeComplet(p);
+            Group* g = p->GetGroup();
+            ObjectGuid cache = g ? g->GetHiddenMemberFor(p->GetObjectGuid()) : ObjectGuid();
+            if (!cache)
+            {
+                if (sixiemeAffiche.erase(p->GetGUIDLow()))
+                    Addon(p, "H");
+                continue;
+            }
+            sixiemeAffiche.insert(p->GetGUIDLow());
+            std::ostringstream out;
+            Player* m = sObjectMgr.GetPlayer(cache);
+            std::string nom, affiche;
+            for (auto citr = g->GetMemberSlots().begin(); citr != g->GetMemberSlots().end(); ++citr)
+                if (citr->guid == cache)
+                    nom = citr->name;
+            affiche = nom;
+            if (const char* n = NomAffiche(cache.GetCounter()))
+                affiche = n;
+            if (!m)
+            {
+                out << "H " << nom << "|" << affiche << "|0|1|0|1|0|0|2";
+                Addon(p, out.str());
+                continue;
+            }
+            uint32 etatM = m->IsDead() ? 1 : (!m->IsInMap(p) ? 3 : 0);
+            Powers pt = m->GetPowerType();
+            out << "H " << nom << "|" << affiche << "|" << m->GetHealth() << "|" << m->GetMaxHealth() << "|" << m->GetPower(pt) << "|"
+                << m->GetMaxPower(pt) << "|" << uint32(pt) << "|" << uint32(m->getClass()) << "|" << etatM;
+            Addon(p, out.str());
+        }
+    }
+
+    // buff « Groupe complet » : 6 vrais joueurs (aucun bot) dans le même donjon
+    void CompagnonsModule::GroupeComplet(Player* p)
+    {
+        bool ok = false;
+        Map* map = p->GetMap();
+        Group* g = p->GetGroup();
+        if (g && !g->IsRaidGroup() && g->GetMembersCount() >= 6 && map && map->IsDungeon() && !map->IsRaid())
+        {
+            ok = true;
+            for (auto citr = g->GetMemberSlots().begin(); citr != g->GetMemberSlots().end() && ok; ++citr)
+            {
+                Player* m = sObjectMgr.GetPlayer(citr->guid);
+                if (!m || !m->IsInWorld() || EstBot(m) || m->GetMap() != map)
+                    ok = false;
+            }
+        }
+        if (ok && !p->HasAura(SORT_GROUPE_COMPLET))
+            p->CastSpell(p, SORT_GROUPE_COMPLET, TRIGGERED_OLD_TRIGGERED);
+        else if (!ok && p->HasAura(SORT_GROUPE_COMPLET))
+            p->RemoveAurasDueToSpell(SORT_GROUPE_COMPLET);
     }
 
     // ------------------------------------------------------------------ boucle
@@ -672,6 +812,7 @@ namespace cmangos_module
         timer = 0;
         std::lock_guard<std::recursive_mutex> l(lock);
         Suivre(dt);
+        Sixieme(dt);
     }
 
     void CompagnonsModule::Suivre(uint32 dt)
@@ -683,6 +824,7 @@ namespace cmangos_module
         {
             rappel = 0;
             std::vector<std::pair<uint32, uint32>> aRappeler;
+            std::vector<uint32> aOffrir;
             {
                 HashMapHolder<Player>::ReadGuard g(HashMapHolder<Player>::GetLock());
                 for (auto const& kv : HashMapHolder<Player>::GetContainer())
@@ -691,6 +833,8 @@ namespace cmangos_module
                     if (!p || !p->IsInWorld() || EstBot(p) || p->IsBeingTeleported() || p->IsInCombat())
                         continue;
                     uint32 g2 = p->GetGUIDLow();
+                    if (p->GetLevel() >= NIVEAU_MIN && !offerts.count(g2))
+                        aOffrir.push_back(g2);
                     if (!charges.count(g2))
                     {
                         // chargement paresseux : un compte est fait une fois par connexion
@@ -701,6 +845,9 @@ namespace cmangos_module
                     }
                 }
             }
+            for (uint32 g2 : aOffrir)
+                if (Player* p = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, g2)))
+                    Offrir(p);
             for (auto const& r : aRappeler)
             {
                 bool deja = false;

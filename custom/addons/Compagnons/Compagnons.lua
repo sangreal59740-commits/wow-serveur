@@ -330,7 +330,7 @@ end
 
 function Compagnons_MajGalerie()
 	G.titre:SetText("Compagnons")
-	G.sous:SetText(etat.nbPossedes .. " sur " .. NB .. " possédés · 4 au maximum avec toi")
+	G.sous:SetText(etat.nbPossedes .. " sur " .. NB .. " possédés · 5 au maximum avec toi, dès le niveau 10")
 	G.solde:SetText(Milliers(etat.solde) .. " |cffd9b36cGen|r")
 	for i = 1, table.getn(G.filtres) do
 		local b = G.filtres[i]
@@ -1248,6 +1248,8 @@ local function Recevoir(msg)
 			if etat.categoriesNouv[i] == a.categorie then deja = true end
 		end
 		if not deja then table.insert(etat.categoriesNouv, a.categorie) end
+	elseif typ == "H" then
+		if CPG_Sixieme then CPG_Sixieme(reste) end
 	elseif typ == "B" then
 		etat.catalogue = etat.catalogueNouveau or {}
 		etat.categories = etat.categoriesNouv or {}
@@ -1387,3 +1389,94 @@ evInspect:SetScript("OnEvent", function()
 		InspectCrochet()
 	end
 end)
+
+-- ------------------------------------------------------------------ groupe de 6 : cadre du 6e membre
+-- Le jeu n'affiche que 4 coéquipiers ; le serveur envoie chaque seconde le membre en trop (H nom|nom affiché|PV|PV max|puissance|max|type|classe|état).
+local S6 = CreateFrame("Button", "CompagnonsSixieme", UIParent)
+S6:SetWidth(150)
+S6:SetHeight(38)
+S6:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+	tile = true, tileSize = 16, edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+S6:SetBackdropColor(0, 0, 0, 0.7)
+S6:SetMovable(true)
+S6:RegisterForDrag("LeftButton")
+S6:RegisterForClicks("LeftButtonUp")
+S6:Hide()
+S6.nom = S6:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+S6.nom:SetPoint("TOPLEFT", S6, "TOPLEFT", 7, -5)
+S6.nom:SetWidth(136)
+S6.nom:SetJustifyH("LEFT")
+local function Barre(y, r, g, b)
+	local f = CreateFrame("StatusBar", nil, S6)
+	f:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+	f:SetStatusBarColor(r, g, b)
+	f:SetWidth(136)
+	f:SetHeight(y == 1 and 9 or 6)
+	f:SetPoint("TOPLEFT", S6, "TOPLEFT", 7, y == 1 and -17 or -27)
+	f:SetMinMaxValues(0, 1)
+	f.t = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	f.t:SetPoint("CENTER", f, "CENTER", 0, 0)
+	return f
+end
+S6.pv = Barre(1, 0, 0.8, 0)
+S6.pm = Barre(2, 0, 0, 1)
+S6.pv.t:SetFont(STANDARD_TEXT_FONT, 8)
+local COUL_PUISSANCE = { [0] = { 0, 0, 1 }, { 1, 0, 0 }, { 1, 0.5, 0.25 }, { 1, 1, 0 } }
+local ETATS = { [1] = "Mort", [2] = "Hors ligne", [3] = "Loin" }
+local s6Vu, s6Nom = 0, nil
+
+local function PlacerSixieme()
+	S6:ClearAllPoints()
+	if PartyMemberFrame4 then
+		S6:SetPoint("TOPLEFT", PartyMemberFrame4, "BOTTOMLEFT", 0, -12)
+	else
+		S6:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 20, -420)
+	end
+end
+PlacerSixieme()
+
+S6:SetScript("OnDragStart", function() if IsShiftKeyDown() then this:StartMoving() end end)
+S6:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
+S6:SetScript("OnClick", function()
+	if s6Nom then TargetByName(s6Nom) end
+end)
+S6:SetScript("OnEnter", function()
+	GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+	GameTooltip:SetText(this.nom:GetText() or "", 1, 1, 1)
+	GameTooltip:AddLine("6e membre du groupe : le jeu n'affiche que 4 coéquipiers.", 0.7, 0.7, 0.7, 1)
+	GameTooltip:AddLine("Clic : cibler. Maj + glisser : déplacer.", 0.7, 0.7, 0.7, 1)
+	GameTooltip:Show()
+end)
+S6:SetScript("OnLeave", function() GameTooltip:Hide() end)
+S6:SetScript("OnUpdate", function()
+	if GetTime() - s6Vu > 5 then this:Hide() end
+end)
+
+function CPG_Sixieme(reste)
+	local _, _, nom, affiche, pv, pvmax, pw, pwmax, ptype, classe, et =
+		string.find(reste or "", "^(.-)|(.-)|(%d+)|(%d+)|(%d+)|(%d+)|(%d+)|(%d+)|(%d+)$")
+	if not nom then
+		S6:Hide()
+		s6Nom = nil
+		return
+	end
+	s6Nom, s6Vu = nom, GetTime()
+	pv, pvmax, pw, pwmax, et = tonumber(pv), tonumber(pvmax), tonumber(pw), tonumber(pwmax), tonumber(et)
+	if pvmax < 1 then pvmax = 1 end
+	if pwmax < 1 then pwmax = 1 end
+	S6.nom:SetText(affiche)
+	S6.pv:SetMinMaxValues(0, pvmax)
+	S6.pv:SetValue(pv)
+	S6.pm:SetMinMaxValues(0, pwmax)
+	S6.pm:SetValue(pw)
+	local c = COUL_PUISSANCE[tonumber(ptype)] or COUL_PUISSANCE[0]
+	S6.pm:SetStatusBarColor(c[1], c[2], c[3])
+	if ETATS[et] then
+		S6.pv.t:SetText(ETATS[et])
+		S6.nom:SetTextColor(0.5, 0.5, 0.5)
+	else
+		S6.pv.t:SetText(pv .. " / " .. pvmax)
+		S6.nom:SetTextColor(1, 0.82, 0)
+	end
+	if not S6:IsVisible() then S6:Show() end
+end

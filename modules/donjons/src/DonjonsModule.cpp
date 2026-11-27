@@ -296,24 +296,18 @@ namespace cmangos_module
         mode.origLevels[key] = orig;
 
         const DonjonInfo* d = GetDonjon(mode);
+        int32 level = int32(orig);
+        float mult = DONJONS_BASE_MULT;             // tous les donjons : PV et dégâts +20 %, quel que soit le mode
         if (mode.level == 0 || !d)
         {
-            auto am = mode.appliedMult.find(key);
-            if (creature->GetLevel() != orig || (am != mode.appliedMult.end() && am->second != 1.0f))
-                creature->SelectLevel(orig);
-            mode.appliedMult[key] = 1.0f;
-            creature->SetCustomSpellMult(1.0f);
-            return;
+            // mode normal : niveau d'origine
         }
-
-        int32 level;
-        float mult = 1.0f;
-        if (IsMythic(mode.level))
+        else if (IsMythic(mode.level))
         {
             // tout au niveau 60 environ : monstres 58 a 60, boss 61 (62 au plus)
             level = int32(orig) + 61 - int32(d->refLevel);
             level = std::max(58, std::min(62, level));
-            mult = MYTH_POWER[MythicOf(mode.level)];
+            mult *= MYTH_POWER[MythicOf(mode.level)];
         }
         else
         {
@@ -338,9 +332,9 @@ namespace cmangos_module
             }
             mode.appliedMult[key] = mult;
         }
-        creature->SetCustomSpellMult(DamageRatio(orig, uint32(level)) * mult);
+        creature->SetCustomSpellMult((uint32(level) != orig ? DamageRatio(orig, uint32(level)) : 1.0f) * mult);
 
-        if (IsMythic(mode.level) && !creature->IsCustomCloned() && !creature->IsTemporarySummon() && CanClone(creature))
+        if (d && IsMythic(mode.level) && !creature->IsCustomCloned() && !creature->IsTemporarySummon() && CanClone(creature))
         {
             creature->SetCustomCloned(true);
             QueueClones(creature, MythicOf(mode.level));
@@ -450,8 +444,7 @@ namespace cmangos_module
         if (mode.origLevels.find(key) == mode.origLevels.end())
             mode.origLevels[key] = creature->GetLevel();
 
-        if (mode.level > 0)
-            ApplyToCreature(creature, mode);
+        ApplyToCreature(creature, mode);       // +20 % en mode normal aussi
     }
 
     void DonjonsModule::OnGossipHello(Player* player, Creature* creature)

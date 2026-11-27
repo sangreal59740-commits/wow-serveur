@@ -70,6 +70,8 @@ namespace cmangos_module
         void OnDealDamage(Unit* unit, Unit* victim, uint32 health, uint32 damage) override;
         void OnHit(Spell* spell, Unit* caster, Unit* victim) override;
         bool OnFillLoot(Loot* loot, Player* owner) override;
+        void OnGiveLevel(Player* player, uint32 level) override;
+        bool OnPreInviteMember(Group* group, Player* player, Player* recipient) override;
 
         const char* GetChatCommandPrefix() const override { return "cpg"; }
         std::vector<ModuleChatCommand>* GetCommandTable() override;
@@ -101,6 +103,9 @@ namespace cmangos_module
         void Invoquer(Player* proprio, uint32 cpg);
         void Renvoyer(uint32 proprio, uint32 cpg, bool message);
         void Livrer();
+        void Offrir(Player* p);
+        void Sixieme(uint32 dt);
+        void GroupeComplet(Player* p);
         void Suivre(uint32 dt);
         void Preparer(Player* bot, Player* proprio, CpgActif& a, bool complet);
         void Sorts(Player* bot, uint32 cpg);
@@ -116,6 +121,9 @@ namespace cmangos_module
         mutable std::recursive_mutex lock;
         std::unordered_map<uint32, std::vector<CpgPossession>> possessions;   // proprio -> compagnons possédés
         std::unordered_set<uint32> charges;                                     // proprios chargés depuis la base
+        std::unordered_set<uint32> offerts;              // personnages déjà vérifiés pour le compagnon offert au niveau 10
+        std::unordered_set<uint32> sixiemeAffiche;       // joueurs à qui l'addon affiche le 6e membre du groupe
+        uint32 timerSixieme = 0;
         std::vector<CpgActif> actifs;
         std::unordered_map<uint32, uint32> botCpg;                              // bot -> compagnon
         std::unordered_map<uint32, uint32> botProprio;                          // bot -> proprio
