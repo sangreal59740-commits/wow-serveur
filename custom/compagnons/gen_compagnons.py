@@ -684,9 +684,10 @@ def lua(s):
 A = ["-- Généré par gen_compagnons.py", "Compagnons_Donnees = {"]
 for c in COMP:
     tl = ", ".join("{%d, %s, %s}" % (t['pal'], lua(t['nom']), lua(t['txt'])) for t in c['talents'])
-    A.append("  [%d] = { cle = %s, nom = %s, nomComplet = %s, rarete = %d, classe = %d, spe = %s, role = %s, prix = %d, sorts = { %s }, talents = { %s }, ultime = %s, ultimeTxt = %s, pierre = %d }," % (
+    A.append("  [%d] = { cle = %s, nom = %s, nomComplet = %s, rarete = %d, classe = %d, spe = %s, role = %s, prix = %d, sorts = { %s }, talents = { %s }, ultime = %s, ultimeTxt = %s, pierre = %d, st = %d, bonus = %d, armure = %d, bouclier = %s }," % (
         c['id'], lua(c['cle']), lua(c['nom']), lua(c['doc']), c['r'], c['cls'], lua(c['spe_txt']), lua(c['role_txt']), PRIX[c['r']],
-        ", ".join(lua(n) for n, _ in c['sorts_ids']), tl, lua(c['ultime_nom']), lua(c['ultime_txt']), c['pierre']))
+        ", ".join(lua(n) for n, _ in c['sorts_ids']), tl, lua(c['ultime_nom']), lua(c['ultime_txt']), c['pierre'],
+        STATK[c['stat']], BONUSK[c['bonus']], ARMK[c['armure']], 'true' if any(g == 11 for g, _ in c['armes_ids']) else 'false'))
 A.append("}")
 os.makedirs(ADDON, exist_ok=True)
 open(ADDON + 'Donnees.lua', 'w', encoding='utf-8').write("\n".join(A) + "\n")

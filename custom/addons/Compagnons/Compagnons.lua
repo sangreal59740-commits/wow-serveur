@@ -442,30 +442,137 @@ local function Panneau(parent, largeur, hauteur, titre)
 	return p
 end
 
--- stuff de base (non modifiable)
+-- stuff de base (non modifiable) : une icône par pièce, stats au niveau du compagnon au survol
+-- (mêmes valeurs que le module : bleu 60 avec le +50 % du serveur, x niveau / 60, x ratio de la rareté)
 F.base = Panneau(F.p1, 200, 420, "Stuff de base")
 F.base:SetPoint("TOPLEFT", F.p1, "TOPLEFT", 16, 0)
 local BASE = { "Tête", "Épaules", "Dos", "Torse", "Poignets", "Mains", "Taille", "Jambes", "Pieds", "Arme" }
-F.baseLignes = {}
+local B_ES = { 27, 20, 12, 30, 14, 20, 20, 30, 20, 23 }          -- endurance et stat principale
+local B_BONUS = {
+	[0] = { 45, 0, 0, 51, 21, 0, 33, 0, 33, 42 },                -- puissance d'attaque
+	[1] = { 27, 0, 0, 30, 14, 0, 20, 0, 20, 60 },                -- puissance des sorts
+	[2] = { 50, 0, 0, 56, 23, 0, 36, 0, 36, 113 },               -- soins
+	[3] = { 15, 0, 0, 18, 8, 0, 12, 0, 12, 15 },                 -- défense
+}
+local B_CRIT = { 0, 2, 0, 0, 0, 0, 0, 2, 0, 0 }
+local B_TOUCHER = { 0, 0, 2, 0, 0, 2, 0, 0, 0, 0 }
+local B_ARMURE = { 13, 12, 5, 17, 7, 10, 9, 15, 12, 0 }          -- part de l'armure du set (%)
+local ARMURE60 = { [0] = 600, 1300, 2700, 4800 }
+local ARMNOM = { [0] = "Tissu", "Cuir", "Mailles", "Plaques" }
+local STATNOM = { [0] = "Force", "Agilité", [3] = "Intelligence" }
+local ICONES_BASE = { "INV_Helmet_03", "INV_Shoulder_02", "INV_Misc_Cape_01", "", "INV_Bracer_02", "INV_Gauntlets_04", "INV_Belt_03", "INV_Pants_02", "INV_Boots_02", "" }
+local TORSE = { [0] = "INV_Chest_Cloth_01", "INV_Chest_Leather_01", "INV_Chest_Chain", "INV_Chest_Plate01" }
+
+local function IconeBase(d, i)
+	local n = ICONES_BASE[i]
+	if i == 4 then
+		n = TORSE[d.armure or 0]
+	elseif i == 10 then
+		if d.classe == 3 or d.classe == 10 then n = "INV_Weapon_Bow_02"
+		elseif d.st == 3 then n = "INV_Staff_08"
+		else n = "INV_Sword_04" end
+	end
+	return "Interface\\Icons\\" .. n
+end
+
+-- valeurs d'une pièce au niveau du compagnon
+local function PieceBase(d, i, niveau, ratio)
+	local f = (niveau / 60) * (ratio / 100)
+	local function r(v) return math.floor(v * f + 0.5) end
+	local p = { es = r(B_ES[i]), bonus = r(B_BONUS[d.bonus or 0][i]), armure = 0, bouclier = 0 }
+	p.crit = math.floor(B_CRIT[i] * f * 10 + 0.5) / 10
+	p.toucher = math.floor(B_TOUCHER[i] * f * 10 + 0.5) / 10
+	p.armure = r(ARMURE60[d.armure or 0] * B_ARMURE[i] / 100)
+	if i == 10 and d.bouclier then p.bouclier = r(2000) end
+	return p
+end
+
+local function Pct(v)
+	local t = string.format("%.1f", v)
+	t = string.gsub(t, "%.0$", "")
+	return string.gsub(t, "%.", ",")
+end
+
+local function BonusTexte(d, v)
+	local b = d.bonus or 0
+	if b == 0 then return "Augmente la puissance d'attaque de " .. v .. "." end
+	if b == 1 then return "Augmente les dégâts et les soins des sorts de " .. v .. " au maximum." end
+	if b == 2 then return "Augmente les soins prodigués de " .. v .. " au maximum." end
+	return "Défense augmentée de " .. v .. "."
+end
+
+local function BonusCourt(d, v)
+	local b = d.bonus or 0
+	if b == 0 then return v .. " PA" end
+	if b == 1 then return v .. " PS" end
+	if b == 2 then return v .. " soins" end
+	return v .. " déf."
+end
+
+F.baseCases = {}
 for i = 1, table.getn(BASE) do
-	local l = Texte(F.base, 11, { 0.75, 0.75, 0.78 })
-	l:SetPoint("TOPLEFT", F.base, "TOPLEFT", 30, -14 - i * 30)
-	l:SetText(BASE[i])
-	local v = F.base:CreateTexture(nil, "ARTWORK")
-	v:SetTexture("Interface\\PetitionFrame\\GuildCharter-Icon")
-	v:SetWidth(12)
-	v:SetHeight(12)
-	v:SetPoint("RIGHT", l, "LEFT", -6, 0)
-	v:SetVertexColor(0.5, 0.5, 0.55)
-	local r = Texte(F.base, 10, GRIS)
-	r:SetPoint("RIGHT", F.base, "RIGHT", -12, 0)
-	r:SetPoint("TOP", l, "TOP", 0, 0)
-	F.baseLignes[i] = r
+	local b = CreateFrame("Button", nil, F.base)
+	b:SetWidth(26)
+	b:SetHeight(26)
+	b:SetPoint("TOPLEFT", F.base, "TOPLEFT", 14, -36 - (i - 1) * 34)
+	b.ic = b:CreateTexture(nil, "ARTWORK")
+	b.ic:SetAllPoints(b)
+	b.bord = b:CreateTexture(nil, "OVERLAY")
+	b.bord:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+	b.bord:SetBlendMode("ADD")
+	b.bord:SetWidth(50)
+	b.bord:SetHeight(50)
+	b.bord:SetPoint("CENTER", b, "CENTER", 0, 0)
+	b.lib = Texte(F.base, 10, { 0.75, 0.75, 0.78 })
+	b.lib:SetPoint("TOPLEFT", b, "TOPRIGHT", 8, -1)
+	b.lib:SetText(BASE[i])
+	b.res = Texte(F.base, 9, GRIS)
+	b.res:SetWidth(140)
+	b.res:SetJustifyH("LEFT")
+	b.res:SetPoint("TOPLEFT", b.lib, "BOTTOMLEFT", 0, -2)
+	b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
+	b.n = i
+	b:SetScript("OnEnter", function()
+		local id = etat.fiche
+		if not id then return end
+		local d = D[id]
+		local fi = etat.f or {}
+		local niveau = fi.niveau or UnitLevel("player")
+		local ratio = fi.stats and fi.stats.stuff or 100
+		local p = PieceBase(d, this.n, niveau, ratio)
+		local q = QUAL[d.rarete]
+		GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+		GameTooltip:SetText(BASE[this.n] .. " de " .. d.nom, q[1], q[2], q[3])
+		GameTooltip:AddLine("Stuff de base du compagnon", 1, 1, 1)
+		if this.n == 10 then
+			GameTooltip:AddLine("Arme (dégâts : l'arme qu'il tient)", 1, 1, 1)
+			if p.bouclier > 0 then GameTooltip:AddLine("Bouclier : " .. p.bouclier .. " Armure", 1, 1, 1) end
+		else
+			GameTooltip:AddDoubleLine(BASE[this.n], ARMNOM[d.armure or 0], 1, 1, 1, 1, 1, 1)
+			GameTooltip:AddLine(p.armure .. " Armure", 1, 1, 1)
+		end
+		if p.es > 0 then
+			GameTooltip:AddLine("+" .. p.es .. " Endurance", 1, 1, 1)
+			GameTooltip:AddLine("+" .. p.es .. " " .. (STATNOM[d.st or 0] or "Force"), 1, 1, 1)
+		end
+		if p.bonus > 0 then GameTooltip:AddLine("Équipé : " .. BonusTexte(d, p.bonus), VERT[1], VERT[2], VERT[3], 1) end
+		if p.crit > 0 then
+			GameTooltip:AddLine("Équipé : Augmente vos chances d'infliger un coup critique" .. (d.st == 3 and " avec vos sorts" or "") .. " de " .. Pct(p.crit) .. " %.", VERT[1], VERT[2], VERT[3], 1)
+		end
+		if p.toucher > 0 then
+			GameTooltip:AddLine("Équipé : Augmente vos chances de toucher" .. (d.st == 3 and " avec des sorts" or "") .. " de " .. Pct(p.toucher) .. " %.", VERT[1], VERT[2], VERT[3], 1)
+		end
+		GameTooltip:AddLine("Niveau " .. niveau .. " · " .. QUALNOM[d.rarete] .. " (" .. ratio .. " %)", 0.6, 0.6, 0.6)
+		GameTooltip:AddLine("Suit le niveau du compagnon. Ne peut pas être changé.", 0.6, 0.6, 0.6, 1)
+		GameTooltip:Show()
+	end)
+	b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	F.baseCases[i] = b
 end
 F.baseAide = Texte(F.base, 9, GRIS)
 F.baseAide:SetWidth(176)
-F.baseAide:SetPoint("BOTTOM", F.base, "BOTTOM", 0, 12)
-F.baseAide:SetText("Apparence et stuff du compagnon. Il suit ton niveau, sa force dépend de la rareté.")
+F.baseAide:SetPoint("BOTTOM", F.base, "BOTTOM", 0, 10)
+F.baseAide:SetText("Survole une pièce pour voir ses stats. Elles suivent le niveau et la rareté.")
 
 -- emplacements modifiables
 F.modif = Panneau(F.p1, 300, 420, "Ce que tu peux lui donner")
@@ -696,8 +803,16 @@ function Compagnons_MajFiche()
 	F.sorts:SetText("Sorts : " .. table.concat(d.sorts, ", "))
 	-- stuff de base
 	local pct = f.stats and f.stats.stuff or 100
-	for i = 1, table.getn(F.baseLignes) do
-		F.baseLignes[i]:SetText(pct .. " %")
+	local niv = f.niveau or UnitLevel("player")
+	for i = 1, table.getn(F.baseCases) do
+		local b = F.baseCases[i]
+		local p = PieceBase(d, i, niv, pct)
+		b.ic:SetTexture(IconeBase(d, i))
+		b.bord:SetVertexColor(q[1], q[2], q[3])
+		local t = "+" .. p.es .. " End."
+		if p.bonus > 0 then t = t .. ", +" .. BonusCourt(d, p.bonus) end
+		if i ~= 10 and p.armure > 0 then t = t .. ", " .. p.armure .. " arm." end
+		b.res:SetText(t)
 	end
 	-- emplacements
 	local ids = {}
