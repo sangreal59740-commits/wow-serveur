@@ -509,6 +509,40 @@ local function BonusCourt(d, v)
 	return v .. " déf."
 end
 
+-- info-bulle d'une pièce du stuff de base (fiche et fenêtre d'inspection) ; ajout = lignes ajoutées à l'info-bulle d'un objet
+local function InfoBase(d, i, niveau, ratio, ajout)
+	local p = PieceBase(d, i, niveau, ratio)
+	local q = QUAL[d.rarete]
+	if not ajout then
+		GameTooltip:SetText(BASE[i] .. " de " .. d.nom, q[1], q[2], q[3])
+		GameTooltip:AddLine("Stuff de base du compagnon", 1, 1, 1)
+	else
+		GameTooltip:AddLine(" ")
+		GameTooltip:AddLine("Stuff de base du compagnon (" .. BASE[i] .. ")", q[1], q[2], q[3])
+	end
+	if i == 10 then
+		if not ajout then GameTooltip:AddLine("Arme (dégâts : l'arme qu'il tient)", 1, 1, 1) end
+		if p.bouclier > 0 then GameTooltip:AddLine("Bouclier : " .. p.bouclier .. " Armure", 1, 1, 1) end
+	else
+		GameTooltip:AddDoubleLine(BASE[i], ARMNOM[d.armure or 0], 1, 1, 1, 1, 1, 1)
+		GameTooltip:AddLine(p.armure .. " Armure", 1, 1, 1)
+	end
+	if p.es > 0 then
+		GameTooltip:AddLine("+" .. p.es .. " Endurance", 1, 1, 1)
+		GameTooltip:AddLine("+" .. p.es .. " " .. (STATNOM[d.st or 0] or "Force"), 1, 1, 1)
+	end
+	if p.bonus > 0 then GameTooltip:AddLine("Équipé : " .. BonusTexte(d, p.bonus), VERT[1], VERT[2], VERT[3], 1) end
+	if p.crit > 0 then
+		GameTooltip:AddLine("Équipé : Augmente vos chances d'infliger un coup critique" .. (d.st == 3 and " avec vos sorts" or "") .. " de " .. Pct(p.crit) .. " %.", VERT[1], VERT[2], VERT[3], 1)
+	end
+	if p.toucher > 0 then
+		GameTooltip:AddLine("Équipé : Augmente vos chances de toucher" .. (d.st == 3 and " avec des sorts" or "") .. " de " .. Pct(p.toucher) .. " %.", VERT[1], VERT[2], VERT[3], 1)
+	end
+	GameTooltip:AddLine("Niveau " .. niveau .. " · " .. QUALNOM[d.rarete] .. " (" .. ratio .. " %)", 0.6, 0.6, 0.6)
+	if not ajout then GameTooltip:AddLine("Suit le niveau du compagnon. Ne peut pas être changé.", 0.6, 0.6, 0.6, 1) end
+	GameTooltip:Show()
+end
+
 F.baseCases = {}
 for i = 1, table.getn(BASE) do
 	local b = CreateFrame("Button", nil, F.base)
@@ -535,36 +569,9 @@ for i = 1, table.getn(BASE) do
 	b:SetScript("OnEnter", function()
 		local id = etat.fiche
 		if not id then return end
-		local d = D[id]
 		local fi = etat.f or {}
-		local niveau = fi.niveau or UnitLevel("player")
-		local ratio = fi.stats and fi.stats.stuff or 100
-		local p = PieceBase(d, this.n, niveau, ratio)
-		local q = QUAL[d.rarete]
 		GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
-		GameTooltip:SetText(BASE[this.n] .. " de " .. d.nom, q[1], q[2], q[3])
-		GameTooltip:AddLine("Stuff de base du compagnon", 1, 1, 1)
-		if this.n == 10 then
-			GameTooltip:AddLine("Arme (dégâts : l'arme qu'il tient)", 1, 1, 1)
-			if p.bouclier > 0 then GameTooltip:AddLine("Bouclier : " .. p.bouclier .. " Armure", 1, 1, 1) end
-		else
-			GameTooltip:AddDoubleLine(BASE[this.n], ARMNOM[d.armure or 0], 1, 1, 1, 1, 1, 1)
-			GameTooltip:AddLine(p.armure .. " Armure", 1, 1, 1)
-		end
-		if p.es > 0 then
-			GameTooltip:AddLine("+" .. p.es .. " Endurance", 1, 1, 1)
-			GameTooltip:AddLine("+" .. p.es .. " " .. (STATNOM[d.st or 0] or "Force"), 1, 1, 1)
-		end
-		if p.bonus > 0 then GameTooltip:AddLine("Équipé : " .. BonusTexte(d, p.bonus), VERT[1], VERT[2], VERT[3], 1) end
-		if p.crit > 0 then
-			GameTooltip:AddLine("Équipé : Augmente vos chances d'infliger un coup critique" .. (d.st == 3 and " avec vos sorts" or "") .. " de " .. Pct(p.crit) .. " %.", VERT[1], VERT[2], VERT[3], 1)
-		end
-		if p.toucher > 0 then
-			GameTooltip:AddLine("Équipé : Augmente vos chances de toucher" .. (d.st == 3 and " avec des sorts" or "") .. " de " .. Pct(p.toucher) .. " %.", VERT[1], VERT[2], VERT[3], 1)
-		end
-		GameTooltip:AddLine("Niveau " .. niveau .. " · " .. QUALNOM[d.rarete] .. " (" .. ratio .. " %)", 0.6, 0.6, 0.6)
-		GameTooltip:AddLine("Suit le niveau du compagnon. Ne peut pas être changé.", 0.6, 0.6, 0.6, 1)
-		GameTooltip:Show()
+		InfoBase(D[id], this.n, fi.niveau or UnitLevel("player"), fi.stats and fi.stats.stuff or 100)
 	end)
 	b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	F.baseCases[i] = b
@@ -1287,5 +1294,96 @@ ev:SetScript("OnUpdate", function()
 				end
 			end
 		end
+	end
+end)
+
+-- ------------------------------------------------------------------ fenêtre d'inspection d'un compagnon
+-- Le compagnon ne porte que ses armes : les emplacements vides montrent les pièces de son stuff de base.
+local RATIO = { [0] = 60, 80, 100, 120, 140 }
+local SLOTS_INSPECT = { "InspectHeadSlot", "InspectShoulderSlot", "InspectBackSlot", "InspectChestSlot", "InspectWristSlot",
+	"InspectHandsSlot", "InspectWaistSlot", "InspectLegsSlot", "InspectFeetSlot", "InspectMainHandSlot" }
+local PREFIXES = {}
+for id = 1, NB do
+	local c = D[id].cle
+	local b = string.upper(string.sub(c, 1, 1)) .. string.sub(c, 2, 7)
+	PREFIXES[id] = b
+end
+
+-- compagnon inspecté : membre du groupe dont le nom est « début de la clé + 4 lettres »
+local function CompagnonInspecte(unit)
+	if not unit or not UnitExists(unit) or not UnitIsPlayer(unit) then return nil end
+	if not (UnitInParty(unit) or UnitInRaid(unit)) then return nil end
+	local nom = UnitName(unit)
+	if not nom then return nil end
+	for id = 1, NB do
+		local b = PREFIXES[id]
+		if string.len(nom) == string.len(b) + 4 and string.sub(nom, 1, string.len(b)) == b then
+			return id
+		end
+	end
+	return nil
+end
+
+local function InspectUnite()
+	return (InspectFrame and InspectFrame.unit) or "target"
+end
+
+local function InspectMajCase(button)
+	if not button then return end
+	button.cpgBase = nil
+	local nomCase = button:GetName()
+	local n = nil
+	for i = 1, table.getn(SLOTS_INSPECT) do
+		if SLOTS_INSPECT[i] == nomCase then n = i end
+	end
+	if not n then return end
+	local unit = InspectUnite()
+	local id = CompagnonInspecte(unit)
+	if not id then return end
+	button.cpgId, button.cpgN = id, n
+	if n == 10 or GetInventoryItemTexture(unit, button:GetID()) then
+		button.cpgArme = (n == 10)
+		return
+	end
+	button.cpgBase = true
+	SetItemButtonTexture(button, IconeBase(D[id], n))
+end
+
+local function InspectCrochet()
+	if CPG_InspectBranche or not InspectPaperDollItemSlotButton_Update then return end
+	CPG_InspectBranche = true
+	local orig = InspectPaperDollItemSlotButton_Update
+	InspectPaperDollItemSlotButton_Update = function(button)
+		orig(button)
+		InspectMajCase(button)
+	end
+	for i = 1, table.getn(SLOTS_INSPECT) do
+		local b = getglobal(SLOTS_INSPECT[i])
+		if b then
+			local avant = b:GetScript("OnEnter")
+			b:SetScript("OnEnter", function()
+				local unit = InspectUnite()
+				if this.cpgBase and CompagnonInspecte(unit) == this.cpgId then
+					GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+					local d = D[this.cpgId]
+					InfoBase(d, this.cpgN, UnitLevel(unit), RATIO[d.rarete])
+					return
+				end
+				if avant then avant() end
+				if this.cpgArme and CompagnonInspecte(unit) == this.cpgId and GameTooltip:IsVisible() then
+					local d = D[this.cpgId]
+					InfoBase(d, 10, UnitLevel(unit), RATIO[d.rarete], true)
+				end
+			end)
+		end
+	end
+end
+
+local evInspect = CreateFrame("Frame")
+evInspect:RegisterEvent("ADDON_LOADED")
+evInspect:RegisterEvent("PLAYER_LOGIN")
+evInspect:SetScript("OnEvent", function()
+	if (event == "ADDON_LOADED" and arg1 == "Blizzard_InspectUI") or (event == "PLAYER_LOGIN" and IsAddOnLoaded("Blizzard_InspectUI")) then
+		InspectCrochet()
 	end
 end)
